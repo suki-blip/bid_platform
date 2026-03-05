@@ -16,7 +16,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { vendor_name, prices } = body;
+    const { vendor_name, prices, pricing_mode, base_price, rules } = body;
 
     if (!vendor_name || !prices || !Array.isArray(prices)) {
       return NextResponse.json(
@@ -25,10 +25,19 @@ export async function POST(
       );
     }
 
+    const mode = pricing_mode === 'additive' ? 'additive' : 'combination';
+
+    if (mode === 'additive' && (base_price === undefined || base_price === null)) {
+      return NextResponse.json(
+        { error: 'base_price is required for additive pricing mode' },
+        { status: 400 }
+      );
+    }
+
     const responseId = crypto.randomUUID();
 
     const insertResponse = db.prepare(
-      'INSERT INTO vendor_responses (id, bid_id, vendor_name) VALUES (?, ?, ?)'
+      'INSERT INTO vendor_responses (id, bid_id, vendor_name, pricing_mode, base_price, rules) VALUES (?, ?, ?, ?, ?, ?)'
     );
 
     const insertPrice = db.prepare(
@@ -36,7 +45,8 @@ export async function POST(
     );
 
     const transaction = db.transaction(() => {
-      insertResponse.run(responseId, id, vendor_name);
+      const rulesJson = mode === 'additive' && rules ? JSON.stringify(rules) : null;
+      insertResponse.run(responseId, id, vendor_name, mode, mode === 'additive' ? base_price : null, rulesJson);
 
       for (const priceEntry of prices) {
         const priceId = crypto.randomUUID();

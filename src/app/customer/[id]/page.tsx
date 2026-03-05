@@ -9,9 +9,22 @@ interface Parameter {
   options: string[];
 }
 
+interface DiscountRule {
+  conditionParam: string;
+  conditionOption: string;
+  targetType: "param_option" | "total";
+  targetParam: string;
+  targetOption: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+}
+
 interface VendorResponse {
   vendor_name: string;
   submitted_at: string;
+  pricing_mode: "combination" | "additive";
+  base_price: number | null;
+  rules: DiscountRule[];
   prices: { combination_key: string; price: number }[];
 }
 
@@ -28,6 +41,7 @@ interface MatchedPrice {
   vendor_name: string;
   price: number;
   submitted_at: string;
+  pricing_mode: string;
 }
 
 export default function CustomerBidDetailPage() {
@@ -73,17 +87,75 @@ export default function CustomerBidDetailPage() {
       )
     : null;
 
-  // Flatten vendor_responses to find matching prices
+  // Flatten vendor_responses to find matching prices (both modes)
   const matchingPrices: MatchedPrice[] = [];
-  if (combinationKey && bid?.vendor_responses) {
+  if (allSelected && bid?.vendor_responses) {
     for (const vr of bid.vendor_responses) {
-      const match = vr.prices.find((p) => p.combination_key === combinationKey);
-      if (match) {
-        matchingPrices.push({
-          vendor_name: vr.vendor_name,
-          price: match.price,
-          submitted_at: vr.submitted_at,
-        });
+      if (vr.pricing_mode === "additive") {
+        // Additive: base_price + sum of matching option additions - discounts
+        let total = vr.base_price ?? 0;
+        let allFound = true;
+
+        // Build a map of option additions for discount calculations
+        const optionAdditions: Record<string, number> = {};
+        for (const [paramName, optionValue] of Object.entries(selections)) {
+          const key = JSON.stringify({ param: paramName, option: optionValue });
+          const match = vr.prices.find((p) => p.combination_key === key);
+          if (match) {
+            optionAdditions[key] = match.price;
+            total += match.price;
+          } else {
+            allFound = false;
+          }
+        }
+
+        // Apply discount rules
+        if (allFound && vr.rules && vr.rules.length > 0) {
+          for (const rule of vr.rules) {
+            // Check if condition is met
+            if (selections[rule.conditionParam] !== rule.conditionOption) continue;
+
+            if (rule.targetType === "total") {
+              // Discount on total
+              if (rule.discountType === "percentage") {
+                total -= total * (rule.discountValue / 100);
+              } else {
+                total -= rule.discountValue;
+              }
+            } else if (rule.targetType === "param_option") {
+              // Discount on a specific option's addition
+              if (selections[rule.targetParam] === rule.targetOption) {
+                const targetKey = JSON.stringify({ param: rule.targetParam, option: rule.targetOption });
+                const addition = optionAdditions[targetKey] ?? 0;
+                if (rule.discountType === "percentage") {
+                  total -= addition * (rule.discountValue / 100);
+                } else {
+                  total -= rule.discountValue;
+                }
+              }
+            }
+          }
+        }
+
+        if (allFound) {
+          matchingPrices.push({
+            vendor_name: vr.vendor_name,
+            price: Math.max(0, total),
+            submitted_at: vr.submitted_at,
+            pricing_mode: "additive",
+          });
+        }
+      } else {
+        // Combination: direct lookup
+        const match = vr.prices.find((p) => p.combination_key === combinationKey);
+        if (match) {
+          matchingPrices.push({
+            vendor_name: vr.vendor_name,
+            price: match.price,
+            submitted_at: vr.submitted_at,
+            pricing_mode: "combination",
+          });
+        }
       }
     }
   }
@@ -167,6 +239,7 @@ export default function CustomerBidDetailPage() {
                       <tr className="border-b border-gray-200">
                         <th className="text-left py-3 px-2 font-medium text-gray-600">Vendor Name</th>
                         <th className="text-left py-3 px-2 font-medium text-gray-600">Price</th>
+                        <th className="text-left py-3 px-2 font-medium text-gray-600">Mode</th>
                         <th className="text-left py-3 px-2 font-medium text-gray-600">Submitted</th>
                       </tr>
                     </thead>
@@ -177,6 +250,15 @@ export default function CustomerBidDetailPage() {
                           <tr key={i} className="border-b border-gray-100">
                             <td className="py-3 px-2 text-gray-800">{r.vendor_name}</td>
                             <td className="py-3 px-2 text-gray-800 font-medium">${Number(r.price).toFixed(2)}</td>
+                            <td className="py-3 px-2">
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                r.pricing_mode === "additive"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}>
+                                {r.pricing_mode}
+                              </span>
+                            </td>
                             <td className="py-3 px-2 text-gray-400">{new Date(r.submitted_at).toLocaleDateString()}</td>
                           </tr>
                         ))}

@@ -41,6 +41,9 @@ db.exec(`
     id TEXT PRIMARY KEY,
     bid_id TEXT NOT NULL REFERENCES bids(id) ON DELETE CASCADE,
     vendor_name TEXT NOT NULL,
+    pricing_mode TEXT NOT NULL DEFAULT 'combination',
+    base_price REAL,
+    rules TEXT,
     submitted_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -51,5 +54,16 @@ db.exec(`
     price REAL NOT NULL
   );
 `);
+
+// Migrate: add columns if missing
+try {
+  db.exec(`ALTER TABLE vendor_responses ADD COLUMN pricing_mode TEXT NOT NULL DEFAULT 'combination'`);
+} catch { /* column already exists */ }
+try {
+  db.exec(`ALTER TABLE vendor_responses ADD COLUMN base_price REAL`);
+} catch { /* column already exists */ }
+try {
+  db.exec(`ALTER TABLE vendor_responses ADD COLUMN rules TEXT`);
+} catch { /* column already exists */ }
 
 export default db;

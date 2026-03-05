@@ -37,7 +37,11 @@ export async function GET(
       const prices = db
         .prepare('SELECT * FROM vendor_prices WHERE response_id = ?')
         .all(response.id) as any[];
-      return { ...response, prices };
+      return {
+        ...response,
+        rules: response.rules ? JSON.parse(response.rules) : [],
+        prices,
+      };
     });
 
     return NextResponse.json({
