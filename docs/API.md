@@ -99,6 +99,9 @@ GET /api/bids/:id
       "id": "uuid",
       "bid_id": "uuid",
       "vendor_name": "Acme Corp",
+      "pricing_mode": "combination",
+      "base_price": null,
+      "rules": [],
       "submitted_at": "2026-03-06 14:00:00",
       "prices": [
         {
@@ -106,6 +109,39 @@ GET /api/bids/:id
           "response_id": "uuid",
           "combination_key": "{\"Color\":\"Black\",\"Material\":\"Wood\"}",
           "price": 150.00
+        }
+      ]
+    },
+    {
+      "id": "uuid",
+      "bid_id": "uuid",
+      "vendor_name": "Beta Inc",
+      "pricing_mode": "additive",
+      "base_price": 100.00,
+      "rules": [
+        {
+          "conditionParam": "Material",
+          "conditionOption": "Wood",
+          "targetType": "total",
+          "targetParam": "",
+          "targetOption": "",
+          "discountType": "percentage",
+          "discountValue": 10
+        }
+      ],
+      "submitted_at": "2026-03-06 15:00:00",
+      "prices": [
+        {
+          "id": "uuid",
+          "response_id": "uuid",
+          "combination_key": "{\"param\":\"Color\",\"option\":\"Black\"}",
+          "price": 20.00
+        },
+        {
+          "id": "uuid",
+          "response_id": "uuid",
+          "combination_key": "{\"param\":\"Material\",\"option\":\"Wood\"}",
+          "price": 30.00
         }
       ]
     }
@@ -127,10 +163,15 @@ POST /api/bids/:id/respond
 Content-Type: application/json
 ```
 
+Supports two pricing modes. The `pricing_mode` field determines how prices are interpreted.
+
+#### Combination Mode (default)
+
 **Request Body**
 ```json
 {
   "vendor_name": "Acme Corp",
+  "pricing_mode": "combination",
   "prices": [
     {
       "combination_key": "{\"Color\":\"Black\",\"Material\":\"Wood\"}",
@@ -139,13 +180,50 @@ Content-Type: application/json
     {
       "combination_key": "{\"Color\":\"White\",\"Material\":\"Wood\"}",
       "price": 160.00
-    },
-    {
-      "combination_key": "{\"Color\":\"Black\",\"Material\":\"Steel\"}",
-      "price": 200.00
     }
   ]
 }
+```
+
+#### Additive Mode
+
+**Request Body**
+```json
+{
+  "vendor_name": "Beta Inc",
+  "pricing_mode": "additive",
+  "base_price": 100.00,
+  "prices": [
+    {
+      "combination_key": "{\"param\":\"Color\",\"option\":\"Black\"}",
+      "price": 20.00
+    },
+    {
+      "combination_key": "{\"param\":\"Material\",\"option\":\"Wood\"}",
+      "price": 30.00
+    }
+  ],
+  "rules": [
+    {
+      "conditionParam": "Material",
+      "conditionOption": "Wood",
+      "targetType": "total",
+      "targetParam": "",
+      "targetOption": "",
+      "discountType": "percentage",
+      "discountValue": 10
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `vendor_name` | Yes | Company name |
+| `pricing_mode` | No | `"combination"` (default) or `"additive"` |
+| `base_price` | For additive | Base price before option additions |
+| `prices` | Yes | Array of combination_key + price entries |
+| `rules` | No | Conditional discount rules (additive mode only) |
 ```
 
 **Response** `201 Created`

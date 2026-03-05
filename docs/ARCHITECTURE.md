@@ -7,16 +7,16 @@ The Bid Platform is a full-stack Next.js application with two user roles (Custom
 ## Data Flow
 
 ```
-Customer creates bid          Vendor submits prices         Customer views prices
-       |                              |                             |
-       v                              v                             v
-  POST /api/bids              POST /api/bids/[id]/respond    GET /api/bids/[id]
-       |                              |                             |
-       v                              v                             v
-  bids table                  vendor_responses table         Query all vendor_prices
-  bid_parameters table        vendor_prices table            matching combination_key
-  bid_parameter_options table
-  bid_files table
+Customer creates bid          Vendor submits prices              Customer views prices
+       |                              |                                  |
+       v                              v                                  v
+  POST /api/bids              POST /api/bids/[id]/respond         GET /api/bids/[id]
+       |                              |                                  |
+       v                              v                                  v
+  bids table                  vendor_responses table              For each vendor response:
+  bid_parameters table          (pricing_mode, base_price,        - combination: direct lookup
+  bid_parameter_options table    rules)                           - additive: base + additions
+  bid_files table             vendor_prices table                   - rules applied
 ```
 
 ## Database Design
@@ -52,23 +52,56 @@ Customer creates bid          Vendor submits prices         Customer views price
 - `id` TEXT PRIMARY KEY (UUID)
 - `bid_id` TEXT FK -> bids
 - `vendor_name` TEXT
+- `pricing_mode` TEXT ("combination" or "additive")
+- `base_price` REAL (additive mode only)
+- `rules` TEXT (JSON array of discount rules, additive mode only)
 - `submitted_at` TEXT (auto-set)
 
 **vendor_prices**
 - `id` TEXT PRIMARY KEY (UUID)
 - `response_id` TEXT FK -> vendor_responses
-- `combination_key` TEXT (JSON string)
+- `combination_key` TEXT (JSON string - format depends on pricing mode)
 - `price` REAL
 
-### Combination Key
+### Combination Key Formats
 
-The combination_key is a JSON-serialized object mapping parameter names to selected option values, with keys sorted alphabetically:
-
+**Combination mode** - maps parameter names to selected values (sorted alphabetically):
 ```json
 {"Color":"Red","Material":"Wood","Size":"Large"}
 ```
 
-Both the vendor submission page and the customer comparison page generate keys with the same sorting logic, ensuring consistent matching.
+**Additive mode** - maps a single parameter + option:
+```json
+{"param":"Color","option":"Red"}
+```
+
+### Discount Rules Format
+
+Stored as JSON in `vendor_responses.rules`:
+```json
+[
+  {
+    "conditionParam": "Material",
+    "conditionOption": "Wood",
+    "targetType": "total",
+    "targetParam": "",
+    "targetOption": "",
+    "discountType": "percentage",
+    "discountValue": 10
+  }
+]
+```
+
+See [PRICING_MODES.md](PRICING_MODES.md) for full details on rule types and calculation order.
+
+### Database Migrations
+
+The `db.ts` file uses try/catch ALTER TABLE statements to add new columns to existing databases:
+- `pricing_mode` on vendor_responses
+- `base_price` on vendor_responses
+- `rules` on vendor_responses
+
+This allows the schema to evolve without breaking existing data.
 
 ## Frontend Pages
 
@@ -89,9 +122,11 @@ Both the vendor submission page and the customer comparison page generate keys w
 ### Price Comparison (`/customer/[id]`)
 - Client component, fetches `GET /api/bids/[id]`
 - Renders a dropdown (`<select>`) for each parameter
-- Constructs combination_key from selections
-- Flattens vendor_responses array to find matching prices
-- Displays results sorted by price ascending
+- Handles both pricing modes when calculating prices:
+  - **Combination**: direct lookup by combination_key
+  - **Additive**: base_price + sum of option additions, then applies discount rules
+- Displays all results in a unified table sorted by price ascending
+- Shows pricing mode badge per vendor
 
 ### Vendor Dashboard (`/vendor`)
 - Client component, fetches `GET /api/bids`
@@ -99,10 +134,12 @@ Both the vendor submission page and the customer comparison page generate keys w
 
 ### Price Submission (`/vendor/[id]`)
 - Client component, fetches `GET /api/bids/[id]`
-- Generates all combinations using cartesian product of parameter options
-- Renders a table row per combination with a price input
+- **Pricing mode toggle**: two cards showing "Combination" and "Additive" with price counts
+- **Combination mode**: generates cartesian product, renders a row per combination
+- **Additive mode**: base price input + per-option addition inputs grouped by parameter
+- **Conditional discount rules** (additive only): rule builder UI with dropdowns for conditions, targets, and discount types
 - Downloads attached files via `/api/bids/[id]/files/[fileId]`
-- Submits all prices in a single POST to `/api/bids/[id]/respond`
+- Submits prices + rules in a single POST to `/api/bids/[id]/respond`
 
 ## API Design
 
@@ -124,3 +161,6 @@ All API routes use the Next.js App Router pattern with:
 3. **Files as BLOBs**: Stored directly in SQLite for simplicity (not suitable for large files in production)
 4. **Cartesian product on client**: The vendor page generates all combinations client-side rather than pre-computing on the server
 5. **JSON combination keys**: Simple string matching for price lookup, keys are sorted alphabetically for consistency
+6. **Rules as JSON blob**: Discount rules stored as a JSON column rather than a separate table - simpler for POC, rules are always loaded with the response
+7. **Price calculation on client**: Both pricing modes calculate final prices client-side for instant feedback when changing dropdown selections
+8. **serverExternalPackages**: `better-sqlite3` is a native C++ module that must be excluded from Turbopack bundling via `next.config.ts`

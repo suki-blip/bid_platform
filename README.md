@@ -1,6 +1,6 @@
 # Bid Platform
 
-A web application for creating detailed bid requests with multiple parameters, collecting vendor pricing for all combinations, and comparing prices through simple dropdown menus.
+A web application for creating detailed bid requests with multiple parameters, collecting vendor pricing, and comparing prices through simple dropdown menus. Supports multiple pricing modes including conditional discounts.
 
 ## Tech Stack
 
@@ -38,13 +38,25 @@ ngrok http 3000
 1. Go to `/vendor` and browse available bids
 2. Click a bid to see details and download attached files
 3. Enter your company name
-4. Fill in the **price grid** - every possible combination of parameter options is listed with a price input
-5. Submit your prices
+4. Choose a **pricing mode** (see below)
+5. Fill in prices and submit
+
+### Pricing Modes
+
+Vendors can choose between two pricing approaches:
+
+| Mode | How it works | Number of prices |
+|---|---|---|
+| **Combination** | Unique price for every parameter combination | Exponential (options1 x options2 x ...) |
+| **Additive** | Base price + per-option additions + optional discount rules | Linear (sum of all options) |
+
+See [docs/PRICING_MODES.md](docs/PRICING_MODES.md) for full details.
 
 ### Price Comparison
 - The customer selects one option per parameter via dropdowns
-- All vendor prices matching that exact combination are displayed in a table
+- All vendor prices (from both pricing modes) are displayed in a unified table
 - Prices are sorted from lowest to highest
+- A badge shows which pricing mode each vendor used
 
 ## Project Structure
 
@@ -63,7 +75,7 @@ src/
     vendor/
       page.tsx                        # Vendor dashboard - browse bids
       [id]/
-        page.tsx                      # Price submission grid
+        page.tsx                      # Price submission with mode toggle
     api/
       bids/
         route.ts                      # GET all bids, POST create bid
@@ -76,7 +88,7 @@ src/
             [fileId]/
               route.ts                # GET download a file
   lib/
-    db.ts                             # SQLite database initialization
+    db.ts                             # SQLite database initialization + migrations
     types.ts                          # TypeScript interfaces
 ```
 
@@ -88,8 +100,8 @@ src/
 | `bid_parameters` | Parameters for each bid (e.g., "Color", "Size") |
 | `bid_parameter_options` | Options per parameter (e.g., "Red", "Blue") |
 | `bid_files` | Uploaded file attachments (stored as blobs) |
-| `vendor_responses` | Vendor submissions (vendor name, timestamp) |
-| `vendor_prices` | Price per combination per vendor response |
+| `vendor_responses` | Vendor submissions (name, pricing_mode, base_price, rules, timestamp) |
+| `vendor_prices` | Price entries per vendor response (combination_key + price) |
 
 ## API Endpoints
 
@@ -97,22 +109,16 @@ src/
 |---|---|---|
 | GET | `/api/bids` | List all bids with parameters |
 | POST | `/api/bids` | Create a new bid with parameters |
-| GET | `/api/bids/[id]` | Get bid details, files, vendor responses |
-| POST | `/api/bids/[id]/respond` | Submit vendor prices |
+| GET | `/api/bids/[id]` | Get bid details, files, vendor responses with prices and rules |
+| POST | `/api/bids/[id]/respond` | Submit vendor prices (supports both pricing modes) |
 | GET | `/api/bids/[id]/files` | List files for a bid |
 | POST | `/api/bids/[id]/files` | Upload files to a bid |
 | GET | `/api/bids/[id]/files/[fileId]` | Download a file |
 
-## Combination Key Format
-
-Vendor prices are stored with a `combination_key` - a JSON string with alphabetically sorted parameter names:
-
-```json
-{"Color":"Red","Material":"Wood","Size":"Large"}
-```
-
-This ensures consistent matching between vendor submissions and customer lookups.
+See [docs/API.md](docs/API.md) for full request/response examples.
 
 ## Configuration
 
-`next.config.ts` includes `allowedDevOrigins: ["*.ngrok-free.dev"]` to allow ngrok tunneling in dev mode.
+`next.config.ts`:
+- `serverExternalPackages: ["better-sqlite3"]` - required for native module compatibility with Turbopack
+- `allowedDevOrigins: ["*.ngrok-free.dev"]` - allows ngrok tunneling in dev mode
