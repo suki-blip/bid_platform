@@ -40,11 +40,12 @@ export async function GET(
 
     const contentType = contentTypeMap[extension] || 'application/octet-stream';
 
-    // Handle blob data - convert to Uint8Array for NextResponse
+    // Handle blob data - use Response with Blob for binary data
     const data = file.data as ArrayBuffer | Buffer;
-    const uint8Array = new Uint8Array(data instanceof ArrayBuffer ? data : data.buffer);
+    const arrayBuffer = data instanceof ArrayBuffer ? data : (data as Buffer).buffer.slice((data as Buffer).byteOffset, (data as Buffer).byteOffset + (data as Buffer).byteLength);
+    const blob = new Blob([arrayBuffer], { type: contentType });
 
-    return new NextResponse(uint8Array, {
+    return new Response(blob, {
       status: 200,
       headers: {
         'Content-Type': contentType,
