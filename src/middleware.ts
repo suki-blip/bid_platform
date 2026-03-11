@@ -17,6 +17,11 @@ export function middleware(request: NextRequest) {
 
   // Protect admin API routes: /api/admin/...
   if (pathname.startsWith('/api/admin/')) {
+    // Allow the auth endpoint through — it validates the path key itself
+    if (pathname === '/api/admin/auth') {
+      return NextResponse.next();
+    }
+
     const secret = process.env.ADMIN_API_SECRET;
     const header = request.headers.get('x-admin-secret');
 
