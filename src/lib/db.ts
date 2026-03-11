@@ -15,7 +15,7 @@ function getClient(): Client {
 
 async function initializeDatabase() {
   const client = getClient();
-  await client.execute('PRAGMA foreign_keys = ON');
+  try { await client.execute('PRAGMA foreign_keys = ON'); } catch {}
   await client.batch([
     {
       sql: `CREATE TABLE IF NOT EXISTS projects (
