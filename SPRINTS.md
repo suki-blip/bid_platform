@@ -257,6 +257,64 @@ To enable emails on Vercel, add `RESEND_API_KEY` to environment variables. Witho
 
 ---
 
+## Sprint 3.5 — Admin Panel (Operational Dashboard)
+
+Independent admin panel for system-wide visibility and management. Designed to be extractable to a separate server later.
+
+### Architecture
+
+- **Secret URL**: All admin pages at `/admin-{ADMIN_SECRET_PATH}/...` (env var, not guessable)
+- **Middleware**: Validates secret path segment on every admin request
+- **Admin API**: All routes under `/api/admin/...` protected by `ADMIN_API_SECRET` header
+- **Self-contained**: Own layout, own API routes, shared libs only (`db.ts`, `email.ts`)
+- **Extraction-ready**: To move later → copy `src/app/admin-panel/`, `src/app/api/admin/`, point at same DB
+
+### Phase 1 — Infrastructure
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 1 | `ADMIN_SECRET_PATH` env var | Random slug (e.g. `bm-ctrl-7f2a9x`), used as URL segment | `.env.local` |
+| 2 | Admin middleware | Validate `/admin-panel/[key]` matches env var, reject with 404 otherwise | `src/middleware.ts` |
+| 3 | Admin layout | Own sidebar: Dashboard, Projects, Bids, Vendors, Invitations, System | `src/app/admin-panel/[key]/layout.tsx` |
+| 4 | Admin API auth | Check `x-admin-secret` header on all `/api/admin/*` routes | `src/app/api/admin/middleware-helper.ts` |
+
+### Phase 2 — Dashboard & Read Views
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 5 | Admin dashboard | KPI cards: total projects, active bids, vendors, invitations sent, response rate, awarded bids. Recent activity feed | `src/app/admin-panel/[key]/page.tsx` |
+| 6 | Projects list API + page | All projects with bid counts, status, created date. Search/filter | `src/app/api/admin/projects/route.ts`, page |
+| 7 | Bids list API + page | All bids with status, vendor response count, winner info, deadline. Filter by status | `src/app/api/admin/bids/route.ts`, page |
+| 8 | Vendors list API + page | All vendors (including removed), invitation history, response rate, win rate | `src/app/api/admin/vendors/route.ts`, page |
+| 9 | Invitations overview API + page | All invitations across all bids: token, status, vendor, sent/opened/submitted dates | `src/app/api/admin/invitations/route.ts`, page |
+
+### Phase 3 — System Management
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 10 | Reminder settings API + page | View/edit reminder config: first_days, second_days. Manual "Run Reminders Now" button | `src/app/api/admin/settings/route.ts`, page |
+| 11 | Email log page | Show recent reminder_log entries with invitation details | `src/app/api/admin/email-log/route.ts`, page |
+| 12 | DB stats API | Table row counts, last activity timestamps | `src/app/api/admin/stats/route.ts` |
+
+### Phase 4 — Tests
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 13 | Admin API auth tests | Reject without secret, accept with correct secret | `tests/system/admin-auth.test.ts` |
+| 14 | Admin stats tests | Verify KPI calculations, counts, rates | `tests/system/admin-stats.test.ts` |
+
+### Definition of Done
+
+- [ ] Admin panel accessible only via secret URL
+- [ ] Dashboard shows real-time KPI metrics
+- [ ] Can browse all projects, bids, vendors, invitations
+- [ ] Can view email/reminder log
+- [ ] Can trigger manual reminder run
+- [ ] 404 returned for wrong/missing admin secret
+- [ ] All admin code in clearly separated directories (extractable)
+
+---
+
 ## Sprint 4 — Auth + Multi-tenancy
 
 Makes it a real SaaS product
