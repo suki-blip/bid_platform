@@ -28,6 +28,24 @@ interface VendorResponse {
   prices: { combination_key: string; price: number }[];
 }
 
+interface Invitation {
+  id: string;
+  vendor_id: string;
+  vendor_name: string;
+  vendor_email: string;
+  token: string;
+  status: string;
+  sent_at: string;
+  submitted_at: string | null;
+}
+
+interface VendorOption {
+  id: string;
+  name: string;
+  email: string;
+  trade_name: string | null;
+}
+
 interface Bid {
   id: string;
   title: string;
@@ -85,6 +103,11 @@ export default function CustomerBidDetailPage() {
   const [selections, setSelections] = useState<Record<string, string>>({});
   const [bidStatus, setBidStatus] = useState<string>("");
   const [deleting, setDeleting] = useState(false);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [availableVendors, setAvailableVendors] = useState<VendorOption[]>([]);
+  const [selectedVendorIds, setSelectedVendorIds] = useState<string[]>([]);
+  const [showInvitePanel, setShowInvitePanel] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     fetch(`/api/bids/${id}`)
@@ -103,6 +126,12 @@ export default function CustomerBidDetailPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+
+    // Fetch invitations
+    fetch(`/api/bids/${id}/invite`).then(r => r.json()).then(setInvitations).catch(() => {});
+
+    // Fetch available vendors
+    fetch("/api/vendors").then(r => r.json()).then(setAvailableVendors).catch(() => {});
   }, [id]);
 
   const allSelected =
@@ -253,6 +282,37 @@ export default function CustomerBidDetailPage() {
     }
   };
 
+  const invitedVendorIds = new Set(invitations.map(i => i.vendor_id));
+  const uninvitedVendors = availableVendors.filter(v => !invitedVendorIds.has(v.id));
+
+  const handleInvite = async () => {
+    if (selectedVendorIds.length === 0) return;
+    setInviting(true);
+    try {
+      const res = await fetch(`/api/bids/${id}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendor_ids: selectedVendorIds }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(`${data.created.length} invitation(s) sent`);
+        setSelectedVendorIds([]);
+        setShowInvitePanel(false);
+        // Refresh invitations
+        fetch(`/api/bids/${id}/invite`).then(r => r.json()).then(setInvitations).catch(() => {});
+      } else {
+        showToast("Failed to send invitations");
+      }
+    } catch { showToast("Failed to send invitations"); }
+    finally { setInviting(false); }
+  };
+
+  const copyLink = (token: string) => {
+    const url = `${window.location.origin}/vendor-submit/${token}`;
+    navigator.clipboard.writeText(url).then(() => showToast("Link copied")).catch(() => showToast("Copy failed"));
+  };
+
   const handleDelete = async () => {
     if (!window.confirm("Are you sure you want to delete this bid? This action cannot be undone.")) return;
     setDeleting(true);
@@ -304,6 +364,9 @@ export default function CustomerBidDetailPage() {
           </select>
           <button className="btn btn-outline btn-xs" onClick={() => showToast("Export coming soon")}>
             {"\uD83D\uDCE4"} Export CSV
+          </button>
+          <button className="btn btn-gold btn-xs" onClick={() => setShowInvitePanel(true)}>
+            Invite Vendors
           </button>
           <button className="btn btn-gold btn-xs" onClick={() => showToast("Finalize coming soon")}>
             Finalize {"\u2192"}
@@ -505,6 +568,88 @@ export default function CustomerBidDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Invitations section */}
+        {invitations.length > 0 && (
+          <div className="scard" style={{ marginTop: 16 }}>
+            <div className="scard-head">
+              <h3>Vendor Invitations</h3>
+              <span className="tag tag-pending">{invitations.length} invited</span>
+            </div>
+            <table className="ctable">
+              <thead>
+                <tr>
+                  <th>Vendor</th>
+                  <th>Email</th>
+                  <th>Status</th>
+                  <th>Sent</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invitations.map(inv => (
+                  <tr key={inv.id}>
+                    <td style={{ fontWeight: 700, fontSize: "0.84rem" }}>{inv.vendor_name}</td>
+                    <td style={{ fontSize: "0.82rem" }}>{inv.vendor_email}</td>
+                    <td>
+                      <span className={`tag ${inv.status === "submitted" ? "tag-active" : inv.status === "opened" ? "tag-pending" : inv.status === "expired" ? "tag-closed" : "tag-draft"}`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{new Date(inv.sent_at).toLocaleDateString()}</td>
+                    <td>
+                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => copyLink(inv.token)}>
+                        Copy Link
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Invite modal */}
+        {showInvitePanel && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowInvitePanel(false)}>
+            <div className="scard" style={{ width: 440, maxHeight: "80vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+              <div className="scard-head"><h3>Invite Vendors</h3></div>
+              <div style={{ padding: 16 }}>
+                {uninvitedVendors.length === 0 ? (
+                  <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>All vendors have been invited.</p>
+                ) : (
+                  <>
+                    <p style={{ fontSize: "0.82rem", color: "var(--muted)", marginBottom: 12 }}>Select vendors to invite to this bid:</p>
+                    <div style={{ maxHeight: 300, overflow: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+                      {uninvitedVendors.map(v => (
+                        <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--line)", cursor: "pointer", fontSize: "0.84rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedVendorIds.includes(v.id)}
+                            onChange={e => {
+                              if (e.target.checked) setSelectedVendorIds([...selectedVendorIds, v.id]);
+                              else setSelectedVendorIds(selectedVendorIds.filter(x => x !== v.id));
+                            }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{v.name}</div>
+                            <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{v.email}{v.trade_name ? ` — ${v.trade_name}` : ""}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+                  <button className="btn btn-outline" onClick={() => setShowInvitePanel(false)}>Cancel</button>
+                  <button className="btn btn-gold" onClick={handleInvite} disabled={selectedVendorIds.length === 0 || inviting}>
+                    {inviting ? "Sending..." : `Invite ${selectedVendorIds.length} Vendor(s)`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filter aside */}
         <div className="compare-aside">
