@@ -12,10 +12,11 @@ export async function GET() {
     });
 
     return NextResponse.json(result.rows);
-  } catch (error) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error('Error fetching projects:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch projects' },
+      { error: 'Failed to fetch projects', details: msg },
       { status: 500 }
     );
   }
