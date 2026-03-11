@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 
+const VALID_STATUSES = ['draft', 'active', 'closed', 'awarded'];
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -72,6 +74,99 @@ export async function GET(
     console.error('Error fetching bid:', error);
     return NextResponse.json(
       { error: 'Failed to fetch bid' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbReady();
+
+    const { id } = await params;
+    const body = await request.json();
+
+    const allowedFields = ['title', 'description', 'deadline', 'status', 'project_id'];
+    const setClauses: string[] = [];
+    const args: (string | null)[] = [];
+
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        if (field === 'status' && !VALID_STATUSES.includes(body[field])) {
+          return NextResponse.json(
+            { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
+            { status: 400 }
+          );
+        }
+        setClauses.push(`${field} = ?`);
+        args.push(body[field]);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields to update' },
+        { status: 400 }
+      );
+    }
+
+    args.push(id);
+
+    const result = await db.execute({
+      sql: `UPDATE bids SET ${setClauses.join(', ')} WHERE id = ?`,
+      args,
+    });
+
+    if (result.rowsAffected === 0) {
+      return NextResponse.json({ error: 'Bid not found' }, { status: 404 });
+    }
+
+    const updatedBid = await db.execute({
+      sql: 'SELECT * FROM bids WHERE id = ?',
+      args: [id],
+    });
+
+    return NextResponse.json(updatedBid.rows[0]);
+  } catch (error) {
+    console.error('Error updating bid:', error);
+    return NextResponse.json(
+      { error: 'Failed to update bid' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbReady();
+
+    const { id } = await params;
+
+    const bidResult = await db.execute({
+      sql: 'SELECT * FROM bids WHERE id = ?',
+      args: [id],
+    });
+
+    if (bidResult.rows.length === 0) {
+      return NextResponse.json({ error: 'Bid not found' }, { status: 404 });
+    }
+
+    await db.execute({
+      sql: 'DELETE FROM bids WHERE id = ?',
+      args: [id],
+    });
+
+    return NextResponse.json({ deleted: true, id });
+  } catch (error) {
+    console.error('Error deleting bid:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete bid' },
       { status: 500 }
     );
   }

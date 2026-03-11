@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     await dbReady();
 
     const body = await request.json();
-    const { title, description, deadline, parameters } = body;
+    const { title, description, deadline, parameters, project_id, status } = body;
 
     if (!title || !description || !deadline) {
       return NextResponse.json(
@@ -70,8 +70,8 @@ export async function POST(request: Request) {
 
     const statements: { sql: string; args: (string | number | null)[] }[] = [
       {
-        sql: 'INSERT INTO bids (id, title, description, deadline) VALUES (?, ?, ?, ?)',
-        args: [bidId, title, description, deadline],
+        sql: 'INSERT INTO bids (id, title, description, deadline, status, project_id) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [bidId, title, description, deadline, status || 'draft', project_id || null],
       },
     ];
 

@@ -20,6 +20,7 @@ afterAll(() => {
 
 describe('Table Existence', () => {
   const requiredTables = [
+    'projects',
     'bids',
     'bid_parameters',
     'bid_parameter_options',
@@ -40,6 +41,18 @@ describe('Table Existence', () => {
 });
 
 describe('Column Schema', () => {
+  it('projects table should have all required columns', () => {
+    const columns = db.prepare("PRAGMA table_info('projects')").all() as any[];
+    const colNames = columns.map((c: any) => c.name);
+    expect(colNames).toContain('id');
+    expect(colNames).toContain('name');
+    expect(colNames).toContain('address');
+    expect(colNames).toContain('type');
+    expect(colNames).toContain('description');
+    expect(colNames).toContain('status');
+    expect(colNames).toContain('created_at');
+  });
+
   it('bids table should have all required columns', () => {
     const columns = db.prepare("PRAGMA table_info('bids')").all() as any[];
     const colNames = columns.map((c: any) => c.name);
@@ -47,7 +60,22 @@ describe('Column Schema', () => {
     expect(colNames).toContain('title');
     expect(colNames).toContain('description');
     expect(colNames).toContain('deadline');
+    expect(colNames).toContain('status');
+    expect(colNames).toContain('project_id');
     expect(colNames).toContain('created_at');
+  });
+
+  it('bids.status should default to draft', () => {
+    const columns = db.prepare("PRAGMA table_info('bids')").all() as any[];
+    const statusCol = columns.find((c: any) => c.name === 'status') as any;
+    expect(statusCol).toBeDefined();
+    expect(statusCol.dflt_value).toBe("'draft'");
+  });
+
+  it('bids.project_id column should exist', () => {
+    const columns = db.prepare("PRAGMA table_info('bids')").all() as any[];
+    const projectIdCol = columns.find((c: any) => c.name === 'project_id') as any;
+    expect(projectIdCol).toBeDefined();
   });
 
   it('bid_parameters table should have all required columns', () => {

@@ -15,13 +15,28 @@ function getClient(): Client {
 
 async function initializeDatabase() {
   const client = getClient();
+  await client.execute('PRAGMA foreign_keys = ON');
   await client.batch([
+    {
+      sql: `CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        address TEXT,
+        type TEXT,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+      args: [],
+    },
     {
       sql: `CREATE TABLE IF NOT EXISTS bids (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
         deadline TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`,
       args: [],
@@ -75,6 +90,10 @@ async function initializeDatabase() {
       args: [],
     },
   ], 'write');
+
+  // Migrations for existing databases
+  try { await client.execute('ALTER TABLE bids ADD COLUMN status TEXT NOT NULL DEFAULT \'draft\''); } catch {}
+  try { await client.execute('ALTER TABLE bids ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch {}
 }
 
 function ensureDbReady(): Promise<void> {

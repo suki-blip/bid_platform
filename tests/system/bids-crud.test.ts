@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import Database from 'better-sqlite3';
-import { getTestDb, cleanupTestDb, seedBid } from '../helpers/test-db';
+import { getTestDb, cleanupTestDb, seedBid, seedProject } from '../helpers/test-db';
 
 let db: Database.Database;
 
@@ -31,6 +31,34 @@ describe('Bid Creation', () => {
     expect(bid.description).toBe('Desks and chairs');
     expect(bid.deadline).toBe('2026-06-01');
     expect(bid.created_at).toBeDefined();
+  });
+
+  it('should create a bid with default status = draft', () => {
+    const id = crypto.randomUUID();
+    db.prepare('INSERT INTO bids (id, title, description, deadline) VALUES (?, ?, ?, ?)').run(
+      id, 'Test Bid', 'Test desc', '2026-06-01'
+    );
+
+    const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get(id) as any;
+    expect(bid.status).toBe('draft');
+  });
+
+  it('should create a bid with explicit status', () => {
+    const id = crypto.randomUUID();
+    db.prepare('INSERT INTO bids (id, title, description, deadline, status) VALUES (?, ?, ?, ?, ?)').run(
+      id, 'Active Bid', 'Active desc', '2026-06-01', 'active'
+    );
+
+    const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get(id) as any;
+    expect(bid.status).toBe('active');
+  });
+
+  it('should create a bid with project_id', () => {
+    const projectId = seedProject(db, { name: 'Test Project' });
+    const bidId = seedBid(db, { project_id: projectId });
+
+    const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get(bidId) as any;
+    expect(bid.project_id).toBe(projectId);
   });
 
   it('should reject bids missing required fields', () => {
@@ -127,6 +155,76 @@ describe('Bid Retrieval', () => {
   it('should return 404-equivalent for non-existent bid', () => {
     const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get('non-existent-id');
     expect(bid).toBeUndefined();
+  });
+});
+
+describe('Bid Update', () => {
+  it('should update bid title', () => {
+    const bidId = seedBid(db, { title: 'Original Title' });
+    db.prepare('UPDATE bids SET title = ? WHERE id = ?').run('Updated Title', bidId);
+    const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get(bidId) as any;
+    expect(bid.title).toBe('Updated Title');
+  });
+
+  it('should update bid description', () => {
+    const bidId = seedBid(db, { description: 'Original' });
+    db.prepare('UPDATE bids SET description = ? WHERE id = ?').run('Updated', bidId);
+    const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get(bidId) as any;
+    expect(bid.description).toBe('Updated');
+  });
+
+  it('should update bid deadline', () => {
+    const bidId = seedBid(db);
+    db.prepare('UPDATE bids SET deadline = ? WHERE id = ?').run('2027-01-01', bidId);
+    const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get(bidId) as any;
+    expect(bid.deadline).toBe('2027-01-01');
+  });
+
+  it('should update bid status', () => {
+    const bidId = seedBid(db);
+    db.prepare('UPDATE bids SET status = ? WHERE id = ?').run('active', bidId);
+    const bid = db.prepare('SELECT * FROM bids WHERE id = ?').get(bidId) as any;
+    expect(bid.status).toBe('active');
+  });
+});
+
+describe('Bid Deletion', () => {
+  it('should delete bid and cascade to children', () => {
+    const bidId = seedBid(db);
+
+    // Add a file
+    db.prepare('INSERT INTO bid_files (id, bid_id, filename, data) VALUES (?, ?, ?, ?)').run(
+      crypto.randomUUID(), bidId, 'test.txt', Buffer.from('hello')
+    );
+
+    // Add a vendor response
+    const respId = crypto.randomUUID();
+    db.prepare('INSERT INTO vendor_responses (id, bid_id, vendor_name) VALUES (?, ?, ?)').run(
+      respId, bidId, 'Vendor'
+    );
+    db.prepare('INSERT INTO vendor_prices (id, response_id, combination_key, price) VALUES (?, ?, ?, ?)').run(
+      crypto.randomUUID(), respId, '{"A":"1"}', 100
+    );
+
+    db.prepare('DELETE FROM bids WHERE id = ?').run(bidId);
+
+    expect(db.prepare('SELECT * FROM bid_parameters WHERE bid_id = ?').all(bidId)).toHaveLength(0);
+    expect(db.prepare('SELECT * FROM bid_files WHERE bid_id = ?').all(bidId)).toHaveLength(0);
+    expect(db.prepare('SELECT * FROM vendor_responses WHERE bid_id = ?').all(bidId)).toHaveLength(0);
+    expect(db.prepare('SELECT * FROM vendor_prices WHERE response_id = ?').all(respId)).toHaveLength(0);
+  });
+
+  it('should set project_id to NULL when project is deleted', () => {
+    const projectId = seedProject(db, { name: 'To Delete' });
+    const bidId = seedBid(db, { project_id: projectId });
+
+    const bidBefore = db.prepare('SELECT * FROM bids WHERE id = ?').get(bidId) as any;
+    expect(bidBefore.project_id).toBe(projectId);
+
+    db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
+
+    const bidAfter = db.prepare('SELECT * FROM bids WHERE id = ?').get(bidId) as any;
+    expect(bidAfter.project_id).toBeNull();
   });
 });
 

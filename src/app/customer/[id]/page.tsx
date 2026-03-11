@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 interface Parameter {
@@ -33,6 +33,7 @@ interface Bid {
   title: string;
   description: string;
   deadline: string;
+  status: string;
   parameters: Parameter[];
   vendor_responses: VendorResponse[];
 }
@@ -75,12 +76,15 @@ function getInitials(name: string) {
 
 export default function CustomerBidDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
 
   const [bid, setBid] = useState<Bid | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
+  const [bidStatus, setBidStatus] = useState<string>("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetch(`/api/bids/${id}`)
@@ -90,6 +94,7 @@ export default function CustomerBidDetailPage() {
       })
       .then((data) => {
         setBid(data);
+        setBidStatus(data.status || "active");
         const init: Record<string, string> = {};
         (data.parameters || []).forEach((p: Parameter) => {
           init[p.name] = "";
@@ -230,6 +235,42 @@ export default function CustomerBidDetailPage() {
 
   const hasParams = bid.parameters && bid.parameters.length > 0;
 
+  const handleStatusChange = async (newStatus: string) => {
+    setBidStatus(newStatus);
+    try {
+      const res = await fetch(`/api/bids/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        showToast(`Status updated to ${newStatus}`);
+      } else {
+        showToast("Failed to update status");
+      }
+    } catch {
+      showToast("Failed to update status");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("Are you sure you want to delete this bid? This action cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/bids/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        showToast("Bid deleted");
+        router.push("/customer");
+      } else {
+        showToast("Failed to delete bid");
+      }
+    } catch {
+      showToast("Failed to delete bid");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="page on" style={{ display: "block" }}>
       <div className="fstrip">
@@ -245,6 +286,17 @@ export default function CustomerBidDetailPage() {
         </div>
         <span className="fcount">{responseCount} received</span>
         <div className="fright">
+          <select
+            className="finput"
+            value={bidStatus}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            style={{ width: "auto", minWidth: "100px", padding: "4px 8px", fontSize: "0.78rem" }}
+          >
+            <option value="active">Active</option>
+            <option value="draft">Draft</option>
+            <option value="closed">Closed</option>
+            <option value="awarded">Awarded</option>
+          </select>
           <select className="sort-sel">
             <option>Sort: Price {"\u2191"}</option>
             <option>Sort: Name</option>
@@ -255,6 +307,14 @@ export default function CustomerBidDetailPage() {
           </button>
           <button className="btn btn-gold btn-xs" onClick={() => showToast("Finalize coming soon")}>
             Finalize {"\u2192"}
+          </button>
+          <button
+            className="btn btn-outline btn-xs"
+            style={{ color: "var(--red)", borderColor: "var(--red-b)" }}
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting..." : "Delete Bid"}
           </button>
         </div>
       </div>

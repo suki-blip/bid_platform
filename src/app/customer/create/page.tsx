@@ -1,12 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useRef, useEffect, Suspense } from "react";
 
 interface Parameter {
   name: string;
   options: string[];
+}
+
+interface Project {
+  id: string;
+  name: string;
 }
 
 function showToast(msg: string) {
@@ -22,7 +27,18 @@ function showToast(msg: string) {
 }
 
 export default function CreateBidPage() {
+  return (
+    <Suspense fallback={<div className="scroll" style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}><div style={{ width: "32px", height: "32px", border: "4px solid var(--gold-b)", borderTopColor: "var(--gold)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }}></div></div>}>
+      <CreateBidContent />
+    </Suspense>
+  );
+}
+
+function CreateBidContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectIdFromUrl = searchParams.get("project");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -33,6 +49,26 @@ export default function CreateBidPage() {
   const [error, setError] = useState<string | null>(null);
   const [optionInputs, setOptionInputs] = useState<Record<number, string>>({});
   const [dragOver, setDragOver] = useState(false);
+
+  // Project state
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(projectIdFromUrl || "");
+  const [projectName, setProjectName] = useState<string>("");
+  const [loadingProjects, setLoadingProjects] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        setProjects(data);
+        if (projectIdFromUrl) {
+          const found = data.find((p: Project) => p.id === projectIdFromUrl);
+          if (found) setProjectName(found.name);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingProjects(false));
+  }, [projectIdFromUrl]);
 
   const addParameter = () => {
     setParameters([...parameters, { name: "", options: [] }]);
@@ -80,7 +116,9 @@ export default function CreateBidPage() {
     setSubmitting(true);
 
     try {
-      const body = {
+      const projectId = projectIdFromUrl || selectedProjectId || undefined;
+
+      const body: Record<string, unknown> = {
         title,
         description,
         deadline,
@@ -88,6 +126,10 @@ export default function CreateBidPage() {
           .filter((p) => p.name.trim() && p.options.length > 0)
           .map((p) => ({ name: p.name.trim(), options: p.options })),
       };
+
+      if (projectId) {
+        body.project_id = projectId;
+      }
 
       const res = await fetch("/api/bids", {
         method: "POST",
@@ -116,6 +158,7 @@ export default function CreateBidPage() {
         }
       }
 
+      showToast("Bid request created successfully!");
       router.push("/customer");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -126,6 +169,8 @@ export default function CreateBidPage() {
 
   const validParams = parameters.filter((p) => p.name.trim() && p.options.length > 0);
 
+  const breadcrumbProject = projectName || (selectedProjectId ? projects.find((p) => p.id === selectedProjectId)?.name : null);
+
   return (
     <div className="page on" style={{ display: "block" }}>
       <div className="fstrip">
@@ -133,6 +178,12 @@ export default function CreateBidPage() {
           <Link href="/customer" style={{ color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>
             Dashboard
           </Link>
+          {breadcrumbProject && (
+            <>
+              <span style={{ color: "var(--border2)", margin: "0 6px" }}>{"\u203A"}</span>
+              <span style={{ color: "var(--ink2)" }}>{breadcrumbProject}</span>
+            </>
+          )}
           <span style={{ color: "var(--border2)", margin: "0 6px" }}>{"\u203A"}</span>
           <strong style={{ color: "var(--ink)" }}>New Bid Request</strong>
         </span>
@@ -165,6 +216,37 @@ export default function CreateBidPage() {
                   {error}
                 </div>
               )}
+
+              {/* Project selector */}
+              <div className="fcard">
+                <div className="fsect">
+                  <div className="fsect-title">
+                    <span className="fsect-num">{"\uD83D\uDCC1"}</span> Project
+                  </div>
+                  {projectIdFromUrl ? (
+                    <div style={{ fontSize: "0.85rem", color: "var(--ink)", fontWeight: 600 }}>
+                      {projectName || "Loading..."}
+                    </div>
+                  ) : (
+                    <div className="fg">
+                      <label className="flbl">Assign to Project</label>
+                      <select
+                        className="finput"
+                        value={selectedProjectId}
+                        onChange={(e) => setSelectedProjectId(e.target.value)}
+                        disabled={loadingProjects}
+                      >
+                        <option value="">-- No Project (Unassigned) --</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Section 1: Bid Details */}
               <div className="fcard">
@@ -378,6 +460,10 @@ export default function CreateBidPage() {
             <div className="srow">
               <span>Title</span>
               <span>{title || "\u2014"}</span>
+            </div>
+            <div className="srow">
+              <span>Project</span>
+              <span>{breadcrumbProject || "Unassigned"}</span>
             </div>
             <div className="srow">
               <span>Deadline</span>

@@ -7,6 +7,14 @@ import { useEffect, useState } from "react";
 interface Bid {
   id: string;
   title: string;
+  project_id: string | null;
+  status: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  status: string;
 }
 
 function showToast(msg: string) {
@@ -21,7 +29,21 @@ function showToast(msg: string) {
   }, 2200);
 }
 
-const DOT_COLORS = [
+const STATUS_DOT_COLORS: Record<string, string> = {
+  active: "var(--green)",
+  draft: "var(--gold)",
+  closed: "var(--red)",
+  paused: "var(--gold)",
+};
+
+const STATUS_PILL_CLASS: Record<string, string> = {
+  active: "psp-active",
+  draft: "psp-paused",
+  closed: "psp-stopped",
+  paused: "psp-paused",
+};
+
+const BID_DOT_COLORS = [
   "var(--green)",
   "var(--gold)",
   "var(--blue)",
@@ -36,13 +58,36 @@ export default function CustomerLayout({
 }) {
   const pathname = usePathname();
   const [bids, setBids] = useState<Bid[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    fetch("/api/bids")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setBids(data))
+    Promise.all([
+      fetch("/api/projects").then((r) => (r.ok ? r.json() : [])),
+      fetch("/api/bids").then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([projData, bidData]) => {
+        setProjects(projData);
+        setBids(bidData);
+        // Expand first project by default
+        if (projData.length > 0) {
+          setExpanded({ [projData[0].id]: true });
+        }
+      })
       .catch(() => {});
   }, []);
+
+  const toggleProject = (projectId: string) => {
+    setExpanded((prev) => ({ ...prev, [projectId]: !prev[projectId] }));
+  };
+
+  const bidsByProject = projects.map((proj) => ({
+    project: proj,
+    bids: bids.filter((b) => b.project_id === proj.id),
+  }));
+  const unassignedBids = bids.filter((b) => !b.project_id);
+
+  const totalBidCount = bids.length;
 
   const pageTitle = (() => {
     if (pathname === "/customer") return "Dashboard";
@@ -58,7 +103,7 @@ export default function CustomerLayout({
 
   const navItems = [
     { label: "Dashboard", icon: "\u25A6", href: "/customer" },
-    { label: "Compare Bids", icon: "\u2696", href: "/customer", badge: String(bids.length) },
+    { label: "Compare Bids", icon: "\u2696", href: "/customer", badge: String(totalBidCount) },
     { label: "Vendors", icon: "\uD83D\uDC65", href: "/customer/vendors" },
     { label: "Settings", icon: "\u2699\uFE0F", href: "/customer/settings" },
   ];
@@ -106,22 +151,86 @@ export default function CustomerLayout({
             <div className="nav-section-label">Projects</div>
           </div>
 
-          {bids.map((bid, i) => (
-            <div className="proj-tree" key={bid.id}>
-              <Link
-                href={`/customer/${bid.id}`}
-                className="proj-header"
-                style={{ textDecoration: "none" }}
+          {bidsByProject.map(({ project, bids: projBids }, pi) => {
+            const isOpen = expanded[project.id] || false;
+            const dotColor = STATUS_DOT_COLORS[project.status] || "var(--gold)";
+            const pillClass = STATUS_PILL_CLASS[project.status] || "psp-paused";
+
+            return (
+              <div className="proj-tree" key={project.id}>
+                <div
+                  className={`proj-header${isOpen ? " open" : ""}`}
+                  onClick={() => toggleProject(project.id)}
+                >
+                  <span
+                    className="proj-dot"
+                    style={{ background: dotColor }}
+                  ></span>
+                  <span className="proj-header-name">{project.name}</span>
+                  <span className={`proj-status-pill ${pillClass}`}>
+                    {project.status}
+                  </span>
+                  <span className={`proj-arrow${isOpen ? " open" : ""}`}>{"\u25B6"}</span>
+                </div>
+                <div className={`proj-bids${isOpen ? " open" : ""}`}>
+                  {projBids.map((bid, bi) => (
+                    <Link
+                      key={bid.id}
+                      href={`/customer/${bid.id}`}
+                      className="proj-bid-item"
+                      style={{ textDecoration: "none" }}
+                    >
+                      <span
+                        className="bid-dot"
+                        style={{ background: BID_DOT_COLORS[(pi + bi) % BID_DOT_COLORS.length] }}
+                      ></span>
+                      {bid.title}
+                    </Link>
+                  ))}
+                  <Link
+                    href={`/customer/create?project=${project.id}`}
+                    className="proj-bid-item"
+                    style={{ textDecoration: "none", color: "var(--gold)", fontWeight: 600 }}
+                  >
+                    {"\uFF0B"} Add Bid Request
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Unassigned bids */}
+          {unassignedBids.length > 0 && (
+            <div className="proj-tree">
+              <div
+                className={`proj-header${expanded["__unassigned"] ? " open" : ""}`}
+                onClick={() => toggleProject("__unassigned")}
               >
                 <span
                   className="proj-dot"
-                  style={{ background: DOT_COLORS[i % DOT_COLORS.length] }}
+                  style={{ background: "var(--faint)" }}
                 ></span>
-                <span className="proj-header-name">{bid.title}</span>
-                <span className="proj-status-pill psp-active">Active</span>
-              </Link>
+                <span className="proj-header-name">Unassigned</span>
+                <span className={`proj-arrow${expanded["__unassigned"] ? " open" : ""}`}>{"\u25B6"}</span>
+              </div>
+              <div className={`proj-bids${expanded["__unassigned"] ? " open" : ""}`}>
+                {unassignedBids.map((bid, bi) => (
+                  <Link
+                    key={bid.id}
+                    href={`/customer/${bid.id}`}
+                    className="proj-bid-item"
+                    style={{ textDecoration: "none" }}
+                  >
+                    <span
+                      className="bid-dot"
+                      style={{ background: BID_DOT_COLORS[bi % BID_DOT_COLORS.length] }}
+                    ></span>
+                    {bid.title}
+                  </Link>
+                ))}
+              </div>
             </div>
-          ))}
+          )}
         </div>
 
         <div className="sidebar-foot">
