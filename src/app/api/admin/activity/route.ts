@@ -9,13 +9,13 @@ export async function GET(request: NextRequest) {
   const offset = Number(url.searchParams.get('offset') || '0');
 
   const result = await client.execute({
-    sql: 'SELECT * FROM projects ORDER BY created_at DESC LIMIT ? OFFSET ?',
+    sql: 'SELECT * FROM activity_log ORDER BY created_at DESC LIMIT ? OFFSET ?',
     args: [limit, offset],
   });
-  const total = await client.execute('SELECT COUNT(*) as count FROM projects');
+  const total = await client.execute('SELECT COUNT(*) as count FROM activity_log');
 
   return NextResponse.json({
-    projects: result.rows,
+    activity: result.rows,
     total: Number(total.rows[0].count),
   });
 }

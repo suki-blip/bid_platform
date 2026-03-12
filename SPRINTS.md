@@ -315,18 +315,93 @@ Independent admin panel for system-wide visibility and management. Designed to b
 
 ---
 
-## Sprint 4 — Auth + Multi-tenancy
+## Sprint 4 — Admin Panel (SaaS Management Dashboard)
 
-Makes it a real SaaS product
+Complete rebuild of the admin panel as a SaaS management tool. Manages paying users (contractors), payments, messaging, and system settings.
 
-| Task | Why |
-|---|---|
-| Auth system (email/password + JWT) | Currently no login at all |
-| User roles (Owner/Admin/Editor/Viewer) | SRS Critical |
-| Team invites | Owner invites team members |
-| Row-level security (account isolation) | SRS requirement for multi-tenant |
-| DB migration to PostgreSQL/Supabase | SQLite won't scale for multi-user |
+**Reference**: `ADMIN-PANEL-SRS.md` + `C:\Users\Yehuda\JsProjects\ui\admin panel\bidmaster-admin.html`
+
+### Phase 1 — Schema & Infrastructure
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 1 | Users table (SaaS accounts) | `saas_users`: id, name, company, email, password_hash, status (active/trial/suspended), payment (paid/unpaid/trial), plan (Pro/Trial), joined, last_login | `src/lib/db.ts` |
+| 2 | Payments table | `payments`: id, user_id FK, date, amount, status (paid/failed) | `src/lib/db.ts` |
+| 3 | Activity log table | `activity_log`: id, type, text, created_at | `src/lib/db.ts` |
+| 4 | Admin messages table | `admin_messages`: id, subject, body, recipients_filter, sent_at | `src/lib/db.ts` |
+| 5 | Admin settings table | `admin_settings`: key-value store (admin_email, notification_email, auto_suspend_days, auto_reminder_days) | `src/lib/db.ts` |
+| 6 | Password hashing utility | bcrypt hash/verify for user passwords (min 8 chars) | `src/lib/auth.ts` |
+| 7 | Replace admin layout | New sidebar design (dark #0f0f0f, Bricolage Grotesque font) matching SRS: Dashboard, Users, Payments, Send Message, Activity Log, Settings | `src/app/admin-panel/[key]/layout.tsx` |
+| 8 | Admin CSS module | Full design system from HTML reference: variables, sidebar, cards, tables, tags, modals, toasts, buttons | `src/app/admin-panel/[key]/admin.css` |
+
+### Phase 2 — Dashboard
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 9 | Stats API (new) | KPIs: total users, active paying, unpaid count, MRR ($). Unpaid users list. Recent activity feed | `src/app/api/admin/stats/route.ts` |
+| 10 | Dashboard page | 4 KPI cards + two-column layout: unpaid users table (left) + recent activity feed (right) | `src/app/admin-panel/[key]/page.tsx` |
+
+### Phase 3 — User Management
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 11 | Users CRUD API | GET (list, search, filter by status), POST (create user), PATCH (suspend/activate/change password) | `src/app/api/admin/users/route.ts`, `[id]/route.ts` |
+| 12 | Users page | Full table with search, filter chips (All/Active/Trial/Unpaid/Suspended), checkboxes, bulk action bar (Suspend/Activate/Message), row click → modal | `src/app/admin-panel/[key]/users/page.tsx` |
+| 13 | User detail modal | Info grid (Company, Email, Plan, Last Login, Joined) + actions: Suspend/Activate, Send Reminder, Change Password, Send Message | Component in users page |
+| 14 | Add user modal | Form: Full Name*, Company, Email*, Password* (min 8), Plan (Trial/Pro). Creates account + logs activity | Component in users page |
+| 15 | Change password modal | New Password + Confirm. Validates min 8 + match. Logs activity | Component in users page |
+
+### Phase 4 — Payments
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 16 | Payments API | GET (list history with user info), POST (manual entry) | `src/app/api/admin/payments/route.ts` |
+| 17 | Payments page | 3 KPI cards (MRR, Failed amount, Paying users count) + payment history table with Remind/Invoice actions | `src/app/admin-panel/[key]/payments/page.tsx` |
+
+### Phase 5 — Messaging
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 18 | Send message API | POST: recipients (all/active/trial/unpaid/suspended/custom), subject, body with {{name}}/{{email}}/{{plan}} placeholders. Uses Resend | `src/app/api/admin/messages/route.ts` |
+| 19 | Message templates | Hardcoded: Payment Reminder, Suspension Warning, Welcome Message, Reactivation Offer | Part of messages page |
+| 20 | Messages page | Two-column: compose form (recipient chips, subject, body, preview, send) + templates sidebar + recent sent history | `src/app/admin-panel/[key]/messages/page.tsx` |
+
+### Phase 6 — Activity Log & Settings
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 21 | Activity log API | GET (list, paginated). Auto-logged on: user create, suspend, activate, password change, payment, message sent | `src/app/api/admin/activity/route.ts` |
+| 22 | Activity log page | Feed with color-coded dots by event type + relative timestamps | `src/app/admin-panel/[key]/activity/page.tsx` |
+| 23 | Settings API | GET/PUT key-value pairs (admin_email, notification_email, auto_suspend_days, auto_reminder_days) | `src/app/api/admin/settings/route.ts` |
+| 24 | Settings page | Form with save button | `src/app/admin-panel/[key]/settings/page.tsx` |
+
+### Phase 7 — Tests
+
+| # | Task | Details | Files |
+|---|---|---|---|
+| 25 | User management tests | CRUD, status transitions, password validation, search/filter | `tests/system/admin-users.test.ts` |
+| 26 | Payment tracking tests | Payment records, KPI calculations, MRR | `tests/system/admin-payments.test.ts` |
+| 27 | Messaging tests | Template rendering, placeholder substitution, recipient filtering | `tests/system/admin-messages.test.ts` |
+| 28 | Activity log tests | Auto-logging on actions, feed ordering | `tests/system/admin-activity.test.ts` |
+
+### Definition of Done
+
+- [ ] Admin panel matches SRS design (dark sidebar, Bricolage Grotesque, color-coded tags)
+- [ ] Can CRUD users with proper status/payment tracking
+- [ ] Bulk actions: suspend, activate, message selected users
+- [ ] Payment history with MRR calculation
+- [ ] Can send templated emails to filtered user groups via Resend
+- [ ] Activity log auto-captures all admin actions
+- [ ] Settings page for admin email + auto-suspend/reminder config
+- [ ] User detail modal with all actions (suspend, activate, remind, change password, message)
+- [ ] Toast notifications on all actions
+- [ ] All new features covered by tests
+
+### Cleanup
+
+- Remove old Sprint 3.5 admin pages (project/bid/vendor/invitation browsers)
+- Replace old admin API routes with new SaaS-focused routes
 
 ---
 
-## Sprint 5 — Payments + Polish (Launch)
+## Sprint 5 — Auth + Multi-tenancy + Payments (Launch)

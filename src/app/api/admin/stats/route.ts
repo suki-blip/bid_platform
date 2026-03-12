@@ -5,31 +5,24 @@ export async function GET() {
   await dbReady();
   const client = db();
 
-  const [projects, activeProjects, bids, activeBids, awardedBids, vendors, invitations, submitted] =
+  const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+
+  const [totalUsers, activePaying, unpaidCount, mrr, unpaidUsers, recentActivity] =
     await Promise.all([
-      client.execute('SELECT COUNT(*) as count FROM projects'),
-      client.execute("SELECT COUNT(*) as count FROM projects WHERE status = 'active'"),
-      client.execute('SELECT COUNT(*) as count FROM bids'),
-      client.execute("SELECT COUNT(*) as count FROM bids WHERE status = 'active'"),
-      client.execute("SELECT COUNT(*) as count FROM bids WHERE status = 'awarded'"),
-      client.execute("SELECT COUNT(*) as count FROM vendors WHERE status != 'removed'"),
-      client.execute('SELECT COUNT(*) as count FROM bid_invitations'),
-      client.execute("SELECT COUNT(*) as count FROM bid_invitations WHERE status = 'submitted'"),
+      client.execute('SELECT COUNT(*) as count FROM saas_users'),
+      client.execute("SELECT COUNT(*) as count FROM saas_users WHERE status = 'active' AND payment = 'paid'"),
+      client.execute("SELECT COUNT(*) as count FROM saas_users WHERE payment = 'unpaid'"),
+      client.execute({ sql: "SELECT COALESCE(SUM(amount), 0) as mrr FROM payments WHERE status = 'paid' AND date >= ?", args: [monthStart] }),
+      client.execute("SELECT id, name, email, status, payment FROM saas_users WHERE payment = 'unpaid' ORDER BY joined DESC"),
+      client.execute('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 10'),
     ]);
 
-  const totalInvitations = Number(invitations.rows[0].count);
-  const submittedCount = Number(submitted.rows[0].count);
-  const responseRate = totalInvitations > 0 ? Math.round((submittedCount / totalInvitations) * 100) : 0;
-
   return NextResponse.json({
-    totalProjects: Number(projects.rows[0].count),
-    activeProjects: Number(activeProjects.rows[0].count),
-    totalBids: Number(bids.rows[0].count),
-    activeBids: Number(activeBids.rows[0].count),
-    awardedBids: Number(awardedBids.rows[0].count),
-    totalVendors: Number(vendors.rows[0].count),
-    totalInvitations,
-    submittedInvitations: submittedCount,
-    responseRate,
+    totalUsers: Number(totalUsers.rows[0].count),
+    activePaying: Number(activePaying.rows[0].count),
+    unpaidCount: Number(unpaidCount.rows[0].count),
+    mrr: Number(mrr.rows[0].mrr),
+    unpaidUsers: unpaidUsers.rows,
+    recentActivity: recentActivity.rows,
   });
 }

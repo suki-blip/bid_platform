@@ -2,7 +2,12 @@
 
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, createContext, useContext, useCallback } from 'react';
+import './admin.css';
+
+// Toast context
+const ToastCtx = createContext<(msg: string) => void>(() => {});
+export function useToast() { return useContext(ToastCtx); }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
@@ -10,11 +15,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const key = params.key as string;
   const base = `/admin-panel/${key}`;
   const [authSet, setAuthSet] = useState(false);
+  const [unpaidCount, setUnpaidCount] = useState(0);
+  const [toast, setToast] = useState('');
 
-  // Set admin-auth cookie on first load so API calls work
   useEffect(() => {
     if (!authSet) {
-      fetch(`/api/admin/auth`, {
+      fetch('/api/admin/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key }),
@@ -22,12 +28,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [key, authSet]);
 
+  useEffect(() => {
+    fetch('/api/admin/stats').then(r => r.json()).then(d => {
+      setUnpaidCount(d.unpaidCount || 0);
+    }).catch(() => {});
+  }, [pathname]);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 3000);
+  }, []);
+
   const nav = [
+    { section: 'Main' },
     { href: base, label: 'Dashboard', icon: '📊' },
-    { href: `${base}/projects`, label: 'Projects', icon: '🏗' },
-    { href: `${base}/bids`, label: 'Bids', icon: '📋' },
-    { href: `${base}/vendors`, label: 'Vendors', icon: '👷' },
-    { href: `${base}/invitations`, label: 'Invitations', icon: '✉' },
+    { href: `${base}/users`, label: 'Users', icon: '👥', badge: unpaidCount || undefined },
+    { href: `${base}/payments`, label: 'Payments', icon: '💳' },
+    { href: `${base}/messages`, label: 'Send Message', icon: '✉️' },
+    { section: 'System' },
+    { href: `${base}/activity`, label: 'Activity Log', icon: '📋' },
+    { href: `${base}/settings`, label: 'Settings', icon: '⚙️' },
   ];
 
   function isActive(href: string) {
@@ -35,42 +55,64 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return pathname.startsWith(href);
   }
 
+  const titles: Record<string, [string, string]> = {
+    [base]: ['Dashboard', 'Overview of all users and payments'],
+    [`${base}/users`]: ['Users', 'Manage all user accounts'],
+    [`${base}/payments`]: ['Payments', 'Payment history and status'],
+    [`${base}/messages`]: ['Send Message', 'Send emails to your users'],
+    [`${base}/activity`]: ['Activity Log', 'Full system activity log'],
+    [`${base}/settings`]: ['Settings', 'Admin configuration'],
+  };
+  const [pageTitle, pageSub] = titles[pathname] || ['Admin', ''];
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
-      <aside style={{
-        width: 220,
-        background: '#1a1a2e',
-        color: '#fff',
-        padding: '20px 0',
-        flexShrink: 0,
-      }}>
-        <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #333', marginBottom: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>BidMaster Admin</h2>
-          <span style={{ fontSize: 12, color: '#888' }}>Control Panel</span>
+    <div className="admin-root">
+      <div className="admin-sidebar">
+        <div className="admin-logo">
+          <div className="admin-logo-text">Bid<span>M</span>aster</div>
+          <div className="admin-logo-sub">Admin Panel</div>
         </div>
         <nav>
-          {nav.map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                display: 'block',
-                padding: '10px 20px',
-                color: isActive(item.href) ? '#fff' : '#aaa',
-                background: isActive(item.href) ? '#16213e' : 'transparent',
-                textDecoration: 'none',
-                fontSize: 14,
-                borderLeft: isActive(item.href) ? '3px solid #4361ee' : '3px solid transparent',
-              }}
-            >
-              {item.icon} {item.label}
-            </Link>
-          ))}
+          {nav.map((item, i) => {
+            if ('section' in item && !('href' in item)) {
+              return <div key={i} className="nav-section">{item.section}</div>;
+            }
+            const n = item as any;
+            return (
+              <Link key={n.href} href={n.href} className={`nav-item ${isActive(n.href) ? 'active' : ''}`}>
+                <span className="ni">{n.icon}</span> {n.label}
+                {n.badge ? <span className="nav-badge">{n.badge}</span> : null}
+              </Link>
+            );
+          })}
         </nav>
-      </aside>
-      <main style={{ flex: 1, background: '#f5f5f5', padding: 24 }}>
-        {children}
-      </main>
+        <div className="sidebar-bottom">
+          <div className="admin-pill">
+            <div className="admin-av">SA</div>
+            <div>
+              <div className="admin-name">Super Admin</div>
+              <div className="admin-role">admin@bidmaster.app</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-main">
+        <div className="admin-topbar">
+          <div>
+            <div className="topbar-title">{pageTitle}</div>
+            <div className="topbar-sub">{pageSub}</div>
+          </div>
+          <div className="topbar-right" id="topbar-actions" />
+        </div>
+        <div className="admin-content">
+          <ToastCtx.Provider value={showToast}>
+            {children}
+          </ToastCtx.Provider>
+        </div>
+      </div>
+
+      <div className={`admin-toast ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );
 }

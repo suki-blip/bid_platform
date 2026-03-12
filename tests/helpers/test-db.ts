@@ -112,6 +112,48 @@ export function getTestDb() {
       reminder_type TEXT NOT NULL,
       sent_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE saas_users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      company TEXT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'trial',
+      payment TEXT NOT NULL DEFAULT 'trial',
+      plan TEXT NOT NULL DEFAULT 'Trial',
+      joined TEXT NOT NULL DEFAULT (datetime('now')),
+      last_login TEXT
+    );
+
+    CREATE TABLE payments (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      date TEXT NOT NULL DEFAULT (datetime('now')),
+      amount REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'paid'
+    );
+
+    CREATE TABLE activity_log (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE admin_messages (
+      id TEXT PRIMARY KEY,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      recipients_filter TEXT NOT NULL,
+      recipient_count INTEGER NOT NULL DEFAULT 0,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE admin_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   return db;
@@ -268,6 +310,79 @@ export function seedBidWinner(db: Database.Database, bidId: string, vendorId: st
   db.prepare('INSERT INTO bid_winners (id, bid_id, vendor_id, vendor_response_id, notes) VALUES (?, ?, ?, ?, ?)')
     .run(id, bidId, vendorId, vendorResponseId, overrides.notes || null);
   return id;
+}
+
+// Pre-computed hash of "password123" for test speed
+const TEST_PASSWORD_HASH = 'testhash:0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000';
+
+export function seedSaasUser(db: Database.Database, overrides: Partial<{
+  id: string;
+  name: string;
+  company: string;
+  email: string;
+  password_hash: string;
+  status: string;
+  payment: string;
+  plan: string;
+  joined: string;
+  last_login: string;
+}> = {}) {
+  const id = overrides.id || crypto.randomUUID();
+  const email = overrides.email || `user-${id.slice(0, 8)}@test.com`;
+  db.prepare('INSERT INTO saas_users (id, name, company, email, password_hash, status, payment, plan, joined, last_login) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, overrides.name || 'Test User', overrides.company || 'Test Co', email,
+      overrides.password_hash || TEST_PASSWORD_HASH,
+      overrides.status || 'active', overrides.payment || 'paid', overrides.plan || 'Pro',
+      overrides.joined || datetime('now'), overrides.last_login || null);
+  return id;
+}
+
+export function seedPayment(db: Database.Database, userId: string, overrides: Partial<{
+  id: string;
+  date: string;
+  amount: number;
+  status: string;
+}> = {}) {
+  const id = overrides.id || crypto.randomUUID();
+  db.prepare('INSERT INTO payments (id, user_id, date, amount, status) VALUES (?, ?, ?, ?, ?)')
+    .run(id, userId, overrides.date || datetime('now'), overrides.amount ?? 199, overrides.status || 'paid');
+  return id;
+}
+
+export function seedActivityLog(db: Database.Database, overrides: Partial<{
+  id: string;
+  type: string;
+  text: string;
+  created_at: string;
+}> = {}) {
+  const id = overrides.id || crypto.randomUUID();
+  db.prepare('INSERT INTO activity_log (id, type, text, created_at) VALUES (?, ?, ?, ?)')
+    .run(id, overrides.type || 'admin', overrides.text || 'Test activity', overrides.created_at || datetime('now'));
+  return id;
+}
+
+export function seedAdminMessage(db: Database.Database, overrides: Partial<{
+  id: string;
+  subject: string;
+  body: string;
+  recipients_filter: string;
+  recipient_count: number;
+  sent_at: string;
+}> = {}) {
+  const id = overrides.id || crypto.randomUUID();
+  db.prepare('INSERT INTO admin_messages (id, subject, body, recipients_filter, recipient_count, sent_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, overrides.subject || 'Test Subject', overrides.body || 'Test body',
+      overrides.recipients_filter || '{"type":"all"}', overrides.recipient_count ?? 0,
+      overrides.sent_at || datetime('now'));
+  return id;
+}
+
+export function seedAdminSetting(db: Database.Database, key: string, value: string) {
+  db.prepare('INSERT OR REPLACE INTO admin_settings (key, value) VALUES (?, ?)').run(key, value);
+}
+
+function datetime(_now: string) {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19);
 }
 
 export function seedAdditiveResponse(db: Database.Database, bidId: string, overrides: Partial<{

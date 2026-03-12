@@ -114,6 +114,43 @@ async function initializeDatabase() {
       reminder_type TEXT NOT NULL,
       sent_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
+    `CREATE TABLE IF NOT EXISTS saas_users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      company TEXT,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'trial',
+      payment TEXT NOT NULL DEFAULT 'trial',
+      plan TEXT NOT NULL DEFAULT 'Trial',
+      joined TEXT NOT NULL DEFAULT (datetime('now')),
+      last_login TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      date TEXT NOT NULL DEFAULT (datetime('now')),
+      amount REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'paid'
+    )`,
+    `CREATE TABLE IF NOT EXISTS activity_log (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS admin_messages (
+      id TEXT PRIMARY KEY,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      recipients_filter TEXT NOT NULL,
+      recipient_count INTEGER NOT NULL DEFAULT 0,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS admin_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`,
   ];
 
   // Run each CREATE TABLE individually to avoid batch failures on existing schemas
@@ -141,6 +178,22 @@ async function initializeDatabase() {
       await client.execute({
         sql: 'INSERT OR IGNORE INTO trade_categories (id, name, grp, is_custom) VALUES (?, ?, ?, 0)',
         args: [name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, grp],
+      });
+    } catch {}
+  }
+
+  // Seed default admin settings
+  const defaultSettings = [
+    ['admin_email', 'admin@bidmaster.app'],
+    ['notification_email', 'admin@bidmaster.app'],
+    ['auto_suspend_days', '14'],
+    ['auto_reminder_days', '3'],
+  ];
+  for (const [key, value] of defaultSettings) {
+    try {
+      await client.execute({
+        sql: 'INSERT OR IGNORE INTO admin_settings (key, value) VALUES (?, ?)',
+        args: [key, value],
       });
     } catch {}
   }

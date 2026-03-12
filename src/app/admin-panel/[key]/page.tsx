@@ -1,63 +1,114 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useToast } from './layout';
 
 interface Stats {
-  totalProjects: number;
-  activeProjects: number;
-  totalBids: number;
-  activeBids: number;
-  awardedBids: number;
-  totalVendors: number;
-  totalInvitations: number;
-  submittedInvitations: number;
-  responseRate: number;
+  totalUsers: number;
+  activePaying: number;
+  unpaidCount: number;
+  mrr: number;
+  unpaidUsers: any[];
+  recentActivity: any[];
 }
 
-const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  borderRadius: 8,
-  padding: '20px 24px',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-  minWidth: 180,
+const activityColors: Record<string, string> = {
+  payment: 'var(--green)', signup: 'var(--blue)', failed: 'var(--red)',
+  suspend: 'var(--orange)', activate: 'var(--green)', login: 'var(--blue)',
+  message: 'var(--gold)', admin: 'var(--muted)',
 };
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
+
+function initials(name: string) {
+  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [error, setError] = useState('');
+  const toast = useToast();
 
   useEffect(() => {
-    fetch('/api/admin/stats')
-      .then(r => { if (!r.ok) throw new Error('Failed'); return r.json(); })
-      .then(setStats)
-      .catch(() => setError('Failed to load stats'));
+    fetch('/api/admin/stats').then(r => r.json()).then(setStats).catch(() => {});
   }, []);
 
-  if (error) return <p style={{ color: 'red' }}>{error}</p>;
-  if (!stats) return <p>Loading...</p>;
-
-  const kpis = [
-    { label: 'Total Projects', value: stats.totalProjects, color: '#4361ee' },
-    { label: 'Active Projects', value: stats.activeProjects, color: '#3a86ff' },
-    { label: 'Total Bids', value: stats.totalBids, color: '#8338ec' },
-    { label: 'Active Bids', value: stats.activeBids, color: '#ff006e' },
-    { label: 'Awarded Bids', value: stats.awardedBids, color: '#06d6a0' },
-    { label: 'Vendors', value: stats.totalVendors, color: '#fb5607' },
-    { label: 'Invitations', value: stats.totalInvitations, color: '#ffbe0b' },
-    { label: 'Response Rate', value: `${stats.responseRate}%`, color: '#06d6a0' },
-  ];
+  if (!stats) return <p style={{ color: 'var(--muted)' }}>Loading...</p>;
 
   return (
-    <div>
-      <h1 style={{ marginTop: 0 }}>Dashboard</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-        {kpis.map(kpi => (
-          <div key={kpi.label} style={cardStyle}>
-            <div style={{ fontSize: 13, color: '#666', marginBottom: 4 }}>{kpi.label}</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
-          </div>
-        ))}
+    <>
+      <div className="stats-row">
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: 'var(--blue-bg)' }}>👥</div>
+          <div><div className="stat-val">{stats.totalUsers}</div><div className="stat-lbl">Total Users</div></div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: 'var(--green-bg)' }}>✅</div>
+          <div><div className="stat-val">{stats.activePaying}</div><div className="stat-lbl">Active Paying</div></div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: 'var(--red-bg)' }}>⚠️</div>
+          <div><div className="stat-val">{stats.unpaidCount}</div><div className="stat-lbl">Unpaid</div></div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: 'var(--gold-bg)' }}>💰</div>
+          <div><div className="stat-val">${stats.mrr.toLocaleString()}</div><div className="stat-lbl">MRR</div></div>
+        </div>
       </div>
-    </div>
+
+      <div className="grid-2">
+        {/* Unpaid users */}
+        <div className="table-card">
+          <div className="table-head"><div className="table-title">⚠️ Unpaid — Needs Action</div></div>
+          {stats.unpaidUsers.length === 0 && (
+            <div style={{ padding: '20px 18px', color: 'var(--muted)', fontSize: '0.85rem' }}>No unpaid users</div>
+          )}
+          {stats.unpaidUsers.map((u: any) => (
+            <div key={u.id} className="unpaid-row">
+              <div className="user-av" style={{ background: '#fee2e2', color: 'var(--red)' }}>{initials(u.name)}</div>
+              <div><div className="user-name">{u.name}</div><div className="user-email">{u.email}</div></div>
+              <span className="tag tag-unpaid">Unpaid</span>
+              <button className="btn btn-xs btn-gold" onClick={() => {
+                fetch(`/api/admin/messages`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    recipients: { type: 'custom', custom_ids: [u.id] },
+                    subject: 'Payment Reminder — BidMaster',
+                    body: `Hi ${u.name},\n\nThis is a reminder that your payment for BidMaster is overdue.\n\nPlease update your payment method.\n\nBidMaster Team`,
+                  }),
+                }).then(() => toast('Payment reminder sent to ' + u.name));
+              }}>Remind</button>
+            </div>
+          ))}
+        </div>
+
+        {/* Recent activity */}
+        <div className="table-card">
+          <div className="table-head"><div className="table-title">📋 Recent Activity</div></div>
+          {stats.recentActivity.length === 0 && (
+            <div style={{ padding: '20px 18px', color: 'var(--muted)', fontSize: '0.85rem' }}>No activity yet</div>
+          )}
+          {stats.recentActivity.map((a: any) => (
+            <div key={a.id} className="feed-item">
+              <div className="feed-dot" style={{ background: activityColors[a.type] || 'var(--muted)' }} />
+              <div>
+                <div className="feed-text">{a.text}</div>
+                <div className="feed-time">{timeAgo(a.created_at)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
