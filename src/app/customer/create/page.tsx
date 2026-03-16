@@ -14,6 +14,12 @@ interface Project {
   name: string;
 }
 
+interface ProjectFile {
+  id: string;
+  filename: string;
+  uploaded_at: string;
+}
+
 function showToast(msg: string) {
   const el = document.getElementById("bm-toast");
   if (!el) return;
@@ -56,6 +62,10 @@ function CreateBidContent() {
   const [projectName, setProjectName] = useState<string>("");
   const [loadingProjects, setLoadingProjects] = useState(true);
 
+  // Project files
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [selectedProjectFileIds, setSelectedProjectFileIds] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     fetch("/api/projects")
       .then((r) => (r.ok ? r.json() : []))
@@ -69,6 +79,20 @@ function CreateBidContent() {
       .catch(() => {})
       .finally(() => setLoadingProjects(false));
   }, [projectIdFromUrl]);
+
+  // Load project files when project is selected
+  const activeProjectId = projectIdFromUrl || selectedProjectId;
+  useEffect(() => {
+    if (activeProjectId) {
+      fetch(`/api/projects/${activeProjectId}/files`)
+        .then(r => r.ok ? r.json() : [])
+        .then(setProjectFiles)
+        .catch(() => setProjectFiles([]));
+    } else {
+      setProjectFiles([]);
+      setSelectedProjectFileIds(new Set());
+    }
+  }, [activeProjectId]);
 
   const addParameter = () => {
     setParameters([...parameters, { name: "", options: [] }]);
@@ -156,6 +180,15 @@ function CreateBidContent() {
         if (!uploadRes.ok) {
           console.error("File upload failed, but bid was created");
         }
+      }
+
+      // Attach selected project files to the bid
+      if (selectedProjectFileIds.size > 0 && activeProjectId) {
+        await fetch(`/api/projects/${activeProjectId}/files/attach-to-bid`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bid_id: bid.id, file_ids: Array.from(selectedProjectFileIds) }),
+        }).catch(() => console.error("Failed to attach project files"));
       }
 
       showToast("Bid request created successfully!");
@@ -398,6 +431,40 @@ function CreateBidContent() {
                   <div className="fsect-title">
                     <span className="fsect-num">3</span> Attachments
                   </div>
+
+                  {/* Project files selection */}
+                  {projectFiles.length > 0 && (
+                    <div style={{
+                      border: "1.5px solid var(--gold-b)", borderRadius: 10, padding: 14,
+                      background: "var(--gold-bg)", marginBottom: 12,
+                    }}>
+                      <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--gold)", marginBottom: 8 }}>
+                        📁 Project Files — select to include
+                      </div>
+                      {projectFiles.map(pf => (
+                        <label key={pf.id} style={{
+                          display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
+                          cursor: "pointer", fontSize: "0.84rem", color: "var(--ink)",
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedProjectFileIds.has(pf.id)}
+                            onChange={() => {
+                              setSelectedProjectFileIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(pf.id)) next.delete(pf.id);
+                                else next.add(pf.id);
+                                return next;
+                              });
+                            }}
+                          />
+                          <span>📄</span>
+                          <span style={{ fontWeight: 600 }}>{pf.filename}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
                   <div
                     className="dropzone"
                     onClick={() => fileInputRef.current?.click()}

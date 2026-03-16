@@ -25,9 +25,27 @@ export async function GET(
       args: [id],
     });
 
+    const filesResult = await db().execute({
+      sql: 'SELECT id, filename, uploaded_at FROM project_files WHERE project_id = ? ORDER BY uploaded_at DESC',
+      args: [id],
+    });
+
+    const teamResult = await db().execute({
+      sql: 'SELECT * FROM project_team WHERE project_id = ? ORDER BY created_at',
+      args: [id],
+    });
+
+    const categoriesResult = await db().execute({
+      sql: `SELECT pc.id, pc.category_id, tc.name, tc.grp FROM project_categories pc JOIN trade_categories tc ON pc.category_id = tc.id WHERE pc.project_id = ? ORDER BY tc.grp, tc.name`,
+      args: [id],
+    });
+
     return NextResponse.json({
       ...project,
       bids: bidsResult.rows,
+      files: filesResult.rows,
+      team: teamResult.rows,
+      categories: categoriesResult.rows,
     });
   } catch (error) {
     console.error('Error fetching project:', error);

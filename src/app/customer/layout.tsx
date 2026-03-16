@@ -95,6 +95,7 @@ export default function CustomerLayout({
     if (pathname?.startsWith("/customer/vendors")) return "Vendors";
     if (pathname?.startsWith("/customer/settings")) return "Settings";
     if (pathname?.startsWith("/customer/new-project")) return "New Project";
+    if (pathname?.startsWith("/customer/project/")) return "Project Details";
     if (pathname?.match(/^\/customer\/[^/]+$/)) return "Compare Bids";
     return "Dashboard";
   })();
@@ -166,7 +167,14 @@ export default function CustomerLayout({
                     className="proj-dot"
                     style={{ background: dotColor }}
                   ></span>
-                  <span className="proj-header-name">{project.name}</span>
+                  <Link
+                    href={`/customer/project/${project.id}`}
+                    className="proj-header-name"
+                    style={{ textDecoration: "none", color: "inherit" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {project.name}
+                  </Link>
                   <span className={`proj-status-pill ${pillClass}`}>
                     {project.status}
                   </span>

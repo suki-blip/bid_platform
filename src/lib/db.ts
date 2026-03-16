@@ -151,6 +151,26 @@ async function initializeDatabase() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS project_files (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      filename TEXT NOT NULL,
+      data BLOB NOT NULL,
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS project_team (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS project_categories (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      category_id TEXT NOT NULL REFERENCES trade_categories(id) ON DELETE CASCADE
+    )`,
   ];
 
   // Run each CREATE TABLE individually to avoid batch failures on existing schemas
