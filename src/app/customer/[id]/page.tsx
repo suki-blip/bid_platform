@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 interface Parameter {
   name: string;
@@ -20,6 +20,8 @@ interface DiscountRule {
 }
 
 interface VendorResponse {
+  id: string;
+  vendor_id: string;
   vendor_name: string;
   submitted_at: string;
   pricing_mode: "combination" | "additive";
@@ -56,13 +58,6 @@ interface Bid {
   vendor_responses: VendorResponse[];
 }
 
-interface MatchedPrice {
-  vendor_name: string;
-  price: number;
-  submitted_at: string;
-  pricing_mode: string;
-}
-
 function showToast(msg: string) {
   const el = document.getElementById("bm-toast");
   if (!el) return;
@@ -92,6 +87,82 @@ function getInitials(name: string) {
     .substring(0, 2);
 }
 
+// Generate all parameter combinations (cartesian product)
+function generateCombinations(parameters: Parameter[]): Record<string, string>[] {
+  if (parameters.length === 0) return [{}];
+  const [first, ...rest] = parameters;
+  const restCombinations = generateCombinations(rest);
+  const results: Record<string, string>[] = [];
+  for (const option of first.options) {
+    for (const combo of restCombinations) {
+      results.push({ [first.name]: option, ...combo });
+    }
+  }
+  return results;
+}
+
+function makeCombinationKey(combo: Record<string, string>): string {
+  const sorted = Object.keys(combo).sort().reduce((acc: Record<string, string>, key) => {
+    acc[key] = combo[key];
+    return acc;
+  }, {});
+  return JSON.stringify(sorted);
+}
+
+// Calculate vendor price for a specific combination
+function calcVendorPrice(
+  vr: VendorResponse,
+  combo: Record<string, string>,
+  comboKey: string
+): number | null {
+  if (vr.pricing_mode === "combination") {
+    const match = vr.prices.find((p) => p.combination_key === comboKey);
+    return match ? match.price : null;
+  }
+
+  // Additive mode: base + option additions - discounts
+  let total = vr.base_price ?? 0;
+  const optionAdditions: Record<string, number> = {};
+
+  for (const [paramName, optionValue] of Object.entries(combo)) {
+    const key = JSON.stringify({ param: paramName, option: optionValue });
+    const match = vr.prices.find((p) => p.combination_key === key);
+    if (match) {
+      optionAdditions[key] = match.price;
+      total += match.price;
+    } else {
+      return null; // missing price data
+    }
+  }
+
+  // Apply discount rules
+  if (vr.rules && vr.rules.length > 0) {
+    for (const rule of vr.rules) {
+      if (combo[rule.conditionParam] !== rule.conditionOption) continue;
+
+      if (rule.targetType === "total") {
+        if (rule.discountType === "percentage") {
+          total -= total * (rule.discountValue / 100);
+        } else {
+          total -= rule.discountValue;
+        }
+      } else if (rule.targetType === "param_option") {
+        if (combo[rule.targetParam] === rule.targetOption) {
+          const targetKey = JSON.stringify({ param: rule.targetParam, option: rule.targetOption });
+          const addition = optionAdditions[targetKey] ?? 0;
+          if (rule.discountType === "percentage") {
+            total -= addition * (rule.discountValue / 100);
+          } else {
+            total -= rule.discountValue;
+          }
+        }
+      }
+    }
+  }
+
+  return Math.max(0, total);
+}
+
 export default function CustomerBidDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -100,7 +171,6 @@ export default function CustomerBidDetailPage() {
   const [bid, setBid] = useState<Bid | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selections, setSelections] = useState<Record<string, string>>({});
   const [bidStatus, setBidStatus] = useState<string>("");
   const [deleting, setDeleting] = useState(false);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -111,6 +181,9 @@ export default function CustomerBidDetailPage() {
   const [winner, setWinner] = useState<{ vendor_id: string; vendor_name: string } | null>(null);
   const [selectingWinner, setSelectingWinner] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [filterMode, setFilterMode] = useState<Set<string>>(new Set(["combination", "additive"]));
+  const [filterMaxPrice, setFilterMaxPrice] = useState(100000);
+  const [filterDays, setFilterDays] = useState<number | null>(null); // null = any
 
   useEffect(() => {
     fetch(`/api/bids/${id}`)
@@ -121,123 +194,83 @@ export default function CustomerBidDetailPage() {
       .then((data) => {
         setBid(data);
         setBidStatus(data.status || "active");
-        const init: Record<string, string> = {};
-        (data.parameters || []).forEach((p: Parameter) => {
-          init[p.name] = "";
-        });
-        setSelections(init);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
 
-    // Fetch invitations
     fetch(`/api/bids/${id}/invite`).then(r => r.json()).then(setInvitations).catch(() => {});
-
-    // Fetch available vendors
     fetch("/api/vendors").then(r => r.json()).then(setAvailableVendors).catch(() => {});
-
-    // Fetch winner
     fetch(`/api/bids/${id}/winner`).then(r => r.json()).then(data => {
       if (data.winner) setWinner({ vendor_id: data.winner.vendor_id, vendor_name: data.winner.vendor_name });
     }).catch(() => {});
   }, [id]);
 
-  const allSelected =
-    bid?.parameters &&
-    bid.parameters.length > 0 &&
-    bid.parameters.every((p) => selections[p.name]);
+  // Filter vendors based on filter state
+  const filteredVendors = useMemo(() => {
+    if (!bid?.vendor_responses) return [];
+    return bid.vendor_responses.filter((vr) => {
+      if (!filterMode.has(vr.pricing_mode)) return false;
+      if (filterDays !== null) {
+        const submitted = new Date(vr.submitted_at).getTime();
+        const cutoff = Date.now() - filterDays * 24 * 60 * 60 * 1000;
+        if (submitted < cutoff) return false;
+      }
+      return true;
+    });
+  }, [bid, filterMode, filterDays]);
 
-  const combinationKey = allSelected
-    ? JSON.stringify(
-        Object.keys(selections)
-          .sort()
-          .reduce((acc: Record<string, string>, key) => {
-            acc[key] = selections[key];
-            return acc;
-          }, {})
-      )
-    : null;
+  // Build the full matrix: all combinations x filtered vendors
+  const { combinations, priceMatrix, vendors } = useMemo(() => {
+    if (!bid || !bid.parameters || bid.parameters.length === 0) {
+      return { combinations: [], priceMatrix: new Map(), vendors: filteredVendors };
+    }
 
-  const matchingPrices: MatchedPrice[] = [];
-  if (allSelected && bid?.vendor_responses) {
-    for (const vr of bid.vendor_responses) {
-      if (vr.pricing_mode === "additive") {
-        let total = vr.base_price ?? 0;
-        let allFound = true;
+    const combos = generateCombinations(bid.parameters);
+    const matrix = new Map<string, Map<string, number | null>>();
 
-        const optionAdditions: Record<string, number> = {};
-        for (const [paramName, optionValue] of Object.entries(selections)) {
-          const key = JSON.stringify({ param: paramName, option: optionValue });
-          const match = vr.prices.find((p) => p.combination_key === key);
-          if (match) {
-            optionAdditions[key] = match.price;
-            total += match.price;
-          } else {
-            allFound = false;
-          }
-        }
+    for (const combo of combos) {
+      const comboKey = makeCombinationKey(combo);
+      const vendorPrices = new Map<string, number | null>();
 
-        if (allFound && vr.rules && vr.rules.length > 0) {
-          for (const rule of vr.rules) {
-            if (selections[rule.conditionParam] !== rule.conditionOption) continue;
-
-            if (rule.targetType === "total") {
-              if (rule.discountType === "percentage") {
-                total -= total * (rule.discountValue / 100);
-              } else {
-                total -= rule.discountValue;
-              }
-            } else if (rule.targetType === "param_option") {
-              if (selections[rule.targetParam] === rule.targetOption) {
-                const targetKey = JSON.stringify({ param: rule.targetParam, option: rule.targetOption });
-                const addition = optionAdditions[targetKey] ?? 0;
-                if (rule.discountType === "percentage") {
-                  total -= addition * (rule.discountValue / 100);
-                } else {
-                  total -= rule.discountValue;
-                }
-              }
-            }
-          }
-        }
-
-        if (allFound) {
-          matchingPrices.push({
-            vendor_name: vr.vendor_name,
-            price: Math.max(0, total),
-            submitted_at: vr.submitted_at,
-            pricing_mode: "additive",
-          });
-        }
-      } else {
-        const match = vr.prices.find((p) => p.combination_key === combinationKey);
-        if (match) {
-          matchingPrices.push({
-            vendor_name: vr.vendor_name,
-            price: match.price,
-            submitted_at: vr.submitted_at,
-            pricing_mode: "combination",
-          });
+      for (const vr of filteredVendors) {
+        const price = calcVendorPrice(vr, combo, comboKey);
+        // Apply max price filter
+        if (price !== null && price > filterMaxPrice) {
+          vendorPrices.set(vr.vendor_name, null);
+        } else {
+          vendorPrices.set(vr.vendor_name, price);
         }
       }
-    }
-  }
 
-  const sortedPrices = [...matchingPrices].sort((a, b) => a.price - b.price);
-  const bestPrice = sortedPrices.length > 0 ? sortedPrices[0].price : null;
-  const avgPrice =
-    sortedPrices.length > 0
-      ? sortedPrices.reduce((s, p) => s + p.price, 0) / sortedPrices.length
-      : 0;
+      matrix.set(comboKey, vendorPrices);
+    }
+
+    return { combinations: combos, priceMatrix: matrix, vendors: filteredVendors };
+  }, [bid, filteredVendors, filterMaxPrice]);
+
+  // Compute stats from the matrix
+  const { allPrices, bestOverall, avgOverall } = useMemo(() => {
+    const prices: number[] = [];
+    priceMatrix.forEach((vendorPrices) => {
+      vendorPrices.forEach((price: number | null) => {
+        if (price !== null) prices.push(price);
+      });
+    });
+    const best = prices.length > 0 ? Math.min(...prices) : null;
+    const avg = prices.length > 0 ? prices.reduce((s, p) => s + p, 0) / prices.length : 0;
+    return { allPrices: prices, bestOverall: best, avgOverall: avg };
+  }, [priceMatrix]);
+
   const responseCount = bid?.vendor_responses?.length ?? 0;
+  const hasParams = bid?.parameters && bid.parameters.length > 0;
+  const paramNames = bid?.parameters?.map(p => p.name) || [];
 
   if (loading) {
     return (
       <div className="scroll" style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}>
         <div
           style={{
-            width: "32px",
-            height: "32px",
+            width: "32px", height: "32px",
             border: "4px solid var(--gold-b)",
             borderTopColor: "var(--gold)",
             borderRadius: "50%",
@@ -251,16 +284,10 @@ export default function CustomerBidDetailPage() {
   if (error || !bid) {
     return (
       <div className="scroll" style={{ padding: "20px" }}>
-        <div
-          style={{
-            background: "var(--red-bg)",
-            border: "1px solid var(--red-b)",
-            borderRadius: "8px",
-            padding: "12px 16px",
-            color: "var(--red)",
-            fontSize: "0.85rem",
-          }}
-        >
+        <div style={{
+          background: "var(--red-bg)", border: "1px solid var(--red-b)",
+          borderRadius: "8px", padding: "12px 16px", color: "var(--red)", fontSize: "0.85rem",
+        }}>
           {error || "Bid not found"}
         </div>
         <Link href="/customer" style={{ color: "var(--gold)", fontSize: "0.85rem", marginTop: "12px", display: "inline-block" }}>
@@ -270,8 +297,6 @@ export default function CustomerBidDetailPage() {
     );
   }
 
-  const hasParams = bid.parameters && bid.parameters.length > 0;
-
   const handleStatusChange = async (newStatus: string) => {
     setBidStatus(newStatus);
     try {
@@ -280,14 +305,9 @@ export default function CustomerBidDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
-        showToast(`Status updated to ${newStatus}`);
-      } else {
-        showToast("Failed to update status");
-      }
-    } catch {
-      showToast("Failed to update status");
-    }
+      if (res.ok) showToast(`Status updated to ${newStatus}`);
+      else showToast("Failed to update status");
+    } catch { showToast("Failed to update status"); }
   };
 
   const invitedVendorIds = new Set(invitations.map(i => i.vendor_id));
@@ -307,11 +327,8 @@ export default function CustomerBidDetailPage() {
         showToast(`${data.created.length} invitation(s) sent`);
         setSelectedVendorIds([]);
         setShowInvitePanel(false);
-        // Refresh invitations
         fetch(`/api/bids/${id}/invite`).then(r => r.json()).then(setInvitations).catch(() => {});
-      } else {
-        showToast("Failed to send invitations");
-      }
+      } else showToast("Failed to send invitations");
     } catch { showToast("Failed to send invitations"); }
     finally { setInviting(false); }
   };
@@ -321,16 +338,13 @@ export default function CustomerBidDetailPage() {
     navigator.clipboard.writeText(url).then(() => showToast("Link copied")).catch(() => showToast("Copy failed"));
   };
 
-  const handleSelectWinner = async (vendorName: string, vendorResponseIdx: number) => {
+  const handleSelectWinner = async (vendorName: string) => {
     if (!bid?.vendor_responses) return;
-    const vr = bid.vendor_responses[vendorResponseIdx];
-    if (!vr) return;
     if (!window.confirm(`Select ${vendorName} as the winner for this bid?`)) return;
     setSelectingWinner(true);
     try {
-      // Find the vendor_response server-side — we need to fetch it
       const bidData = await fetch(`/api/bids/${id}`).then(r => r.json());
-      const serverVr = bidData.vendor_responses?.find((r: any) => r.vendor_name === vendorName);
+      const serverVr = bidData.vendor_responses?.find((r: VendorResponse) => r.vendor_name === vendorName);
       if (!serverVr) { showToast("Could not find vendor response"); return; }
 
       const res = await fetch(`/api/bids/${id}/winner`, {
@@ -390,30 +404,16 @@ export default function CustomerBidDetailPage() {
       if (res.ok) {
         showToast("Bid deleted");
         router.push("/customer");
-      } else {
-        showToast("Failed to delete bid");
-      }
-    } catch {
-      showToast("Failed to delete bid");
-    } finally {
-      setDeleting(false);
-    }
+      } else showToast("Failed to delete bid");
+    } catch { showToast("Failed to delete bid"); }
+    finally { setDeleting(false); }
   };
 
   return (
     <div className="page on" style={{ display: "block" }}>
+      {/* Top action strip */}
       <div className="fstrip">
-        <div className="fs-search">
-          <span style={{ color: "var(--faint)" }}>{"\uD83D\uDD0D"}</span>
-          <input placeholder="Search vendor, option, price\u2026" />
-        </div>
-        <div className="chip on" onClick={() => showToast("Filter toggled")}>All Vendors</div>
-        <div className="chip" onClick={() => showToast("Filter toggled")}>Lowest Price</div>
-        <div className="chip" onClick={() => showToast("Filter toggled")}>Fastest Delivery</div>
-        <div className="chip" style={{ borderStyle: "dashed", color: "var(--gold)" }} onClick={() => showToast("Custom filters coming soon")}>
-          + Filter
-        </div>
-        <span className="fcount">{responseCount} received</span>
+        <span className="fcount">{responseCount} vendor response{responseCount !== 1 ? "s" : ""}</span>
         <div className="fright">
           <select
             className="finput"
@@ -425,11 +425,6 @@ export default function CustomerBidDetailPage() {
             <option value="draft">Draft</option>
             <option value="closed">Closed</option>
             <option value="awarded">Awarded</option>
-          </select>
-          <select className="sort-sel">
-            <option>Sort: Price {"\u2191"}</option>
-            <option>Sort: Name</option>
-            <option>Sort: Date</option>
           </select>
           <button className="btn btn-outline btn-xs" onClick={handleExportCSV}>
             {"\uD83D\uDCE4"} Export CSV
@@ -452,198 +447,244 @@ export default function CustomerBidDetailPage() {
       </div>
 
       <div className="compare-shell">
-        <div className="compare-main">
-          {/* Insight row */}
-          <div className="insight-row">
-            <div className="ins">
-              <div className="ins-lbl">Best Price</div>
-              <div className="ins-val" style={{ color: bestPrice ? "var(--green)" : undefined }}>
-                {bestPrice !== null ? `$${Number(bestPrice).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "\u2014"}
-              </div>
-            </div>
-            <div className="ins">
-              <div className="ins-lbl">Avg Price</div>
-              <div className="ins-val">
-                {avgPrice > 0 ? `$${Math.round(avgPrice).toLocaleString()}` : "\u2014"}
-              </div>
-            </div>
-            <div className="ins">
-              <div className="ins-lbl">Responses</div>
-              <div className="ins-val">{responseCount}</div>
-            </div>
-            <div className="ins">
-              <div className="ins-lbl">Deadline</div>
-              <div className="ins-val" style={{ fontSize: "1rem" }}>
-                {new Date(bid.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-              </div>
+      <div className="compare-main">
+        {/* Insight row */}
+        <div className="insight-row">
+          <div className="ins">
+            <div className="ins-lbl">Best Price</div>
+            <div className="ins-val" style={{ color: bestOverall ? "var(--green)" : undefined }}>
+              {bestOverall !== null ? `$${Number(bestOverall).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "\u2014"}
             </div>
           </div>
+          <div className="ins">
+            <div className="ins-lbl">Avg Price</div>
+            <div className="ins-val">
+              {avgOverall > 0 ? `$${Math.round(avgOverall).toLocaleString()}` : "\u2014"}
+            </div>
+          </div>
+          <div className="ins">
+            <div className="ins-lbl">Responses</div>
+            <div className="ins-val">{responseCount}</div>
+          </div>
+          <div className="ins">
+            <div className="ins-lbl">Deadline</div>
+            <div className="ins-val" style={{ fontSize: "1rem" }}>
+              {new Date(bid.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </div>
+          </div>
+        </div>
 
-          {/* Parameter selectors */}
-          {hasParams && (
-            <div className="scard" style={{ marginBottom: "16px" }}>
-              <div className="scard-head">
-                <h3>Select Parameters to Compare</h3>
-              </div>
-              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
-                {bid.parameters.map((param) => (
-                  <div key={param.name}>
-                    <label className="flbl">{param.name}</label>
-                    <select
-                      className="finput"
-                      value={selections[param.name] || ""}
-                      onChange={(e) =>
-                        setSelections({ ...selections, [param.name]: e.target.value })
-                      }
-                    >
-                      <option value="">-- Select {param.name} --</option>
-                      {param.options.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
+        {/* Leveling Sheet Matrix */}
+        <div className="scard">
+          <div className="scard-head">
+            <h3>Leveling Sheet — {bid.title}</h3>
+            <span className="tag tag-pending">
+              {responseCount} vendor{responseCount !== 1 ? "s" : ""}
+            </span>
+            {combinations.length > 0 && (
+              <span className="tag tag-draft">
+                {combinations.length} combination{combinations.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+
+          {hasParams && vendors.length === 0 && (
+            <div style={{ padding: "40px 24px", textAlign: "center", color: "var(--muted)", fontSize: "0.85rem" }}>
+              No vendor responses yet. Invite vendors to start comparing prices.
             </div>
           )}
 
-          {/* Vendor table */}
-          <div className="scard">
-            <div className="scard-head">
-              <h3>Bids — {bid.title}</h3>
-              <span className="tag tag-pending">
-                {responseCount} of {responseCount} received
-              </span>
-            </div>
-
-            {hasParams && !allSelected && (
-              <div style={{ padding: "24px", textAlign: "center", color: "var(--muted)", fontSize: "0.85rem" }}>
-                Select all parameters above to view vendor prices.
-              </div>
-            )}
-
-            {(!hasParams || allSelected) && (
-              <table className="ctable">
+          {hasParams && vendors.length > 0 && (
+            <div className="matrix-scroll">
+              <table className="matrix-table">
                 <thead>
                   <tr>
-                    <th>Vendor</th>
-                    <th>Mode</th>
-                    <th>Price</th>
-                    <th>Submitted</th>
-                    <th>Action</th>
+                    {/* Parameter columns */}
+                    {paramNames.map((pName) => (
+                      <th key={pName} className="matrix-param-th">{pName}</th>
+                    ))}
+                    {/* Vendor columns */}
+                    {vendors.map((vr, vi) => {
+                      const ac = AVATAR_COLORS[vi % AVATAR_COLORS.length];
+                      const isWinner = winner?.vendor_name === vr.vendor_name;
+                      return (
+                        <th key={vr.vendor_name} className={`matrix-vendor-th${isWinner ? " matrix-winner-col" : ""}`}>
+                          <div className="matrix-vendor-header">
+                            <div className="vav" style={{ background: ac.bg, color: ac.color, width: 26, height: 26, fontSize: "0.65rem" }}>
+                              {getInitials(vr.vendor_name)}
+                            </div>
+                            <div className="matrix-vendor-info">
+                              <div className="matrix-vendor-name">{vr.vendor_name}</div>
+                              <div className="matrix-vendor-mode">
+                                <span className={`tag ${vr.pricing_mode === "additive" ? "tag-active" : "tag-draft"}`} style={{ fontSize: "0.6rem", padding: "1px 5px" }}>
+                                  {vr.pricing_mode}
+                                </span>
+                              </div>
+                            </div>
+                            {isWinner ? (
+                              <span className="tag tag-active" style={{ fontSize: "0.6rem", padding: "1px 6px", marginLeft: 4 }}>Winner</span>
+                            ) : (
+                              <button
+                                className="selbtn"
+                                style={{ fontSize: "0.65rem", padding: "2px 7px", marginLeft: 4 }}
+                                onClick={() => handleSelectWinner(vr.vendor_name)}
+                                disabled={selectingWinner || !!winner}
+                              >
+                                Select
+                              </button>
+                            )}
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {hasParams && sortedPrices.length === 0 && (
-                    <tr>
-                      <td colSpan={5} style={{ textAlign: "center", padding: "24px", color: "var(--muted)", fontSize: "0.85rem" }}>
-                        No vendor prices for this combination yet.
-                      </td>
-                    </tr>
-                  )}
+                  {combinations.map((combo, ci) => {
+                    const comboKey = makeCombinationKey(combo);
+                    const vendorPrices = priceMatrix.get(comboKey);
 
-                  {hasParams &&
-                    sortedPrices.map((r, i) => {
-                      const ac = AVATAR_COLORS[i % AVATAR_COLORS.length];
-                      return (
-                        <tr key={i}>
-                          <td>
-                            <div className="vc">
-                              <div className="vav" style={{ background: ac.bg, color: ac.color }}>
-                                {getInitials(r.vendor_name)}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>
-                                  {r.vendor_name}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <span
-                              className={`tag ${r.pricing_mode === "additive" ? "tag-active" : "tag-draft"}`}
+                    // Find best price in this row
+                    let rowBest: number | null = null;
+                    if (vendorPrices) {
+                      vendorPrices.forEach((price: number | null) => {
+                        if (price !== null && (rowBest === null || price < rowBest)) {
+                          rowBest = price;
+                        }
+                      });
+                    }
+
+                    return (
+                      <tr key={ci}>
+                        {/* Parameter values */}
+                        {paramNames.map((pName) => (
+                          <td key={pName} className="matrix-param-td">{combo[pName]}</td>
+                        ))}
+                        {/* Vendor prices */}
+                        {vendors.map((vr, vi) => {
+                          const price = vendorPrices?.get(vr.vendor_name) ?? null;
+                          const isBest = price !== null && price === rowBest;
+                          const isWinnerCol = winner?.vendor_name === vr.vendor_name;
+                          return (
+                            <td
+                              key={vi}
+                              className={`matrix-price-td${isBest ? " matrix-best" : ""}${isWinnerCol ? " matrix-winner-col" : ""}`}
                             >
-                              {r.pricing_mode}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`price-big${r.price === bestPrice ? " price-best" : ""}`}>
-                              ${Number(r.price).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                            {new Date(r.submitted_at).toLocaleDateString()}
-                          </td>
-                          <td>
-                            {winner?.vendor_name === r.vendor_name ? (
-                              <span className="tag tag-active">Winner</span>
-                            ) : (
-                              <button className="selbtn" onClick={() => handleSelectWinner(r.vendor_name, i)} disabled={selectingWinner || !!winner}>
-                                {selectingWinner ? "..." : "Select"}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                  {!hasParams &&
-                    bid.vendor_responses &&
-                    bid.vendor_responses.map((vr, i) => {
-                      const ac = AVATAR_COLORS[i % AVATAR_COLORS.length];
-                      return (
-                        <tr key={i}>
-                          <td>
-                            <div className="vc">
-                              <div className="vav" style={{ background: ac.bg, color: ac.color }}>
-                                {getInitials(vr.vendor_name)}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>
-                                  {vr.vendor_name}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <span className={`tag ${vr.pricing_mode === "additive" ? "tag-active" : "tag-draft"}`}>
-                              {vr.pricing_mode}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="price-big">
-                              {vr.base_price !== null ? `$${Number(vr.base_price).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "\u2014"}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                            {new Date(vr.submitted_at).toLocaleDateString()}
-                          </td>
-                          <td>
-                            {winner?.vendor_name === vr.vendor_name ? (
-                              <span className="tag tag-active">Winner</span>
-                            ) : (
-                              <button className="selbtn" onClick={() => handleSelectWinner(vr.vendor_name, i)} disabled={selectingWinner || !!winner}>
-                                {selectingWinner ? "..." : "Select"}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                  {!hasParams && (!bid.vendor_responses || bid.vendor_responses.length === 0) && (
-                    <tr>
-                      <td colSpan={5} style={{ textAlign: "center", padding: "24px", color: "var(--muted)", fontSize: "0.85rem" }}>
-                        No vendor responses yet.
+                              {price !== null ? (
+                                <span className={`price-big${isBest ? " price-best" : ""}`}>
+                                  ${Number(price).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span style={{ color: "var(--faint)", fontSize: "0.78rem" }}>—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                  {/* Totals / summary row */}
+                  {combinations.length > 1 && (
+                    <tr className="matrix-summary-row">
+                      <td colSpan={paramNames.length} className="matrix-param-td" style={{ fontWeight: 700, color: "var(--ink)" }}>
+                        Average
                       </td>
+                      {vendors.map((vr, vi) => {
+                        // Calculate average for this vendor
+                        let sum = 0;
+                        let count = 0;
+                        combinations.forEach((combo) => {
+                          const comboKey = makeCombinationKey(combo);
+                          const price = priceMatrix.get(comboKey)?.get(vr.vendor_name) ?? null;
+                          if (price !== null) { sum += price; count++; }
+                        });
+                        const avg = count > 0 ? sum / count : null;
+
+                        // Find lowest vendor average
+                        let lowestAvg: number | null = null;
+                        vendors.forEach((v2) => {
+                          let s2 = 0, c2 = 0;
+                          combinations.forEach((combo) => {
+                            const ck = makeCombinationKey(combo);
+                            const p = priceMatrix.get(ck)?.get(v2.vendor_name) ?? null;
+                            if (p !== null) { s2 += p; c2++; }
+                          });
+                          if (c2 > 0) {
+                            const a2 = s2 / c2;
+                            if (lowestAvg === null || a2 < lowestAvg) lowestAvg = a2;
+                          }
+                        });
+
+                        const isBestAvg = avg !== null && lowestAvg !== null && Math.abs(avg - lowestAvg) < 0.01;
+
+                        return (
+                          <td key={vi} className={`matrix-price-td matrix-summary-td${isBestAvg ? " matrix-best" : ""}`}>
+                            {avg !== null ? (
+                              <span className={`price-big${isBestAvg ? " price-best" : ""}`}>
+                                ${Math.round(avg).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span style={{ color: "var(--faint)" }}>—</span>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   )}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* No-params fallback: simple vendor list */}
+          {!hasParams && (
+            <table className="ctable">
+              <thead>
+                <tr>
+                  <th>Vendor</th>
+                  <th>Mode</th>
+                  <th>Base Price</th>
+                  <th>Submitted</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bid.vendor_responses && bid.vendor_responses.length > 0 ? (
+                  bid.vendor_responses.map((vr, i) => {
+                    const ac = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                    return (
+                      <tr key={i}>
+                        <td>
+                          <div className="vc">
+                            <div className="vav" style={{ background: ac.bg, color: ac.color }}>{getInitials(vr.vendor_name)}</div>
+                            <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{vr.vendor_name}</div>
+                          </div>
+                        </td>
+                        <td><span className={`tag ${vr.pricing_mode === "additive" ? "tag-active" : "tag-draft"}`}>{vr.pricing_mode}</span></td>
+                        <td><span className="price-big">{vr.base_price !== null ? `$${Number(vr.base_price).toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "\u2014"}</span></td>
+                        <td style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{new Date(vr.submitted_at).toLocaleDateString()}</td>
+                        <td>
+                          {winner?.vendor_name === vr.vendor_name ? (
+                            <span className="tag tag-active">Winner</span>
+                          ) : (
+                            <button className="selbtn" onClick={() => handleSelectWinner(vr.vendor_name)} disabled={selectingWinner || !!winner}>
+                              {selectingWinner ? "..." : "Select"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: "center", padding: "24px", color: "var(--muted)", fontSize: "0.85rem" }}>
+                      No vendor responses yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Invitations section */}
@@ -727,48 +768,78 @@ export default function CustomerBidDetailPage() {
             </div>
           </div>
         )}
+      </div>
 
-        {/* Filter aside */}
-        <div className="compare-aside">
-          <div className="fa-title">{"\uD83D\uDD0D"} Filter Bids</div>
-          <div className="fa-group">
-            <div className="fa-lbl">Pricing Mode</div>
-            <label className="fa-opt">
-              <input type="checkbox" defaultChecked /> Combination
-            </label>
-            <label className="fa-opt">
-              <input type="checkbox" defaultChecked /> Additive
-            </label>
-          </div>
-          <div className="fa-group">
-            <div className="fa-lbl">Price Range</div>
-            <div className="fa-range">
-              <input type="range" min="0" max="100000" defaultValue="50000" />
-              <div className="fa-range-lbls">
-                <span>$0</span>
-                <span>$50K+</span>
-              </div>
+      {/* Filter aside */}
+      <div className="compare-aside">
+        <div className="fa-title">{"\uD83D\uDD0D"} Filter Bids</div>
+        <div className="fa-group">
+          <div className="fa-lbl">Pricing Mode</div>
+          <label className="fa-opt">
+            <input
+              type="checkbox"
+              checked={filterMode.has("combination")}
+              onChange={(e) => {
+                const next = new Set(filterMode);
+                if (e.target.checked) next.add("combination"); else next.delete("combination");
+                setFilterMode(next);
+              }}
+            /> Combination
+          </label>
+          <label className="fa-opt">
+            <input
+              type="checkbox"
+              checked={filterMode.has("additive")}
+              onChange={(e) => {
+                const next = new Set(filterMode);
+                if (e.target.checked) next.add("additive"); else next.delete("additive");
+                setFilterMode(next);
+              }}
+            /> Additive
+          </label>
+        </div>
+        <div className="fa-group">
+          <div className="fa-lbl">Max Price</div>
+          <div className="fa-range">
+            <input
+              type="range"
+              min="1000"
+              max="100000"
+              step="1000"
+              value={filterMaxPrice}
+              onChange={(e) => setFilterMaxPrice(Number(e.target.value))}
+            />
+            <div className="fa-range-lbls">
+              <span>$1K</span>
+              <span>{filterMaxPrice >= 100000 ? "Any" : `$${(filterMaxPrice / 1000).toFixed(0)}K`}</span>
             </div>
           </div>
-          <div className="fa-group">
-            <div className="fa-lbl">Date Submitted</div>
-            <label className="fa-opt">
-              <input type="checkbox" defaultChecked /> Last 7 days
-            </label>
-            <label className="fa-opt">
-              <input type="checkbox" /> Last 30 days
-            </label>
-            <label className="fa-opt">
-              <input type="checkbox" /> Any
-            </label>
-          </div>
-          <button className="btn btn-gold" style={{ width: "100%", justifyContent: "center", marginBottom: "6px" }} onClick={() => showToast("Filters applied")}>
-            Apply
-          </button>
-          <button className="btn btn-outline" style={{ width: "100%", justifyContent: "center" }} onClick={() => showToast("Filters reset")}>
-            Reset
-          </button>
         </div>
+        <div className="fa-group">
+          <div className="fa-lbl">Date Submitted</div>
+          <label className="fa-opt">
+            <input type="radio" name="filter-days" checked={filterDays === 7} onChange={() => setFilterDays(7)} style={{ accentColor: "var(--gold)" }} /> Last 7 days
+          </label>
+          <label className="fa-opt">
+            <input type="radio" name="filter-days" checked={filterDays === 30} onChange={() => setFilterDays(30)} style={{ accentColor: "var(--gold)" }} /> Last 30 days
+          </label>
+          <label className="fa-opt">
+            <input type="radio" name="filter-days" checked={filterDays === null} onChange={() => setFilterDays(null)} style={{ accentColor: "var(--gold)" }} /> Any
+          </label>
+        </div>
+        <button
+          className="btn btn-outline"
+          style={{ width: "100%", justifyContent: "center" }}
+          onClick={() => {
+            setFilterMode(new Set(["combination", "additive"]));
+            setFilterMaxPrice(100000);
+            setFilterDays(null);
+            showToast("Filters reset");
+          }}
+        >
+          Reset Filters
+        </button>
+      </div>
       </div>
     </div>
   );

@@ -808,3 +808,39 @@ select.finput option { background:#fff; }
 .wb-icon { font-size:1.6rem; }
 .wb-title { font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:0.95rem; color:var(--green); }
 .wb-sub { font-size:0.76rem; color:var(--green); opacity:0.8; }
+
+/* ══════════════════════════════════════════
+   LEVELING SHEET MATRIX
+   ══════════════════════════════════════════ */
+.matrix-scroll { overflow-x:auto; overflow-y:auto; max-height:calc(100vh - 260px); }
+.matrix-table { width:100%; border-collapse:collapse; min-width:600px; }
+.matrix-table thead { position:sticky; top:0; z-index:2; }
+.matrix-table th { padding:10px 14px; text-align:left; font-size:0.67rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--muted); background:var(--card2); border-bottom:2px solid var(--border); white-space:nowrap; vertical-align:middle; }
+.matrix-table td { padding:10px 14px; border-bottom:1px solid var(--border); font-size:0.83rem; vertical-align:middle; color:var(--ink2); }
+.matrix-table tbody tr:hover td { background:var(--gold-bg); }
+.matrix-table tbody tr:last-child td { border-bottom:none; }
+
+/* Parameter columns — sticky left */
+.matrix-param-th { background:var(--card2) !important; position:sticky; z-index:3; font-size:0.72rem !important; }
+.matrix-param-td { background:var(--card); position:sticky; z-index:1; font-weight:600; font-size:0.82rem; color:var(--ink) !important; white-space:nowrap; }
+.matrix-table tbody tr:hover .matrix-param-td { background:var(--gold-bg); }
+
+/* Vendor header column */
+.matrix-vendor-th { min-width:150px; max-width:220px; }
+.matrix-vendor-header { display:flex; align-items:center; gap:6px; }
+.matrix-vendor-info { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.matrix-vendor-name { font-size:0.76rem; font-weight:700; color:var(--ink); text-transform:none; letter-spacing:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100px; }
+.matrix-vendor-mode { line-height:1; }
+
+/* Price cells */
+.matrix-price-td { text-align:right; white-space:nowrap; }
+.matrix-best { background:var(--green-bg) !important; }
+.matrix-table tbody tr:hover .matrix-best { background:#dcfce7 !important; }
+
+/* Winner column highlight */
+.matrix-winner-col { background:rgba(22,163,74,0.03) !important; border-left:2px solid var(--green-b); border-right:2px solid var(--green-b); }
+
+/* Summary row */
+.matrix-summary-row { border-top:2px solid var(--border2); }
+.matrix-summary-row td { background:var(--card2) !important; font-weight:700; }
+.matrix-summary-row .matrix-best { background:var(--green-bg) !important; }
