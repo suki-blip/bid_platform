@@ -152,7 +152,7 @@ export default function CustomerDashboard() {
   const unassignedBids = filteredBids.filter((b) => !b.project_id);
 
   return (
-    <div className="page on" style={{ display: "block" }}>
+    <div className="page on">
       <div className="fstrip">
         <div className="fs-search">
           <span style={{ color: "var(--faint)" }}>{"\uD83D\uDD0D"}</span>

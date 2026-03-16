@@ -172,7 +172,7 @@ function CreateBidContent() {
   const breadcrumbProject = projectName || (selectedProjectId ? projects.find((p) => p.id === selectedProjectId)?.name : null);
 
   return (
-    <div className="page on" style={{ display: "block" }}>
+    <div className="page on">
       <div className="fstrip">
         <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
           <Link href="/customer" style={{ color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>

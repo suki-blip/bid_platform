@@ -410,7 +410,7 @@ export default function CustomerBidDetailPage() {
   };
 
   return (
-    <div className="page on" style={{ display: "block" }}>
+    <div className="page on">
       {/* Top action strip */}
       <div className="fstrip">
         <span className="fcount">{responseCount} vendor response{responseCount !== 1 ? "s" : ""}</span>

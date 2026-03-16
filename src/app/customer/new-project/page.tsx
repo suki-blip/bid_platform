@@ -57,7 +57,7 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="page on" style={{ display: "block" }}>
+    <div className="page on">
       <div className="fstrip">
         <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
           <Link href="/customer" style={{ color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>
