@@ -150,7 +150,7 @@ export default function VendorsPage() {
   }
 
   return (
-    <div className="page on" style={{ display: "block" }}>
+    <div className="page on">
       {/* Header strip */}
       <div className="fstrip">
         <div className="fs-search">
@@ -168,6 +168,7 @@ export default function VendorsPage() {
         </div>
       </div>
 
+      <div className="scroll">
       {/* Vendor table */}
       <div className="scard" style={{ margin: "16px 0" }}>
         <table className="ctable">
@@ -281,6 +282,7 @@ export default function VendorsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

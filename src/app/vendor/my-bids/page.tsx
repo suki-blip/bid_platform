@@ -51,6 +51,7 @@ export default function MyBidsPage() {
 
   return (
     <div className="page on">
+      <div className="scroll">
       {/* Filter strip */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         {filters.map(f => (
@@ -141,6 +142,7 @@ export default function MyBidsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -37,6 +37,7 @@ export default function VendorDashboard() {
 
   return (
     <div className="page on">
+      <div className="scroll">
       {/* KPI ROW */}
       <div className="kpi-row">
         <div className="kpi" style={{ "--kc": "var(--gold)" } as React.CSSProperties}>
@@ -157,6 +158,7 @@ export default function VendorDashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

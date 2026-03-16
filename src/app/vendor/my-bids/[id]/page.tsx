@@ -72,6 +72,7 @@ export default function BidDetailPage() {
 
   return (
     <div className="page on">
+      <div className="scroll">
       <Link href="/vendor/my-bids" style={{ color: "var(--gold)", fontSize: "0.85rem", textDecoration: "none", marginBottom: 16, display: "inline-block" }}>
         ← Back to My Bids
       </Link>
@@ -231,6 +232,7 @@ export default function BidDetailPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -142,6 +142,7 @@ export default function ProfilePage() {
 
   return (
     <div className="page on">
+      <div className="scroll">
       {/* COMPANY INFO */}
       <div className="scard" style={{ marginBottom: 16 }}>
         <div className="scard-head">
@@ -217,6 +218,7 @@ export default function ProfilePage() {
             </button>
           </form>
         </div>
+      </div>
       </div>
     </div>
   );
