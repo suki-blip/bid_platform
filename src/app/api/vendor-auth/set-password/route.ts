@@ -61,6 +61,7 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     console.error('Set password error:', error);
-    return NextResponse.json({ error: 'Failed to set password' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'Failed to set password', detail: msg }, { status: 500 });
   }
 }
