@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "contractor",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "require('child_process').execSync('npx next dev --port 3000',{stdio:'inherit'})"],
+      "port": 3000
+    }
+  ]
+}

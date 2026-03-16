@@ -28,6 +28,13 @@ export default function VendorSubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [prices, setPrices] = useState<Record<string, string>>({});
 
+  // Portal account setup
+  const [portalPw, setPortalPw] = useState("");
+  const [portalPwConfirm, setPortalPwConfirm] = useState("");
+  const [portalSaving, setPortalSaving] = useState(false);
+  const [portalDone, setPortalDone] = useState(false);
+  const [portalError, setPortalError] = useState("");
+
   useEffect(() => {
     fetch(`/api/vendor-submit/${token}`)
       .then(async (res) => {
@@ -107,13 +114,70 @@ export default function VendorSubmitPage() {
     );
   }
 
+  async function handleSetupPortal(e: React.FormEvent) {
+    e.preventDefault();
+    setPortalError("");
+    if (portalPw !== portalPwConfirm) { setPortalError("Passwords don't match"); return; }
+    if (portalPw.length < 8) { setPortalError("Password must be at least 8 characters"); return; }
+    setPortalSaving(true);
+    try {
+      const res = await fetch("/api/vendor-auth/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password: portalPw }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPortalDone(true);
+      } else {
+        setPortalError(data.error || "Failed to set up account");
+      }
+    } catch {
+      setPortalError("Something went wrong");
+    } finally {
+      setPortalSaving(false);
+    }
+  }
+
   if (submitted) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg, #f9f9f6)", fontFamily: "'Bricolage Grotesque', sans-serif" }}>
-        <div style={{ textAlign: "center", maxWidth: 400, padding: 40 }}>
-          <div style={{ fontSize: "3rem", marginBottom: 12 }}>&#10003;</div>
-          <h2 style={{ fontSize: "1.3rem", fontWeight: 800, marginBottom: 8 }}>Thank You!</h2>
-          <p style={{ color: "#666", fontSize: "0.9rem" }}>Your bid response has been submitted successfully. The contractor will review your submission.</p>
+        <div style={{ maxWidth: 480, padding: 40 }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ fontSize: "3rem", marginBottom: 12 }}>&#10003;</div>
+            <h2 style={{ fontSize: "1.3rem", fontWeight: 800, marginBottom: 8 }}>Thank You!</h2>
+            <p style={{ color: "#666", fontSize: "0.9rem" }}>Your bid response has been submitted successfully. The contractor will review your submission.</p>
+          </div>
+
+          {/* Portal Account Setup */}
+          {!portalDone ? (
+            <div style={{ background: "#fff", border: "1px solid #e5e5e0", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 4 }}>🔑 Set Up Your Vendor Portal</h3>
+              <p style={{ fontSize: "0.82rem", color: "#666", marginBottom: 16 }}>Create a password to access the vendor portal where you can track all your bids, see results, and manage your profile.</p>
+              <form onSubmit={handleSetupPortal}>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#666", marginBottom: 4 }}>Password</label>
+                  <input type="password" value={portalPw} onChange={e => setPortalPw(e.target.value)} required placeholder="Min. 8 characters" style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 8, fontSize: "0.9rem", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#666", marginBottom: 4 }}>Confirm Password</label>
+                  <input type="password" value={portalPwConfirm} onChange={e => setPortalPwConfirm(e.target.value)} required style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 8, fontSize: "0.9rem", boxSizing: "border-box" }} />
+                </div>
+                {portalError && <div style={{ color: "#c00", fontSize: "0.82rem", marginBottom: 8 }}>{portalError}</div>}
+                <button type="submit" disabled={portalSaving} style={{ width: "100%", padding: "10px", background: "#b8860b", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", opacity: portalSaving ? 0.7 : 1 }}>
+                  {portalSaving ? "Setting up..." : "Create Portal Account"}
+                </button>
+              </form>
+              <p style={{ fontSize: "0.75rem", color: "#999", marginTop: 8, textAlign: "center" }}>Optional — you can skip this step</p>
+            </div>
+          ) : (
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 20, textAlign: "center" }}>
+              <div style={{ fontSize: "1.5rem", marginBottom: 8 }}>✅</div>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 8 }}>Account Created!</h3>
+              <p style={{ fontSize: "0.85rem", color: "#666", marginBottom: 16 }}>You can now access the vendor portal to track all your bids.</p>
+              <a href="/vendor" style={{ display: "inline-block", padding: "10px 24px", background: "#b8860b", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: "0.9rem" }}>Go to Vendor Portal →</a>
+            </div>
+          )}
         </div>
       </div>
     );

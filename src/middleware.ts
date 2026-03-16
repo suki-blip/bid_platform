@@ -33,9 +33,25 @@ export function middleware(request: NextRequest) {
     }
   }
 
+  // Protect vendor portal pages: /vendor/* (except /vendor-submit and /vendor-login)
+  if (pathname.startsWith('/vendor') && !pathname.startsWith('/vendor-submit') && !pathname.startsWith('/vendor-login')) {
+    const cookie = request.cookies.get('vendor-auth')?.value;
+    if (!cookie) {
+      return NextResponse.redirect(new URL('/vendor-login', request.url));
+    }
+  }
+
+  // Protect vendor API routes: /api/vendor/* (except /api/vendor-auth/*)
+  if (pathname.startsWith('/api/vendor/') && !pathname.startsWith('/api/vendor-auth/')) {
+    const cookie = request.cookies.get('vendor-auth')?.value;
+    if (!cookie) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin-panel/:path*', '/api/admin/:path*'],
+  matcher: ['/admin-panel/:path*', '/api/admin/:path*', '/vendor/:path*', '/api/vendor/:path*'],
 };

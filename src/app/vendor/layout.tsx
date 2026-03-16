@@ -1,70 +1,98 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ReactNode, useEffect, useState } from "react";
 
 function showToast(msg: string) {
   const el = document.getElementById("toast");
   if (!el) return;
   el.textContent = msg;
   el.style.opacity = "1";
-  setTimeout(() => {
-    el.style.opacity = "0";
-  }, 2200);
+  setTimeout(() => { el.style.opacity = "0"; }, 2200);
 }
 
-const NAV_ITEMS = [
-  { label: "Dashboard", icon: "\u25A6", href: "/vendor", badge: null, badgeClass: "" },
-  { label: "My Bids", icon: "\uD83D\uDCCB", href: "/vendor/my-bids", badge: "8", badgeClass: "blue" },
-  { label: "Invitations", icon: "\uD83D\uDCE8", href: "/vendor", badge: "2", badgeClass: "" },
-  { label: "Submit Bid", icon: "\u270F\uFE0F", href: "__void__", badge: null, badgeClass: "" },
-];
+interface VendorInfo {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  contact_person?: string;
+}
 
-const NAV_RESULTS = [
-  { label: "Won Bids", icon: "\uD83C\uDFC6", href: "__void__", badge: "2", badgeClass: "green" },
-  { label: "All History", icon: "\uD83D\uDDC2", href: "__void__", badge: null, badgeClass: "" },
-];
-
-const NAV_ACCOUNT = [
-  { label: "My Profile", icon: "\uD83D\uDC64", href: "/vendor/profile", badge: null, badgeClass: "" },
-];
-
-const PAGE_TITLES: Record<string, [string, string]> = {
-  "/vendor": ["Dashboard", "Welcome back, Acme Supply Co. \uD83D\uDC4B"],
-  "/vendor/my-bids": ["My Bids", "All submitted bids"],
-  "/vendor/profile": ["My Profile", "Company & contact info"],
-};
+interface MyBid {
+  display_status: string;
+  invitation_status: string;
+  deadline: string;
+}
 
 export default function VendorLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [vendor, setVendor] = useState<VendorInfo | null>(null);
+  const [counts, setCounts] = useState({ open: 0, submitted: 0, won: 0, lost: 0 });
 
-  // Check if we're on a bid detail page
-  const isBidDetail = pathname.startsWith("/vendor/") && pathname !== "/vendor" && pathname !== "/vendor/my-bids" && pathname !== "/vendor/profile" && pathname !== "/vendor/won" && pathname !== "/vendor/history";
+  useEffect(() => {
+    fetch("/api/vendor-auth/me")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setVendor(d))
+      .catch(() => {});
+
+    fetch("/api/vendor/my-bids")
+      .then(r => r.ok ? r.json() : [])
+      .then((bids: MyBid[]) => {
+        setCounts({
+          open: bids.filter(b => b.display_status === "open").length,
+          submitted: bids.filter(b => b.display_status === "pending_review").length,
+          won: bids.filter(b => b.display_status === "won").length,
+          lost: bids.filter(b => b.display_status === "lost").length,
+        });
+      })
+      .catch(() => {});
+  }, [pathname]);
+
+  async function handleLogout() {
+    await fetch("/api/vendor-auth/logout", { method: "POST" });
+    router.push("/vendor-login");
+  }
+
+  const vendorName = vendor?.name || "Loading...";
+  const initials = vendorName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
+  const isBidDetail = pathname.startsWith("/vendor/my-bids/") && pathname !== "/vendor/my-bids";
+  const isSubmitBid = pathname.startsWith("/vendor/") && !pathname.startsWith("/vendor/my-bids") && pathname !== "/vendor" && pathname !== "/vendor/profile";
+
+  const PAGE_TITLES: Record<string, [string, string]> = {
+    "/vendor": ["Dashboard", `Welcome back, ${vendorName} 👋`],
+    "/vendor/my-bids": ["My Bids", "All submitted bids and invitations"],
+    "/vendor/profile": ["My Profile", "Company & contact info"],
+  };
 
   const [pageTitle, pageSub] = isBidDetail
+    ? ["Bid Details", "View your submission"]
+    : isSubmitBid
     ? ["Submit Bid", "Fill in your pricing and submit"]
     : PAGE_TITLES[pathname] || ["Vendor Portal", ""];
 
-  function renderNavItem(item: { label: string; icon: string; href: string; badge: string | null; badgeClass: string }) {
-    const isActive = item.href !== "__void__" && (
-      item.href === "/vendor" ? pathname === "/vendor" : pathname.startsWith(item.href)
-    );
-    const isVoid = item.href === "__void__";
+  const NAV_ITEMS = [
+    { label: "Dashboard", icon: "◦", href: "/vendor", badge: null, badgeClass: "" },
+    { label: "My Bids", icon: "📋", href: "/vendor/my-bids", badge: counts.submitted > 0 ? String(counts.submitted) : null, badgeClass: "blue" },
+    { label: "Invitations", icon: "📨", href: "/vendor", badge: counts.open > 0 ? String(counts.open) : null, badgeClass: "gold" },
+  ];
 
-    if (isVoid) {
-      return (
-        <div
-          key={item.label}
-          className={`nav-item`}
-          onClick={() => showToast(`${item.label} — coming soon`)}
-          style={{ cursor: "pointer" }}
-        >
-          <span className="ni">{item.icon}</span> {item.label}
-          {item.badge && <span className={`nbadge${item.badgeClass ? " " + item.badgeClass : ""}`}>{item.badge}</span>}
-        </div>
-      );
-    }
+  const NAV_RESULTS = [
+    { label: "Won Bids", icon: "🏆", href: "/vendor/my-bids?filter=won", badge: counts.won > 0 ? String(counts.won) : null, badgeClass: "green" },
+    { label: "All History", icon: "🗂", href: "/vendor/my-bids?filter=all", badge: null, badgeClass: "" },
+  ];
+
+  const NAV_ACCOUNT = [
+    { label: "My Profile", icon: "👤", href: "/vendor/profile", badge: null, badgeClass: "" },
+  ];
+
+  function renderNavItem(item: { label: string; icon: string; href: string; badge: string | null; badgeClass: string }) {
+    const isActive = item.href === "/vendor"
+      ? pathname === "/vendor"
+      : pathname.startsWith(item.href.split("?")[0]) && item.href !== "/vendor";
 
     return (
       <Link
@@ -83,17 +111,16 @@ export default function VendorLayout({ children }: { children: ReactNode }) {
     <>
       <div id="toast"></div>
       <div className="shell">
-        {/* SIDEBAR */}
         <aside className="sidebar">
           <div className="logo-bar">
             <div className="logo">Bid<em>Master</em></div>
             <div className="logo-sub">Vendor Portal</div>
           </div>
           <div className="vendor-chip">
-            <div className="va">AS</div>
+            <div className="va">{initials}</div>
             <div>
-              <div className="vname">Acme Supply Co.</div>
-              <div className="vco">Kitchen Vendor</div>
+              <div className="vname">{vendorName}</div>
+              <div className="vco">{vendor?.email || ""}</div>
             </div>
           </div>
           <div className="sidebar-scroll">
@@ -103,10 +130,22 @@ export default function VendorLayout({ children }: { children: ReactNode }) {
             {NAV_RESULTS.map(renderNavItem)}
             <div className="nav-lbl" style={{ marginTop: 8 }}>Account</div>
             {NAV_ACCOUNT.map(renderNavItem)}
+            <div style={{ marginTop: 16, padding: "0 8px" }}>
+              <button
+                onClick={handleLogout}
+                className="btn"
+                style={{
+                  width: "100%", padding: "8px 12px", background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#999",
+                  fontSize: "0.8rem", cursor: "pointer",
+                }}
+              >
+                🚪 Log Out
+              </button>
+            </div>
           </div>
         </aside>
 
-        {/* MAIN */}
         <div className="main">
           <div className="topbar">
             <div>
@@ -115,18 +154,7 @@ export default function VendorLayout({ children }: { children: ReactNode }) {
             </div>
             <div className="topbar-right">
               <div className="notif-btn" onClick={() => showToast("No new notifications")} style={{ cursor: "pointer" }}>
-                \uD83D\uDD14<span className="notif-pip"></span>
-              </div>
-              <div
-                className="fs-search"
-                style={{ minWidth: 160 }}
-              >
-                <span style={{ color: "var(--faint)" }}>\uD83D\uDD0D</span>
-                <input
-                  placeholder="Search..."
-                  onFocus={() => showToast("Search — coming soon")}
-                  readOnly
-                />
+                🔔<span className="notif-pip"></span>
               </div>
             </div>
           </div>

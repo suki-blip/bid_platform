@@ -162,6 +162,7 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE bids ADD COLUMN status TEXT NOT NULL DEFAULT \'draft\''); } catch {}
   try { await client.execute('ALTER TABLE bids ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch {}
   try { await client.execute('ALTER TABLE vendor_responses ADD COLUMN vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL'); } catch {}
+  try { await client.execute('ALTER TABLE vendors ADD COLUMN password_hash TEXT'); } catch {}
 
   // Seed default trade categories
   const defaultCategories = [
