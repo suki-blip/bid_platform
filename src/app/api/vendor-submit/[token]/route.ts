@@ -13,7 +13,7 @@ export async function GET(
     const result = await db().execute({
       sql: `SELECT bi.id as invitation_id, bi.status as invitation_status,
                    b.id as bid_id, b.title, b.description, b.deadline, b.status as bid_status,
-                   v.name as vendor_name
+                   v.name as vendor_name, v.password_hash
             FROM bid_invitations bi
             JOIN bids b ON b.id = bi.bid_id
             JOIN vendors v ON v.id = bi.vendor_id
@@ -75,6 +75,7 @@ export async function GET(
       description: invitation.description,
       deadline: invitation.deadline,
       vendor_name: invitation.vendor_name,
+      has_portal_account: !!invitation.password_hash,
       parameters: parametersWithOptions,
     });
   } catch (error) {

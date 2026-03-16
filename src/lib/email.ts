@@ -49,7 +49,7 @@ export function getAppUrl(): string {
 
 // --- Email Templates ---
 
-export function bidInvitationEmail(vars: { vendorName: string; bidTitle: string; bidDescription: string; deadline: string; submitUrl: string }) {
+export function bidInvitationEmail(vars: { vendorName: string; bidTitle: string; bidDescription: string; deadline: string; submitUrl: string; portalUrl: string }) {
   return {
     subject: `You're invited to bid: ${vars.bidTitle}`,
     html: `
@@ -66,14 +66,17 @@ export function bidInvitationEmail(vars: { vendorName: string; bidTitle: string;
             <p style="margin: 0; font-size: 13px; color: #999;">Deadline: <strong>${new Date(vars.deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong></p>
           </div>
           <a href="${vars.submitUrl}" style="display: inline-block; background: #b8860b; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 14px;">Submit Your Bid</a>
-          <p style="margin-top: 20px; font-size: 13px; color: #999;">No account needed — just click the link above to submit your pricing.</p>
+          <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e5e0;">
+            <p style="font-size: 13px; color: #666; margin: 0 0 8px;">After submitting, you'll get access to the <strong>Vendor Portal</strong> where you can track all your bids, see results, and manage your profile.</p>
+            <a href="${vars.portalUrl}" style="font-size: 13px; color: #b8860b;">Already have an account? Log in to the portal →</a>
+          </div>
         </div>
       </div>
     `,
   };
 }
 
-export function winnerNotificationEmail(vars: { vendorName: string; bidTitle: string; notes?: string }) {
+export function winnerNotificationEmail(vars: { vendorName: string; bidTitle: string; notes?: string; portalUrl: string }) {
   return {
     subject: `Congratulations! You won: ${vars.bidTitle}`,
     html: `
@@ -86,6 +89,7 @@ export function winnerNotificationEmail(vars: { vendorName: string; bidTitle: st
           <p>Your bid has been selected as the winner for <strong>${vars.bidTitle}</strong>.</p>
           ${vars.notes ? `<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin: 16px 0;"><p style="margin: 0; font-size: 14px;">${vars.notes}</p></div>` : ''}
           <p>The contractor will be in touch with next steps.</p>
+          <a href="${vars.portalUrl}" style="display: inline-block; background: #16a34a; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 14px; margin-top: 8px;">View in Vendor Portal →</a>
           <p style="font-size: 13px; color: #999; margin-top: 20px;">Thank you for using BidMaster.</p>
         </div>
       </div>
@@ -93,7 +97,7 @@ export function winnerNotificationEmail(vars: { vendorName: string; bidTitle: st
   };
 }
 
-export function loserNotificationEmail(vars: { vendorName: string; bidTitle: string }) {
+export function loserNotificationEmail(vars: { vendorName: string; bidTitle: string; portalUrl: string }) {
   return {
     subject: `Bid update: ${vars.bidTitle}`,
     html: `
@@ -106,6 +110,7 @@ export function loserNotificationEmail(vars: { vendorName: string; bidTitle: str
           <p>Thank you for submitting your bid for <strong>${vars.bidTitle}</strong>.</p>
           <p>We appreciate your time and effort. Unfortunately, another vendor has been selected for this bid.</p>
           <p>We hope to work with you on future projects.</p>
+          <a href="${vars.portalUrl}" style="display: inline-block; background: #b8860b; color: #fff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 13px; margin-top: 8px;">View Your Bids in Portal →</a>
           <p style="font-size: 13px; color: #999; margin-top: 20px;">Thank you for using BidMaster.</p>
         </div>
       </div>

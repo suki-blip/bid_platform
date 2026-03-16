@@ -91,6 +91,7 @@ export async function POST(
           bidDescription: bid.description as string,
           deadline: bid.deadline as string,
           submitUrl: `${appUrl}/vendor-submit/${token}`,
+          portalUrl: `${appUrl}/vendor-login`,
         });
         await sendEmail({ to: v.email as string, ...emailContent });
       }

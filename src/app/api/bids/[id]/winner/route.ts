@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
-import { sendEmail, winnerNotificationEmail, loserNotificationEmail } from '@/lib/email';
+import { sendEmail, winnerNotificationEmail, loserNotificationEmail, getAppUrl } from '@/lib/email';
 
 export async function GET(
   request: Request,
@@ -76,6 +76,8 @@ export async function POST(
     ], 'write');
 
     // Send winner email
+    const appUrl = getAppUrl();
+    const portalUrl = `${appUrl}/vendor-login`;
     const winnerVendor = await db().execute({ sql: 'SELECT * FROM vendors WHERE id = ?', args: [vendor_id] });
     if (winnerVendor.rows.length > 0) {
       const v = winnerVendor.rows[0];
@@ -83,6 +85,7 @@ export async function POST(
         vendorName: v.name as string,
         bidTitle: bid.title as string,
         notes: notes || undefined,
+        portalUrl,
       });
       await sendEmail({ to: v.email as string, ...email });
     }
@@ -100,6 +103,7 @@ export async function POST(
       const email = loserNotificationEmail({
         vendorName: loser.name as string,
         bidTitle: bid.title as string,
+        portalUrl,
       });
       await sendEmail({ to: loser.email as string, ...email });
     }

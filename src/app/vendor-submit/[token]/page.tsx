@@ -14,6 +14,7 @@ interface BidData {
   description: string;
   deadline: string;
   vendor_name: string;
+  has_portal_account: boolean;
   parameters: Parameter[];
 }
 
@@ -140,6 +141,7 @@ export default function VendorSubmitPage() {
   }
 
   if (submitted) {
+    const hasAccount = bid?.has_portal_account;
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg, #f9f9f6)", fontFamily: "'Bricolage Grotesque', sans-serif" }}>
         <div style={{ maxWidth: 480, padding: 40 }}>
@@ -149,11 +151,17 @@ export default function VendorSubmitPage() {
             <p style={{ color: "#666", fontSize: "0.9rem" }}>Your bid response has been submitted successfully. The contractor will review your submission.</p>
           </div>
 
-          {/* Portal Account Setup */}
-          {!portalDone ? (
-            <div style={{ background: "#fff", border: "1px solid #e5e5e0", borderRadius: 12, padding: 20 }}>
-              <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 4 }}>🔑 Set Up Your Vendor Portal</h3>
-              <p style={{ fontSize: "0.82rem", color: "#666", marginBottom: 16 }}>Create a password to access the vendor portal where you can track all your bids, see results, and manage your profile.</p>
+          {/* If vendor already has portal account, show login link */}
+          {hasAccount ? (
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 20, textAlign: "center" }}>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 8 }}>Track Your Bid</h3>
+              <p style={{ fontSize: "0.85rem", color: "#666", marginBottom: 16 }}>Log in to the vendor portal to track this bid and see when results are announced.</p>
+              <a href="/vendor-login" style={{ display: "inline-block", padding: "10px 24px", background: "#b8860b", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: "0.9rem" }}>Go to Vendor Portal →</a>
+            </div>
+          ) : !portalDone ? (
+            <div style={{ background: "#fff", border: "2px solid #b8860b", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 4 }}>Set Up Your Vendor Portal</h3>
+              <p style={{ fontSize: "0.82rem", color: "#666", marginBottom: 16 }}>Create a password to track all your bids, get notified on results, and manage your profile — takes 10 seconds.</p>
               <form onSubmit={handleSetupPortal}>
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#666", marginBottom: 4 }}>Password</label>
@@ -168,11 +176,10 @@ export default function VendorSubmitPage() {
                   {portalSaving ? "Setting up..." : "Create Portal Account"}
                 </button>
               </form>
-              <p style={{ fontSize: "0.75rem", color: "#999", marginTop: 8, textAlign: "center" }}>Optional — you can skip this step</p>
             </div>
           ) : (
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 20, textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", marginBottom: 8 }}>✅</div>
+              <div style={{ fontSize: "1.5rem", marginBottom: 8 }}>&#9989;</div>
               <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 8 }}>Account Created!</h3>
               <p style={{ fontSize: "0.85rem", color: "#666", marginBottom: 16 }}>You can now access the vendor portal to track all your bids.</p>
               <a href="/vendor" style={{ display: "inline-block", padding: "10px 24px", background: "#b8860b", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: "0.9rem" }}>Go to Vendor Portal →</a>
