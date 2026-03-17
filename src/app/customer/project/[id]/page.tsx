@@ -77,6 +77,9 @@ export default function ProjectDetailPage() {
   const [teamName, setTeamName] = useState("");
   const [teamEmail, setTeamEmail] = useState("");
   const [teamRole, setTeamRole] = useState("member");
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkAdding, setBulkAdding] = useState(false);
 
   // Categories
   const [allCategories, setAllCategories] = useState<TradeCategory[]>([]);
@@ -178,6 +181,42 @@ export default function ProjectDetailPage() {
       });
       await loadProject();
     } catch { showToast("Failed to remove member"); }
+  }
+
+  async function handleBulkAddTeam() {
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    setBulkAdding(true);
+    let added = 0;
+    for (const line of lines) {
+      // Support: "Name, email" or "Name <email>" or "email"
+      let name = "";
+      let email = "";
+      if (line.includes("<") && line.includes(">")) {
+        const match = line.match(/^(.+?)\s*<(.+?)>/);
+        if (match) { name = match[1].trim(); email = match[2].trim(); }
+      } else if (line.includes(",")) {
+        const parts = line.split(",").map(p => p.trim());
+        name = parts[0]; email = parts[1] || "";
+      } else if (line.includes("@")) {
+        email = line; name = line.split("@")[0].replace(/[._-]/g, " ");
+      }
+      if (!email || !email.includes("@")) continue;
+      if (!name) name = email.split("@")[0];
+      try {
+        const res = await fetch(`/api/projects/${id}/team`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, role: "member" }),
+        });
+        if (res.ok) added++;
+      } catch {}
+    }
+    await loadProject();
+    setBulkText("");
+    setShowBulkAdd(false);
+    showToast(`${added} team member${added !== 1 ? "s" : ""} added!`);
+    setBulkAdding(false);
   }
 
   async function handleAddCategory() {
@@ -534,6 +573,9 @@ export default function ProjectDetailPage() {
           <div className="scard-head">
             <h3>👥 Team & Notifications</h3>
             <span className="tag" style={{ background: "var(--purple-bg)", color: "var(--purple)", border: "1px solid var(--purple-b)" }}>{project.team.length}</span>
+            <div style={{ marginLeft: "auto" }}>
+              <button className="btn btn-outline btn-xs" onClick={() => setShowBulkAdd(true)}>📋 Bulk Add</button>
+            </div>
           </div>
           <div className="scard-body" style={{ padding: 16 }}>
             {/* Team list */}
@@ -636,6 +678,44 @@ export default function ProjectDetailPage() {
               <button className="btn btn-outline btn-sm" onClick={() => setShowStop(false)}>Cancel</button>
               <button className="btn btn-red btn-sm" onClick={handleStop} disabled={stopping}>
                 {stopping ? "Stopping..." : "Stop Project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BULK ADD TEAM MODAL */}
+      {showBulkAdd && (
+        <div className="modal-overlay open" onClick={() => setShowBulkAdd(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 520 }}>
+            <h3 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 700, marginBottom: 12 }}>📋 Bulk Add Team Members</h3>
+            <p style={{ fontSize: "0.84rem", color: "var(--muted)", marginBottom: 12 }}>
+              Paste one person per line. Supported formats:
+            </p>
+            <div style={{ fontSize: "0.78rem", color: "var(--ink2)", background: "var(--bg)", borderRadius: 8, padding: 12, marginBottom: 14, fontFamily: "monospace", lineHeight: 1.8 }}>
+              John Doe, john@company.com<br />
+              Jane Smith &lt;jane@company.com&gt;<br />
+              mike@company.com
+            </div>
+            <textarea
+              value={bulkText}
+              onChange={e => setBulkText(e.target.value)}
+              placeholder={"John Doe, john@company.com\nJane Smith, jane@company.com\nmike@company.com"}
+              style={{
+                width: "100%", minHeight: 120, padding: "10px 12px",
+                background: "var(--bg)", border: "1.5px solid var(--border)",
+                borderRadius: 8, color: "var(--ink)", fontSize: "0.84rem",
+                fontFamily: "'Plus Jakarta Sans', sans-serif", resize: "vertical",
+                outline: "none", boxSizing: "border-box",
+              }}
+            />
+            <div style={{ fontSize: "0.74rem", color: "var(--muted)", marginTop: 6, marginBottom: 16 }}>
+              {bulkText.split("\n").filter(l => l.trim()).length} line{bulkText.split("\n").filter(l => l.trim()).length !== 1 ? "s" : ""} detected
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowBulkAdd(false)}>Cancel</button>
+              <button className="btn btn-gold btn-sm" onClick={handleBulkAddTeam} disabled={bulkAdding || !bulkText.trim()}>
+                {bulkAdding ? "Adding..." : "Add All"}
               </button>
             </div>
           </div>
