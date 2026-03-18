@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, usePathname } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, createContext, useContext, useCallback } from 'react';
 import './admin.css';
 
@@ -12,6 +12,7 @@ export function useToast() { return useContext(ToastCtx); }
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
   const pathname = usePathname();
+  const router = useRouter();
   const key = params.key as string;
   const base = `/admin-panel/${key}`;
   const [authSet, setAuthSet] = useState(false);
@@ -44,6 +45,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: base, label: 'Dashboard', icon: '📊' },
     { href: `${base}/users`, label: 'Users', icon: '👥', badge: unpaidCount || undefined },
     { href: `${base}/payments`, label: 'Payments', icon: '💳' },
+    { href: `${base}/projects`, label: 'Projects', icon: '📁' },
+    { href: `${base}/bids`, label: 'Bids', icon: '📝' },
+    { section: 'Tools' },
+    { href: `${base}/content`, label: 'Content', icon: '✏️' },
     { href: `${base}/messages`, label: 'Send Message', icon: '✉️' },
     { section: 'System' },
     { href: `${base}/activity`, label: 'Activity Log', icon: '📋' },
@@ -59,6 +64,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     [base]: ['Dashboard', 'Overview of all users and payments'],
     [`${base}/users`]: ['Users', 'Manage all user accounts'],
     [`${base}/payments`]: ['Payments', 'Payment history and status'],
+    [`${base}/projects`]: ['Projects', 'View and manage all projects'],
+    [`${base}/bids`]: ['Bids', 'View and manage all bid requests'],
+    [`${base}/content`]: ['Content', 'Manage site content and pages'],
     [`${base}/messages`]: ['Send Message', 'Send emails to your users'],
     [`${base}/activity`]: ['Activity Log', 'Full system activity log'],
     [`${base}/settings`]: ['Settings', 'Admin configuration'],
@@ -87,12 +95,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
         <div className="sidebar-bottom">
-          <div className="admin-pill">
+          <div className="admin-pill" style={{ cursor: 'pointer' }} onClick={() => {
+            document.cookie = 'admin-auth=; path=/; max-age=0';
+            router.push('/admin-login');
+          }} title="Click to logout">
             <div className="admin-av">SA</div>
-            <div>
+            <div style={{ flex: 1 }}>
               <div className="admin-name">Super Admin</div>
               <div className="admin-role">admin@bidmaster.app</div>
             </div>
+            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>&#x23FB;</span>
           </div>
         </div>
       </div>
@@ -103,7 +115,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="topbar-title">{pageTitle}</div>
             <div className="topbar-sub">{pageSub}</div>
           </div>
-          <div className="topbar-right" id="topbar-actions" />
+          <div className="topbar-right">
+            <Link href={`${base}/messages`} className="btn btn-outline btn-sm">✉️ Email Templates</Link>
+            <Link href="/" className="btn btn-outline btn-sm">✕ Exit Admin</Link>
+          </div>
         </div>
         <div className="admin-content">
           <ToastCtx.Provider value={showToast}>

@@ -1,15 +1,30 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
+import { getContractorSession } from '@/lib/session';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await dbReady();
+    const session = await getContractorSession();
 
-    const result = await db().execute({
-      sql: `SELECT p.*, (SELECT COUNT(*) FROM bids b WHERE b.project_id = p.id) as bid_count FROM projects p ORDER BY p.created_at DESC`,
-      args: [],
-    });
+    let result;
+    if (session) {
+      // Logged-in contractor: show only their projects + unowned projects
+      result = await db().execute({
+        sql: `SELECT p.*, (SELECT COUNT(*) FROM bids b WHERE b.project_id = p.id) as bid_count
+              FROM projects p
+              WHERE p.owner_id = ? OR p.owner_id IS NULL
+              ORDER BY p.created_at DESC`,
+        args: [session.userId],
+      });
+    } else {
+      // No session (shouldn't happen with middleware, but fallback)
+      result = await db().execute({
+        sql: `SELECT p.*, (SELECT COUNT(*) FROM bids b WHERE b.project_id = p.id) as bid_count FROM projects p ORDER BY p.created_at DESC`,
+        args: [],
+      });
+    }
 
     return NextResponse.json(result.rows);
   } catch (error: unknown) {
@@ -22,9 +37,10 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     await dbReady();
+    const session = await getContractorSession();
 
     const body = await request.json();
     const { name, address, type, description, status } = body;
@@ -37,10 +53,11 @@ export async function POST(request: Request) {
     }
 
     const id = crypto.randomUUID();
+    const ownerId = session?.userId || null;
 
     await db().execute({
-      sql: 'INSERT INTO projects (id, name, address, type, description, status) VALUES (?, ?, ?, ?, ?, ?)',
-      args: [id, name, address || null, type || null, description || null, status || 'active'],
+      sql: 'INSERT INTO projects (id, name, address, type, description, status, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [id, name, address || null, type || null, description || null, status || 'active', ownerId],
     });
 
     const createdResult = await db().execute({

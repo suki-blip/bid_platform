@@ -21,7 +21,7 @@ export async function GET(
     }
 
     const bidsResult = await db().execute({
-      sql: `SELECT b.*, (SELECT COUNT(*) FROM vendor_responses vr WHERE vr.bid_id = b.id) as vendor_response_count FROM bids b WHERE b.project_id = ? ORDER BY b.created_at DESC`,
+      sql: `SELECT b.*, tc.name as trade_category, (SELECT COUNT(*) FROM vendor_responses vr WHERE vr.bid_id = b.id) as vendor_response_count FROM bids b LEFT JOIN trade_categories tc ON b.trade_category_id = tc.id WHERE b.project_id = ? ORDER BY b.created_at DESC`,
       args: [id],
     });
 

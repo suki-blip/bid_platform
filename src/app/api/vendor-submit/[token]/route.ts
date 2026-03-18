@@ -13,6 +13,7 @@ export async function GET(
     const result = await db().execute({
       sql: `SELECT bi.id as invitation_id, bi.status as invitation_status,
                    b.id as bid_id, b.title, b.description, b.deadline, b.status as bid_status,
+                   b.checklist, b.allow_ve,
                    v.name as vendor_name, v.password_hash
             FROM bid_invitations bi
             JOIN bids b ON b.id = bi.bid_id
@@ -64,10 +65,14 @@ export async function GET(
         });
         return {
           name: param.name,
+          is_track: Number(param.is_track) === 1,
           options: optionsResult.rows.map(o => o.value),
         };
       })
     );
+
+    let checklist: { text: string; required: boolean }[] = [];
+    try { checklist = JSON.parse((invitation.checklist as string) || '[]'); } catch {}
 
     return NextResponse.json({
       bid_id: invitation.bid_id,
@@ -77,6 +82,8 @@ export async function GET(
       vendor_name: invitation.vendor_name,
       has_portal_account: !!invitation.password_hash,
       parameters: parametersWithOptions,
+      checklist,
+      allow_ve: Number(invitation.allow_ve) === 1,
     });
   } catch (error) {
     console.error('Error fetching bid for vendor:', error);
@@ -125,7 +132,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { prices, pricing_mode, base_price, rules } = body;
+    const { prices, pricing_mode, base_price, rules, checklist_answers } = body;
 
     if (!prices || !Array.isArray(prices) || prices.length === 0) {
       return NextResponse.json({ error: 'Missing required field: prices' }, { status: 400 });
@@ -137,8 +144,8 @@ export async function POST(
 
     const statements: { sql: string; args: (string | number | null)[] }[] = [
       {
-        sql: 'INSERT INTO vendor_responses (id, bid_id, vendor_name, vendor_id, pricing_mode, base_price, rules) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        args: [responseId, invitation.bid_id as string, invitation.vendor_name as string, invitation.vid as string, mode, mode === 'additive' ? base_price : null, rulesJson],
+        sql: 'INSERT INTO vendor_responses (id, bid_id, vendor_name, vendor_id, pricing_mode, base_price, rules, checklist_answers) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [responseId, invitation.bid_id as string, invitation.vendor_name as string, invitation.vid as string, mode, mode === 'additive' ? base_price : null, rulesJson, checklist_answers ? JSON.stringify(checklist_answers) : '[]'],
       },
     ];
 

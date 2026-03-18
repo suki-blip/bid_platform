@@ -36,9 +36,20 @@ export async function POST(
     const { id } = await params;
 
     // Verify bid exists and is active
-    const bidResult = await db().execute({ sql: 'SELECT * FROM bids WHERE id = ?', args: [id] });
+    const bidResult = await db().execute({ sql: 'SELECT b.*, p.name as project_name FROM bids b LEFT JOIN projects p ON b.project_id = p.id WHERE b.id = ?', args: [id] });
     if (bidResult.rows.length === 0) {
       return NextResponse.json({ error: 'Bid not found' }, { status: 404 });
+    }
+
+    // Get sender name from cookie
+    let senderName = '';
+    const cookieHeader = request.headers.get('cookie') || '';
+    const authMatch = cookieHeader.match(/contractor-auth=([^;]+)/);
+    if (authMatch) {
+      try {
+        const decoded = JSON.parse(Buffer.from(authMatch[1], 'base64').toString());
+        senderName = decoded.name || decoded.company || '';
+      } catch {}
     }
 
     const body = await request.json();
@@ -92,6 +103,8 @@ export async function POST(
           deadline: bid.deadline as string,
           submitUrl: `${appUrl}/vendor-submit/${token}`,
           portalUrl: `${appUrl}/vendor-login`,
+          senderName: senderName || undefined,
+          projectName: (bid.project_name as string) || undefined,
         });
         await sendEmail({ to: v.email as string, ...emailContent });
       }
@@ -101,5 +114,62 @@ export async function POST(
   } catch (error) {
     console.error('Error creating invitations:', error);
     return NextResponse.json({ error: 'Failed to create invitations' }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbReady();
+    const { id } = await params;
+    const { vendor_id, status } = await request.json();
+
+    if (!vendor_id || !status) {
+      return NextResponse.json({ error: 'vendor_id and status required' }, { status: 400 });
+    }
+
+    await db().execute({
+      sql: 'UPDATE bid_invitations SET status = ? WHERE bid_id = ? AND vendor_id = ?',
+      args: [status, id, vendor_id],
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating invitation:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbReady();
+    const { id } = await params;
+    const { vendor_id } = await request.json();
+
+    if (!vendor_id) {
+      return NextResponse.json({ error: 'vendor_id required' }, { status: 400 });
+    }
+
+    // Delete invitation
+    await db().execute({
+      sql: 'DELETE FROM bid_invitations WHERE bid_id = ? AND vendor_id = ?',
+      args: [id, vendor_id],
+    });
+
+    // Delete any vendor responses
+    await db().execute({
+      sql: 'DELETE FROM vendor_responses WHERE bid_id = ? AND vendor_id = ?',
+      args: [id, vendor_id],
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Error deleting invitation:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }

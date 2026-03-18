@@ -7,6 +7,7 @@ import { useEffect, useState, useMemo } from "react";
 interface Parameter {
   name: string;
   options: string[];
+  is_track?: boolean;
 }
 
 interface DiscountRule {
@@ -181,9 +182,13 @@ export default function CustomerBidDetailPage() {
   const [winner, setWinner] = useState<{ vendor_id: string; vendor_name: string } | null>(null);
   const [selectingWinner, setSelectingWinner] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [winnerModal, setWinnerModal] = useState<{ vendorName: string; vendorId: string; responseId: string } | null>(null);
+  const [winnerCombo, setWinnerCombo] = useState<string>("");
+  const [winnerNotes, setWinnerNotes] = useState("");
   const [filterMode, setFilterMode] = useState<Set<string>>(new Set(["combination", "additive"]));
-  const [filterMaxPrice, setFilterMaxPrice] = useState(100000);
+  const [filterMaxPrice, setFilterMaxPrice] = useState(5000000);
   const [filterDays, setFilterDays] = useState<number | null>(null); // null = any
+  const [filterParams, setFilterParams] = useState<Record<string, Set<string>>>({}); // param name -> selected options
 
   useEffect(() => {
     fetch(`/api/bids/${id}`)
@@ -225,7 +230,18 @@ export default function CustomerBidDetailPage() {
       return { combinations: [], priceMatrix: new Map(), vendors: filteredVendors };
     }
 
-    const combos = generateCombinations(bid.parameters);
+    const allCombos = generateCombinations(bid.parameters);
+
+    // Filter combinations by selected parameter values
+    const combos = allCombos.filter(combo => {
+      for (const [paramName, selectedOpts] of Object.entries(filterParams)) {
+        if (selectedOpts.size > 0 && !selectedOpts.has(combo[paramName])) {
+          return false;
+        }
+      }
+      return true;
+    });
+
     const matrix = new Map<string, Map<string, number | null>>();
 
     for (const combo of combos) {
@@ -246,7 +262,7 @@ export default function CustomerBidDetailPage() {
     }
 
     return { combinations: combos, priceMatrix: matrix, vendors: filteredVendors };
-  }, [bid, filteredVendors, filterMaxPrice]);
+  }, [bid, filteredVendors, filterMaxPrice, filterParams]);
 
   // Compute stats from the matrix
   const { allPrices, bestOverall, avgOverall } = useMemo(() => {
@@ -338,24 +354,35 @@ export default function CustomerBidDetailPage() {
     navigator.clipboard.writeText(url).then(() => showToast("Link copied")).catch(() => showToast("Copy failed"));
   };
 
-  const handleSelectWinner = async (vendorName: string) => {
+  const openWinnerModal = async (vendorName: string) => {
     if (!bid?.vendor_responses) return;
-    if (!window.confirm(`Select ${vendorName} as the winner for this bid?`)) return;
+    const bidData = await fetch(`/api/bids/${id}`).then(r => r.json());
+    const serverVr = bidData.vendor_responses?.find((r: VendorResponse) => r.vendor_name === vendorName);
+    if (!serverVr) { showToast("Could not find vendor response"); return; }
+    setWinnerModal({ vendorName, vendorId: serverVr.vendor_id, responseId: serverVr.id });
+    setWinnerCombo("");
+    setWinnerNotes("");
+  };
+
+  const handleConfirmWinner = async () => {
+    if (!winnerModal) return;
     setSelectingWinner(true);
     try {
-      const bidData = await fetch(`/api/bids/${id}`).then(r => r.json());
-      const serverVr = bidData.vendor_responses?.find((r: VendorResponse) => r.vendor_name === vendorName);
-      if (!serverVr) { showToast("Could not find vendor response"); return; }
-
       const res = await fetch(`/api/bids/${id}/winner`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendor_id: serverVr.vendor_id, vendor_response_id: serverVr.id }),
+        body: JSON.stringify({
+          vendor_id: winnerModal.vendorId,
+          vendor_response_id: winnerModal.responseId,
+          winning_combination: winnerCombo || undefined,
+          notes: winnerNotes || undefined,
+        }),
       });
       if (res.ok) {
-        showToast(`${vendorName} selected as winner!`);
-        setWinner({ vendor_id: serverVr.vendor_id, vendor_name: vendorName });
+        showToast(`${winnerModal.vendorName} selected as winner!`);
+        setWinner({ vendor_id: winnerModal.vendorId, vendor_name: winnerModal.vendorName });
         setBidStatus("awarded");
+        setWinnerModal(null);
       } else {
         const data = await res.json();
         showToast(data.error || "Failed to select winner");
@@ -527,7 +554,7 @@ export default function CustomerBidDetailPage() {
                               <button
                                 className="selbtn"
                                 style={{ fontSize: "0.65rem", padding: "2px 7px", marginLeft: 4 }}
-                                onClick={() => handleSelectWinner(vr.vendor_name)}
+                                onClick={() => openWinnerModal(vr.vendor_name)}
                                 disabled={selectingWinner || !!winner}
                               >
                                 Select
@@ -667,7 +694,7 @@ export default function CustomerBidDetailPage() {
                           {winner?.vendor_name === vr.vendor_name ? (
                             <span className="tag tag-active">Winner</span>
                           ) : (
-                            <button className="selbtn" onClick={() => handleSelectWinner(vr.vendor_name)} disabled={selectingWinner || !!winner}>
+                            <button className="selbtn" onClick={() => openWinnerModal(vr.vendor_name)} disabled={selectingWinner || !!winner}>
                               {selectingWinner ? "..." : "Select"}
                             </button>
                           )}
@@ -772,7 +799,117 @@ export default function CustomerBidDetailPage() {
 
       {/* Filter aside */}
       <div className="compare-aside">
-        <div className="fa-title">{"\uD83D\uDD0D"} Filter Bids</div>
+        <div className="fa-title">{"\uD83D\uDD0D"} Filters</div>
+
+        {/* Parameter filters — tracks shown as primary groups */}
+        {bid.parameters && bid.parameters.length > 0 && (() => {
+          const trackParam = bid.parameters.find(p => p.is_track);
+          const subParams = bid.parameters.filter(p => !p.is_track);
+          const selectedTrackOpts = filterParams[trackParam?.name || ""] || new Set<string>();
+          const hasTrackSelection = selectedTrackOpts.size > 0;
+
+          return (
+            <>
+              {trackParam && (
+                <div className="fa-group">
+                  <div className="fa-lbl" style={{ color: "var(--gold)", fontWeight: 800 }}>
+                    {trackParam.name}
+                  </div>
+                  {trackParam.options.map(opt => {
+                    const selected = selectedTrackOpts.has(opt);
+                    const isActive = !hasTrackSelection || selected;
+                    return (
+                      <label key={opt} className="fa-opt" style={{ opacity: isActive ? 1 : 0.4, fontWeight: selected ? 700 : 400 }}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(e) => {
+                            setFilterParams(prev => {
+                              const next = { ...prev };
+                              const set = new Set(prev[trackParam.name] || []);
+                              if (e.target.checked) set.add(opt); else set.delete(opt);
+                              next[trackParam.name] = set;
+                              return next;
+                            });
+                          }}
+                        /> {opt}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Sub-parameters — shown indented, dimmed when no track selected */}
+              {subParams.map(param => {
+                const selected = filterParams[param.name] || new Set<string>();
+                const anySelected = selected.size > 0;
+                const dimmed = trackParam && !hasTrackSelection;
+                return (
+                  <div className="fa-group" key={param.name} style={{
+                    opacity: dimmed ? 0.35 : 1,
+                    pointerEvents: dimmed ? "none" : "auto",
+                    paddingLeft: trackParam ? 8 : 0,
+                    borderLeft: trackParam ? "2px solid var(--gold-b)" : "none",
+                    transition: "opacity 0.2s",
+                  }}>
+                    <div className="fa-lbl">{param.name}</div>
+                    {param.options.map(opt => {
+                      const isSelected = selected.has(opt);
+                      const isActive = !anySelected || isSelected;
+                      return (
+                        <label key={opt} className="fa-opt" style={{ opacity: isActive ? 1 : 0.5 }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              setFilterParams(prev => {
+                                const next = { ...prev };
+                                const set = new Set(prev[param.name] || []);
+                                if (e.target.checked) set.add(opt); else set.delete(opt);
+                                next[param.name] = set;
+                                return next;
+                              });
+                            }}
+                          /> {opt}
+                        </label>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {/* Non-track params (if no track exists) */}
+              {!trackParam && bid.parameters.map(param => (
+                <div className="fa-group" key={param.name}>
+                  <div className="fa-lbl">{param.name}</div>
+                  {param.options.map(opt => {
+                    const isSelected = (filterParams[param.name] || new Set()).has(opt);
+                    const anySelected = (filterParams[param.name]?.size ?? 0) > 0;
+                    const isActive = !anySelected || isSelected;
+                    return (
+                      <label key={opt} className="fa-opt" style={{ opacity: isActive ? 1 : 0.5 }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            setFilterParams(prev => {
+                              const next = { ...prev };
+                              const set = new Set(prev[param.name] || []);
+                              if (e.target.checked) set.add(opt); else set.delete(opt);
+                              next[param.name] = set;
+                              return next;
+                            });
+                          }}
+                        /> {opt}
+                      </label>
+                    );
+                  })}
+                </div>
+              ))}
+            </>
+          );
+        })()}
+
         <div className="fa-group">
           <div className="fa-lbl">Pricing Mode</div>
           <label className="fa-opt">
@@ -803,15 +940,15 @@ export default function CustomerBidDetailPage() {
           <div className="fa-range">
             <input
               type="range"
-              min="1000"
-              max="100000"
-              step="1000"
+              min="10000"
+              max="5000000"
+              step="10000"
               value={filterMaxPrice}
               onChange={(e) => setFilterMaxPrice(Number(e.target.value))}
             />
             <div className="fa-range-lbls">
-              <span>$1K</span>
-              <span>{filterMaxPrice >= 100000 ? "Any" : `$${(filterMaxPrice / 1000).toFixed(0)}K`}</span>
+              <span>$10K</span>
+              <span>{filterMaxPrice >= 5000000 ? "Any" : `$${(filterMaxPrice / 1000).toFixed(0)}K`}</span>
             </div>
           </div>
         </div>
@@ -832,8 +969,9 @@ export default function CustomerBidDetailPage() {
           style={{ width: "100%", justifyContent: "center" }}
           onClick={() => {
             setFilterMode(new Set(["combination", "additive"]));
-            setFilterMaxPrice(100000);
+            setFilterMaxPrice(5000000);
             setFilterDays(null);
+            setFilterParams({});
             showToast("Filters reset");
           }}
         >
@@ -841,6 +979,93 @@ export default function CustomerBidDetailPage() {
         </button>
       </div>
       </div>
+
+      {/* Winner Selection Modal */}
+      {winnerModal && bid && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={() => setWinnerModal(null)}>
+          <div className="scard" style={{ width: 480, maxHeight: "80vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+            <div className="scard-head">
+              <h3>Select Winner</h3>
+            </div>
+            <div style={{ padding: 20 }}>
+              <p style={{ fontSize: "0.88rem", color: "var(--ink)", marginBottom: 16 }}>
+                Awarding <strong style={{ color: "var(--gold)" }}>{winnerModal.vendorName}</strong> for <strong>{bid.title}</strong>
+              </p>
+
+              {/* Winning option selection */}
+              {hasParams && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+                    Winning Option
+                  </div>
+                  <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: 8 }}>
+                    Select which pricing option the vendor won with:
+                  </p>
+                  <div style={{ maxHeight: 200, overflow: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+                    {combinations.map((combo, i) => {
+                      const comboKey = makeCombinationKey(combo);
+                      const price = priceMatrix.get(comboKey)?.get(winnerModal.vendorName) ?? null;
+                      const label = Object.entries(combo).map(([k, v]) => `${k}: ${v}`).join(" + ");
+                      return (
+                        <label key={i} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                          borderBottom: i < combinations.length - 1 ? "1px solid var(--border)" : "none",
+                          cursor: "pointer", fontSize: "0.84rem",
+                          background: winnerCombo === label ? "var(--gold-bg)" : "transparent",
+                        }}>
+                          <input
+                            type="radio"
+                            name="winner-combo"
+                            value={label}
+                            checked={winnerCombo === label}
+                            onChange={() => setWinnerCombo(label)}
+                            style={{ accentColor: "var(--gold)" }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, color: "var(--ink)" }}>{label}</div>
+                          </div>
+                          <div style={{ fontWeight: 700, color: price !== null ? "var(--gold)" : "var(--muted)", fontSize: "0.88rem" }}>
+                            {price !== null ? `$${Number(price).toLocaleString()}` : "\u2014"}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                  Notes (optional)
+                </div>
+                <textarea
+                  value={winnerNotes}
+                  onChange={e => setWinnerNotes(e.target.value)}
+                  placeholder="Any additional notes for the winner..."
+                  style={{
+                    width: "100%", padding: "8px 12px", border: "1.5px solid var(--border)",
+                    borderRadius: 8, fontSize: "0.84rem", minHeight: 60, resize: "vertical",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif", boxSizing: "border-box",
+                    background: "var(--surface)", color: "var(--ink)",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="btn btn-outline" onClick={() => setWinnerModal(null)}>Cancel</button>
+                <button
+                  className="btn btn-gold"
+                  onClick={handleConfirmWinner}
+                  disabled={selectingWinner || (hasParams && !winnerCombo)}
+                >
+                  {selectingWinner ? "Selecting..." : "Confirm Winner"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

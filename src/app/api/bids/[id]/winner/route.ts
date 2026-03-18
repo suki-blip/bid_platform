@@ -39,7 +39,7 @@ export async function POST(
     const { id } = await params;
 
     const body = await request.json();
-    const { vendor_id, vendor_response_id, notes } = body;
+    const { vendor_id, vendor_response_id, notes, winning_combination } = body;
 
     if (!vendor_id || !vendor_response_id) {
       return NextResponse.json({ error: 'Missing required fields: vendor_id, vendor_response_id' }, { status: 400 });
@@ -62,8 +62,8 @@ export async function POST(
     const winnerId = crypto.randomUUID();
     await db().batch([
       {
-        sql: 'INSERT INTO bid_winners (id, bid_id, vendor_id, vendor_response_id, notes) VALUES (?, ?, ?, ?, ?)',
-        args: [winnerId, id, vendor_id, vendor_response_id, notes || null],
+        sql: 'INSERT INTO bid_winners (id, bid_id, vendor_id, vendor_response_id, notes, winning_combination) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [winnerId, id, vendor_id, vendor_response_id, notes || null, winning_combination || null],
       },
       {
         sql: "UPDATE bids SET status = 'awarded' WHERE id = ?",
@@ -81,11 +81,24 @@ export async function POST(
     const winnerVendor = await db().execute({ sql: 'SELECT * FROM vendors WHERE id = ?', args: [vendor_id] });
     if (winnerVendor.rows.length > 0) {
       const v = winnerVendor.rows[0];
+      // Get sender name and project name
+      let senderName = '';
+      const cookieHeader = request.headers.get('cookie') || '';
+      const authMatch = cookieHeader.match(/contractor-auth=([^;]+)/);
+      if (authMatch) {
+        try { const decoded = JSON.parse(Buffer.from(authMatch[1], 'base64').toString()); senderName = decoded.name || decoded.company || ''; } catch {}
+      }
+      const projectResult = await db().execute({ sql: 'SELECT p.name FROM projects p JOIN bids b ON b.project_id = p.id WHERE b.id = ?', args: [id] });
+      const projectName = projectResult.rows[0]?.name as string || '';
+
       const email = winnerNotificationEmail({
         vendorName: v.name as string,
         bidTitle: bid.title as string,
         notes: notes || undefined,
         portalUrl,
+        winningOption: winning_combination || undefined,
+        senderName: senderName || undefined,
+        projectName: projectName || undefined,
       });
       await sendEmail({ to: v.email as string, ...email });
     }

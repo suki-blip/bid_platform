@@ -40,6 +40,7 @@ export default function VendorsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [tradeFilter, setTradeFilter] = useState("");
+  const [groupByCategory, setGroupByCategory] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; errors: { row: number; reason: string }[] } | null>(null);
@@ -161,6 +162,13 @@ export default function VendorsPage() {
           <option value="">All Trades</option>
           {trades.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
+        <button
+          className={`btn btn-xs ${groupByCategory ? "btn-gold" : "btn-outline"}`}
+          onClick={() => setGroupByCategory(!groupByCategory)}
+          title="Group by category"
+        >
+          {groupByCategory ? "☰ Grouped" : "☰ Group by Category"}
+        </button>
         <span className="fcount">{filtered.length} vendors</span>
         <div className="fright">
           <button className="btn btn-outline btn-xs" onClick={() => { setShowImport(true); setImportResult(null); }}>&#128196; Import CSV</button>
@@ -170,52 +178,163 @@ export default function VendorsPage() {
 
       <div className="scroll">
       {/* Vendor table */}
-      <div className="scard" style={{ margin: "16px 0" }}>
-        <table className="ctable">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Trade</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: "center", padding: 24, color: "var(--muted)", fontSize: "0.85rem" }}>No vendors found.</td></tr>
-            )}
-            {filtered.map(v => (
-              <tr key={v.id}>
-                <td>
-                  <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{v.name}</div>
-                  {v.contact_person && <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{v.contact_person}</div>}
-                </td>
-                <td style={{ fontSize: "0.82rem" }}>{v.email}</td>
-                <td style={{ fontSize: "0.82rem", color: "var(--muted)" }}>{v.phone || "—"}</td>
-                <td>{v.trade_name ? <span className="tag tag-draft">{v.trade_name}</span> : <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>—</span>}</td>
-                <td>
-                  <span className={`tag ${v.status === "active" ? "tag-active" : v.status === "suspended" ? "tag-pending" : "tag-closed"}`}>
-                    {v.status}
-                  </span>
-                </td>
-                <td>
-                  {v.status === "active" && (
-                    <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "suspended")}>Suspend</button>
-                  )}
-                  {v.status === "suspended" && (
-                    <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "active")}>Reactivate</button>
-                  )}
-                  {v.status !== "removed" && (
-                    <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem", color: "var(--red)", borderColor: "var(--red-b)", marginLeft: 4 }} onClick={() => handleStatusChange(v.id, "removed")}>Remove</button>
-                  )}
-                </td>
+      {!groupByCategory ? (
+        <div className="scard" style={{ margin: "16px 0" }}>
+          <table className="ctable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Trade</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: "center", padding: 24, color: "var(--muted)", fontSize: "0.85rem" }}>No vendors found.</td></tr>
+              )}
+              {filtered.map(v => (
+                <tr key={v.id}>
+                  <td>
+                    <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{v.name}</div>
+                    {v.contact_person && <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{v.contact_person}</div>}
+                  </td>
+                  <td style={{ fontSize: "0.82rem" }}>{v.email}</td>
+                  <td style={{ fontSize: "0.82rem", color: "var(--muted)" }}>{v.phone || "—"}</td>
+                  <td>{v.trade_name ? <span className="tag tag-draft">{v.trade_name}</span> : <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>—</span>}</td>
+                  <td>
+                    <span className={`tag ${v.status === "active" ? "tag-active" : v.status === "suspended" ? "tag-pending" : "tag-closed"}`}>
+                      {v.status}
+                    </span>
+                  </td>
+                  <td>
+                    {v.status === "active" && (
+                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "suspended")}>Suspend</button>
+                    )}
+                    {v.status === "suspended" && (
+                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "active")}>Reactivate</button>
+                    )}
+                    {v.status !== "removed" && (
+                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem", color: "var(--red)", borderColor: "var(--red-b)", marginLeft: 4 }} onClick={() => handleStatusChange(v.id, "removed")}>Remove</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        /* Grouped by category view */
+        <div style={{ margin: "16px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+          {(() => {
+            // Build groups: group by trade_category (or "Uncategorized")
+            const groups: Record<string, { name: string; grp: string; vendors: Vendor[] }> = {};
+            for (const v of filtered) {
+              const key = v.trade_category || "__none__";
+              if (!groups[key]) {
+                groups[key] = {
+                  name: v.trade_name || "Uncategorized",
+                  grp: v.trade_group || "",
+                  vendors: [],
+                };
+              }
+              groups[key].vendors.push(v);
+            }
+
+            // Sort groups: by trade group, then by name; uncategorized last
+            const sortedKeys = Object.keys(groups).sort((a, b) => {
+              if (a === "__none__") return 1;
+              if (b === "__none__") return -1;
+              const ga = groups[a].grp;
+              const gb = groups[b].grp;
+              if (ga !== gb) return ga.localeCompare(gb);
+              return groups[a].name.localeCompare(groups[b].name);
+            });
+
+            // Group keys by trade group
+            let currentGrp = "";
+            const elements: React.ReactNode[] = [];
+
+            for (const key of sortedKeys) {
+              const group = groups[key];
+              if (group.grp !== currentGrp) {
+                currentGrp = group.grp;
+                elements.push(
+                  <div key={`grp-${currentGrp}`} style={{
+                    fontSize: "0.68rem", fontWeight: 800, color: "var(--muted)",
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    marginTop: elements.length > 0 ? 8 : 0, marginBottom: 2,
+                  }}>
+                    {currentGrp || "OTHER"}
+                  </div>
+                );
+              }
+
+              elements.push(
+                <div key={key} className="scard" style={{ overflow: "hidden" }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "10px 16px", background: "var(--gold-bg)",
+                    borderBottom: "1px solid var(--gold-b)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800,
+                        fontSize: "0.88rem", color: "var(--ink)",
+                      }}>
+                        {group.name}
+                      </span>
+                      <span style={{
+                        fontSize: "0.68rem", fontWeight: 700, color: "var(--gold)",
+                        background: "var(--card)", padding: "1px 8px", borderRadius: 100,
+                        border: "1px solid var(--gold-b)",
+                      }}>
+                        {group.vendors.length}
+                      </span>
+                    </div>
+                  </div>
+                  <table className="ctable">
+                    <tbody>
+                      {group.vendors.map(v => (
+                        <tr key={v.id}>
+                          <td>
+                            <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{v.name}</div>
+                            {v.contact_person && <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{v.contact_person}</div>}
+                          </td>
+                          <td style={{ fontSize: "0.82rem" }}>{v.email}</td>
+                          <td style={{ fontSize: "0.82rem", color: "var(--muted)" }}>{v.phone || "—"}</td>
+                          <td>
+                            <span className={`tag ${v.status === "active" ? "tag-active" : v.status === "suspended" ? "tag-pending" : "tag-closed"}`}>
+                              {v.status}
+                            </span>
+                          </td>
+                          <td>
+                            {v.status === "active" && (
+                              <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "suspended")}>Suspend</button>
+                            )}
+                            {v.status === "suspended" && (
+                              <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "active")}>Reactivate</button>
+                            )}
+                            {v.status !== "removed" && (
+                              <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem", color: "var(--red)", borderColor: "var(--red-b)", marginLeft: 4 }} onClick={() => handleStatusChange(v.id, "removed")}>Remove</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
+
+            return elements.length > 0 ? elements : (
+              <div style={{ textAlign: "center", padding: 24, color: "var(--muted)", fontSize: "0.85rem" }}>No vendors found.</div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Add Vendor Modal */}
       {showAdd && (

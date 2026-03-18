@@ -171,6 +171,33 @@ async function initializeDatabase() {
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       category_id TEXT NOT NULL REFERENCES trade_categories(id) ON DELETE CASCADE
     )`,
+    `CREATE TABLE IF NOT EXISTS file_links (
+      id TEXT PRIMARY KEY,
+      ref_type TEXT NOT NULL,
+      ref_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS bid_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category_id TEXT REFERENCES trade_categories(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      parameters TEXT NOT NULL DEFAULT '[]',
+      checklist TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS category_presets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      project_type TEXT,
+      category_ids TEXT NOT NULL DEFAULT '[]',
+      include_vendors INTEGER NOT NULL DEFAULT 0,
+      vendor_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
 
   // Run each CREATE TABLE individually to avoid batch failures on existing schemas
@@ -183,6 +210,13 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE bids ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch {}
   try { await client.execute('ALTER TABLE vendor_responses ADD COLUMN vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL'); } catch {}
   try { await client.execute('ALTER TABLE vendors ADD COLUMN password_hash TEXT'); } catch {}
+  try { await client.execute('ALTER TABLE projects ADD COLUMN owner_id TEXT REFERENCES saas_users(id) ON DELETE SET NULL'); } catch {}
+  try { await client.execute('ALTER TABLE bids ADD COLUMN trade_category_id TEXT REFERENCES trade_categories(id) ON DELETE SET NULL'); } catch {}
+  try { await client.execute("ALTER TABLE bid_parameters ADD COLUMN is_track INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { await client.execute("ALTER TABLE bid_winners ADD COLUMN winning_combination TEXT"); } catch {}
+  try { await client.execute("ALTER TABLE bids ADD COLUMN checklist TEXT DEFAULT '[]'"); } catch {}
+  try { await client.execute("ALTER TABLE bids ADD COLUMN allow_ve INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { await client.execute("ALTER TABLE vendor_responses ADD COLUMN checklist_answers TEXT DEFAULT '[]'"); } catch {}
 
   // Seed default trade categories
   const defaultCategories = [

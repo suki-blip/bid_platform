@@ -197,16 +197,27 @@ export default function UsersPage() {
                 : <button className="btn btn-sm btn-outline" onClick={() => { toggleStatus(activeUser.id, activeUser.status); setModal(null); }}>⏸ Suspend Account</button>
               }
               {activeUser.payment === 'unpaid' && (
-                <button className="btn btn-sm btn-gold" onClick={() => {
-                  fetch('/api/admin/messages', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      recipients: { type: 'custom', custom_ids: [activeUser.id] },
-                      subject: 'Payment Reminder — BidMaster',
-                      body: `Hi ${activeUser.name},\n\nYour payment for BidMaster is overdue.\n\nPlease update your payment method.\n\nBidMaster Team`,
-                    }),
-                  }).then(() => toast('Reminder sent'));
-                }}>📧 Send Reminder</button>
+                <>
+                  <button className="btn btn-sm btn-gold" onClick={() => {
+                    fetch('/api/admin/messages', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        recipients: { type: 'custom', custom_ids: [activeUser.id] },
+                        subject: 'Payment Reminder — BidMaster',
+                        body: `Hi ${activeUser.name},\n\nYour payment for BidMaster is overdue.\n\nPlease update your payment method.\n\nBidMaster Team`,
+                      }),
+                    }).then(() => toast('Reminder sent'));
+                  }}>📧 Send Reminder</button>
+                  <button className="btn btn-sm btn-green" onClick={async () => {
+                    await fetch('/api/admin/payments', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ user_id: activeUser.id, amount: 199, status: 'paid' }),
+                    });
+                    toast('Payment recorded — user marked as paid');
+                    setModal(null);
+                    loadUsers();
+                  }}>💰 Record Payment ($199)</button>
+                </>
               )}
               <button className="btn btn-sm btn-outline" onClick={() => { setModal('password'); }}>🔑 Change Password</button>
             </div>

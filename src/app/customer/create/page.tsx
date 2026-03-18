@@ -7,6 +7,7 @@ import { useState, useRef, useEffect, Suspense } from "react";
 interface Parameter {
   name: string;
   options: string[];
+  is_track?: boolean;
 }
 
 interface Project {
@@ -18,6 +19,16 @@ interface ProjectFile {
   id: string;
   filename: string;
   uploaded_at: string;
+}
+
+interface BidTemplate {
+  id: string;
+  name: string;
+  category_id: string | null;
+  title: string;
+  description: string;
+  parameters: Parameter[];
+  checklist: string[];
 }
 
 function showToast(msg: string) {
@@ -44,12 +55,16 @@ function CreateBidContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectIdFromUrl = searchParams.get("project");
+  const categoryIdFromUrl = searchParams.get("category");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
+  const [fileLinks, setFileLinks] = useState<{ url: string; label: string }[]>([]);
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [newLinkLabel, setNewLinkLabel] = useState("");
   const [parameters, setParameters] = useState<Parameter[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +81,17 @@ function CreateBidContent() {
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [selectedProjectFileIds, setSelectedProjectFileIds] = useState<Set<string>>(new Set());
 
+  // Templates
+  const [templates, setTemplates] = useState<BidTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // Checklist
+  const [checklist, setChecklist] = useState<{ text: string; checked: boolean }[]>([]);
+  const [newCheckItem, setNewCheckItem] = useState("");
+
   useEffect(() => {
     fetch("/api/projects")
       .then((r) => (r.ok ? r.json() : []))
@@ -79,6 +105,51 @@ function CreateBidContent() {
       .catch(() => {})
       .finally(() => setLoadingProjects(false));
   }, [projectIdFromUrl]);
+
+  // Load templates
+  useEffect(() => {
+    fetch("/api/bid-templates")
+      .then(r => r.ok ? r.json() : [])
+      .then(setTemplates)
+      .catch(() => {});
+  }, []);
+
+  function loadTemplate(t: BidTemplate) {
+    setTitle(t.title);
+    setDescription(t.description);
+    setParameters(t.parameters.map(p => ({ ...p, options: [...p.options] })));
+    setChecklist(t.checklist.map(text => ({ text, checked: false })));
+    setShowTemplates(false);
+    showToast(`Template "${t.name}" loaded`);
+  }
+
+  async function handleSaveTemplate() {
+    if (!templateName || !title) return;
+    setSavingTemplate(true);
+    try {
+      const res = await fetch("/api/bid-templates", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: templateName,
+          category_id: categoryIdFromUrl || null,
+          title,
+          description,
+          parameters: parameters.filter(p => p.name.trim() && p.options.length > 0).map(p => ({ ...p, is_track: !!p.is_track })),
+          checklist: checklist.map(c => c.text),
+        }),
+      });
+      if (res.ok) {
+        const newT = await res.json();
+        newT.parameters = newT.parameters || parameters;
+        newT.checklist = newT.checklist || checklist.map(c => c.text);
+        setTemplates(prev => [newT, ...prev]);
+        setShowSaveTemplate(false);
+        setTemplateName("");
+        showToast("Template saved!");
+      }
+    } catch { showToast("Failed to save"); }
+    finally { setSavingTemplate(false); }
+  }
 
   // Load project files when project is selected
   const activeProjectId = projectIdFromUrl || selectedProjectId;
@@ -94,8 +165,8 @@ function CreateBidContent() {
     }
   }, [activeProjectId]);
 
-  const addParameter = () => {
-    setParameters([...parameters, { name: "", options: [] }]);
+  const addParameter = (isTrack = false) => {
+    setParameters([...parameters, { name: "", options: [], is_track: isTrack }]);
   };
 
   const removeParameter = (index: number) => {
@@ -148,11 +219,14 @@ function CreateBidContent() {
         deadline,
         parameters: parameters
           .filter((p) => p.name.trim() && p.options.length > 0)
-          .map((p) => ({ name: p.name.trim(), options: p.options })),
+          .map((p, i) => ({ name: p.name.trim(), options: p.options, is_track: !!p.is_track, sort_order: i })),
       };
 
       if (projectId) {
         body.project_id = projectId;
+      }
+      if (categoryIdFromUrl) {
+        body.trade_category_id = categoryIdFromUrl;
       }
 
       const res = await fetch("/api/bids", {
@@ -191,8 +265,18 @@ function CreateBidContent() {
         }).catch(() => console.error("Failed to attach project files"));
       }
 
+      // Save file links
+      if (fileLinks.length > 0) {
+        await fetch("/api/file-links", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ref_type: "bid", ref_id: bid.id, links: fileLinks }),
+        }).catch(() => console.error("Failed to save file links"));
+      }
+
       showToast("Bid request created successfully!");
-      router.push("/customer");
+      const returnTo = projectIdFromUrl ? `/customer/project/${projectIdFromUrl}` : "/customer";
+      router.push(returnTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -234,6 +318,118 @@ function CreateBidContent() {
         <div className="create-wrap">
           <div>
             <form onSubmit={handleSubmit}>
+              {/* Template loader */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, marginBottom: 14,
+                padding: "10px 14px", background: "var(--bg)", borderRadius: 8,
+                border: "1px solid var(--border)",
+              }}>
+                <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--muted)", flex: 1 }}>
+                  Load from template
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowTemplates(!showTemplates)}
+                  style={{
+                    fontSize: "0.76rem", fontWeight: 700, color: "var(--gold)",
+                    background: "none", border: "none", cursor: "pointer",
+                  }}
+                >
+                  {showTemplates ? "Close" : `Templates (${templates.length})`}
+                </button>
+                {title && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveTemplate(!showSaveTemplate)}
+                    style={{
+                      fontSize: "0.72rem", fontWeight: 600, color: "var(--muted)",
+                      background: "none", border: "none", cursor: "pointer",
+                    }}
+                  >
+                    Save as Template
+                  </button>
+                )}
+              </div>
+
+              {/* Template list */}
+              {showTemplates && (
+                <div style={{
+                  marginBottom: 14, border: "1.5px solid var(--gold-b)", borderRadius: 10,
+                  background: "var(--gold-bg)", padding: 14, maxHeight: 280, overflowY: "auto",
+                }}>
+                  {templates.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "16px", color: "var(--muted)", fontSize: "0.82rem" }}>
+                      No templates saved yet. Create a bid and save it as a template.
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "var(--gold)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+                        Saved Templates
+                      </div>
+                      {templates.map(t => (
+                        <div
+                          key={t.id}
+                          onClick={() => loadTemplate(t)}
+                          style={{
+                            padding: "10px 12px", background: "var(--card)", borderRadius: 8,
+                            border: "1px solid var(--border)", marginBottom: 6,
+                            cursor: "pointer", transition: "all 0.12s",
+                          }}
+                          onMouseOver={e => { e.currentTarget.style.borderColor = "var(--gold-b)"; e.currentTarget.style.background = "var(--surface)"; }}
+                          onMouseOut={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--card)"; }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{t.name}</div>
+                              <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 2 }}>
+                                {t.parameters.length} parameters · {t.checklist.length} checklist items
+                                {t.category_id && <span style={{ marginLeft: 6, color: "var(--gold)", fontWeight: 600 }}>{t.category_id}</span>}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--gold)" }}>Load →</span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Save template form */}
+              {showSaveTemplate && (
+                <div style={{
+                  marginBottom: 14, padding: "12px 14px", background: "var(--bg)",
+                  borderRadius: 8, border: "1px solid var(--border)",
+                  display: "flex", gap: 8, alignItems: "end",
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--muted)", marginBottom: 4, textTransform: "uppercase" }}>Template Name</div>
+                    <input
+                      className="finput"
+                      value={templateName}
+                      onChange={e => setTemplateName(e.target.value)}
+                      placeholder="e.g. Kitchen Cabinets - Bronx"
+                      style={{ fontSize: "0.82rem" }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-gold btn-xs"
+                    onClick={handleSaveTemplate}
+                    disabled={!templateName || savingTemplate}
+                  >
+                    {savingTemplate ? "..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowSaveTemplate(false); setTemplateName(""); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: "0.82rem" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {error && (
                 <div
                   style={{
@@ -329,14 +525,24 @@ function CreateBidContent() {
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span className="fsect-num">2</span> Parameters
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-xs"
-                      onClick={addParameter}
-                      style={{ fontSize: "0.7rem" }}
-                    >
-                      + Add Parameter
-                    </button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        type="button"
+                        className="btn btn-gold btn-xs"
+                        onClick={() => addParameter(true)}
+                        style={{ fontSize: "0.7rem" }}
+                      >
+                        + Pricing Track
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-xs"
+                        onClick={() => addParameter(false)}
+                        style={{ fontSize: "0.7rem" }}
+                      >
+                        + Parameter
+                      </button>
+                    </div>
                   </div>
 
                   {parameters.length === 0 && (
@@ -349,19 +555,28 @@ function CreateBidContent() {
                     <div
                       key={paramIndex}
                       style={{
-                        border: "1.5px solid var(--border)",
+                        border: param.is_track ? "2px solid var(--gold)" : "1.5px solid var(--border)",
                         borderRadius: "10px",
                         padding: "14px",
-                        background: "var(--bg)",
+                        background: param.is_track ? "var(--gold-bg)" : "var(--bg)",
                         marginBottom: "10px",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                        {param.is_track && (
+                          <span style={{
+                            fontSize: "0.62rem", fontWeight: 800, color: "var(--gold)",
+                            background: "rgba(217,119,6,0.15)", padding: "2px 8px",
+                            borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.06em",
+                          }}>
+                            Track
+                          </span>
+                        )}
                         <input
                           className="finput"
                           value={param.name}
                           onChange={(e) => updateParameterName(paramIndex, e.target.value)}
-                          placeholder="Parameter name (e.g., Color)"
+                          placeholder={param.is_track ? "Track name (e.g., Source)" : "Parameter name (e.g., Material)"}
                           style={{ flex: 1 }}
                         />
                         <button
@@ -424,6 +639,77 @@ function CreateBidContent() {
                   ))}
                 </div>
               </div>
+
+              {/* Section 2.5: Checklist */}
+              {checklist.length > 0 && (
+                <div className="fcard">
+                  <div className="fsect">
+                    <div className="fsect-title" style={{ justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span className="fsect-num">✓</span> Requirements Checklist
+                      </div>
+                    </div>
+                    {checklist.map((item, i) => (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "6px 0",
+                        borderBottom: i < checklist.length - 1 ? "1px solid var(--border)" : "none",
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={() => {
+                            const updated = [...checklist];
+                            updated[i] = { ...updated[i], checked: !updated[i].checked };
+                            setChecklist(updated);
+                          }}
+                          style={{ accentColor: "var(--gold)" }}
+                        />
+                        <span style={{
+                          flex: 1, fontSize: "0.84rem", color: item.checked ? "var(--muted)" : "var(--ink)",
+                          textDecoration: item.checked ? "line-through" : "none",
+                        }}>
+                          {item.text}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setChecklist(checklist.filter((_, j) => j !== i))}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: "0.7rem" }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <input
+                        className="finput"
+                        value={newCheckItem}
+                        onChange={e => setNewCheckItem(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && newCheckItem.trim()) {
+                            e.preventDefault();
+                            setChecklist([...checklist, { text: newCheckItem.trim(), checked: false }]);
+                            setNewCheckItem("");
+                          }
+                        }}
+                        placeholder="Add requirement..."
+                        style={{ flex: 1, fontSize: "0.82rem" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-xs"
+                        onClick={() => {
+                          if (newCheckItem.trim()) {
+                            setChecklist([...checklist, { text: newCheckItem.trim(), checked: false }]);
+                            setNewCheckItem("");
+                          }
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Section 3: Attachments */}
               <div className="fcard">
@@ -498,6 +784,77 @@ function CreateBidContent() {
                         <span className="afile-size">{(file.size / 1024).toFixed(0)} KB</span>
                       </div>
                     ))}
+
+                  {/* File links */}
+                  <div style={{
+                    marginTop: 14, padding: "12px 14px", background: "var(--bg)",
+                    borderRadius: 8, border: "1px solid var(--border)",
+                  }}>
+                    <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+                      🔗 File Links
+                    </div>
+                    <div style={{ fontSize: "0.74rem", color: "var(--muted)", marginBottom: 10 }}>
+                      Add links to files from Google Drive, Dropbox, OneDrive, etc.
+                    </div>
+
+                    {fileLinks.map((link, i) => (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "6px 0",
+                        borderBottom: i < fileLinks.length - 1 ? "1px solid var(--border)" : "none",
+                      }}>
+                        <span style={{ fontSize: "0.78rem" }}>🔗</span>
+                        <a href={link.url} target="_blank" rel="noreferrer" style={{
+                          flex: 1, fontSize: "0.82rem", fontWeight: 600, color: "var(--gold)",
+                          textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {link.label || link.url}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setFileLinks(fileLinks.filter((_, j) => j !== i))}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: "0.7rem" }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+
+                    <div style={{ display: "flex", gap: 6, marginTop: fileLinks.length > 0 ? 8 : 0 }}>
+                      <input
+                        className="finput"
+                        value={newLinkUrl}
+                        onChange={e => setNewLinkUrl(e.target.value)}
+                        placeholder="https://drive.google.com/..."
+                        style={{ flex: 2, fontSize: "0.82rem" }}
+                      />
+                      <input
+                        className="finput"
+                        value={newLinkLabel}
+                        onChange={e => setNewLinkLabel(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && newLinkUrl.trim()) {
+                            e.preventDefault();
+                            setFileLinks([...fileLinks, { url: newLinkUrl.trim(), label: newLinkLabel.trim() || newLinkUrl.trim() }]);
+                            setNewLinkUrl(""); setNewLinkLabel("");
+                          }
+                        }}
+                        placeholder="Label (optional)"
+                        style={{ flex: 1, fontSize: "0.82rem" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-xs"
+                        onClick={() => {
+                          if (newLinkUrl.trim()) {
+                            setFileLinks([...fileLinks, { url: newLinkUrl.trim(), label: newLinkLabel.trim() || newLinkUrl.trim() }]);
+                            setNewLinkUrl(""); setNewLinkLabel("");
+                          }
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -544,8 +901,14 @@ function CreateBidContent() {
             </div>
             <div className="srow">
               <span>Files</span>
-              <span>{files ? files.length : 0}</span>
+              <span>{(files ? files.length : 0) + fileLinks.length}</span>
             </div>
+            {fileLinks.length > 0 && (
+              <div className="srow">
+                <span>Links</span>
+                <span style={{ color: "var(--gold)" }}>{fileLinks.length}</span>
+              </div>
+            )}
             <hr className="sdiv" />
             <div
               style={{

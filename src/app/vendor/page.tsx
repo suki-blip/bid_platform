@@ -45,20 +45,20 @@ export default function VendorDashboard() {
           <div className="kpi-val">{loading ? "..." : open.length}</div>
           <div className="kpi-sub">Awaiting your bid</div>
         </div>
-        <div className="kpi" style={{ "--kc": "var(--blue)" } as React.CSSProperties}>
+        <div className="kpi" style={{ "--kc": "var(--gold)" } as React.CSSProperties}>
           <div className="kpi-lbl">Bids Submitted</div>
           <div className="kpi-val">{loading ? "..." : submitted.length}</div>
-          <div className="kpi-sub">Under review</div>
+          <div className="kpi-sub neutral">Under review</div>
         </div>
-        <div className="kpi" style={{ "--kc": "var(--green)" } as React.CSSProperties}>
+        <div className="kpi" style={{ "--kc": "var(--gold)" } as React.CSSProperties}>
           <div className="kpi-lbl">Bids Won</div>
           <div className="kpi-val">{loading ? "..." : won.length}</div>
-          <div className="kpi-sub win">🏆 {winRate}% win rate</div>
+          <div className="kpi-sub">{winRate}% win rate</div>
         </div>
-        <div className="kpi" style={{ "--kc": "var(--purple)" } as React.CSSProperties}>
+        <div className="kpi" style={{ "--kc": "var(--gold)" } as React.CSSProperties}>
           <div className="kpi-lbl">Total Bids</div>
           <div className="kpi-val">{loading ? "..." : bids.length}</div>
-          <div className="kpi-sub">All time</div>
+          <div className="kpi-sub neutral">All time</div>
         </div>
       </div>
 

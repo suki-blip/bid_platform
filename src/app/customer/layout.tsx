@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 interface Bid {
@@ -57,9 +57,18 @@ export default function CustomerLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [bids, setBids] = useState<Bid[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [user, setUser] = useState<{ name: string; company: string; plan: string; email: string } | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityFeed, setActivityFeed] = useState<{ icon: string; text: string; time: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/auth/me").then(r => r.ok ? r.json() : null).then(setUser).catch(() => {});
+    fetch("/api/activity").then(r => r.ok ? r.json() : []).then(setActivityFeed).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -93,21 +102,29 @@ export default function CustomerLayout({
     if (pathname === "/customer") return "Dashboard";
     if (pathname === "/customer/create") return "Create Bid Request";
     if (pathname?.startsWith("/customer/vendors")) return "Vendors";
+    if (pathname?.startsWith("/customer/billing")) return "Billing & Subscription";
     if (pathname?.startsWith("/customer/settings")) return "Settings";
     if (pathname?.startsWith("/customer/new-project")) return "New Project";
-    if (pathname?.startsWith("/customer/project/")) return "Project Details";
+    if (pathname?.includes("/category/")) return "Category";
+    if (pathname?.startsWith("/customer/project/")) return "Project";
     if (pathname?.match(/^\/customer\/[^/]+$/)) return "Compare Bids";
     return "Dashboard";
   })();
 
-  const pageSub = pathname === "/customer" ? "Welcome back, James" : "";
+  const pageSub = pathname === "/customer" ? `Welcome back, ${user?.name?.split(" ")[0] || ""}` : "";
 
   const navItems = [
     { label: "Dashboard", icon: "\u25A6", href: "/customer" },
     { label: "Compare Bids", icon: "\u2696", href: "/customer", badge: String(totalBidCount) },
     { label: "Vendors", icon: "\uD83D\uDC65", href: "/customer/vendors" },
+    { label: "Billing", icon: "\uD83D\uDCB3", href: "/customer/billing" },
     { label: "Settings", icon: "\u2699\uFE0F", href: "/customer/settings" },
   ];
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
 
   return (
     <div className="shell">
@@ -116,7 +133,7 @@ export default function CustomerLayout({
           <div className="logo-text">
             Bid<em>Master</em>
           </div>
-          <div className="logo-badge">PRO</div>
+          <div className="logo-badge">{user?.plan?.toUpperCase() || "..."}</div>
         </div>
 
         <div className="sidebar-scroll">
@@ -242,12 +259,13 @@ export default function CustomerLayout({
         </div>
 
         <div className="sidebar-foot">
-          <div className="user-chip">
-            <div className="avatar">JR</div>
-            <div>
-              <div className="u-name">James Robertson</div>
-              <div className="u-role">Procurement Director</div>
+          <div className="user-chip" style={{ cursor: "pointer" }} onClick={handleLogout} title="Click to logout">
+            <div className="avatar">{user ? user.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?"}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="u-name">{user?.name || "Loading..."}</div>
+              <div className="u-role">{user?.company || user?.email || ""}</div>
             </div>
+            <span style={{ fontSize: "0.7rem", color: "var(--faint)", flexShrink: 0 }} title="Logout">&#x23FB;</span>
           </div>
         </div>
       </aside>
@@ -276,12 +294,46 @@ export default function CustomerLayout({
                 {"\u2318"}K
               </span>
             </div>
-            <div className="ibtn" onClick={() => showToast("No new notifications")}>
-              {"\uD83D\uDD14"}
-              <span className="notif-pip"></span>
-            </div>
-            <div className="ibtn" onClick={() => showToast("Settings coming soon")}>
-              {"\u2699\uFE0F"}
+            <div style={{ position: "relative" }}>
+              <div className="ibtn" onClick={() => setActivityOpen(!activityOpen)}>
+                {"\uD83D\uDD14"}
+                {activityFeed.length > 0 && <span className="notif-pip"></span>}
+              </div>
+              {activityOpen && (
+                <>
+                  <div style={{ position: "fixed", inset: 0, zIndex: 98 }} onClick={() => setActivityOpen(false)} />
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 8px)", right: 0, width: 340,
+                    background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 12,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.12)", zIndex: 99, overflow: "hidden",
+                  }}>
+                    <div style={{
+                      padding: "12px 16px", borderBottom: "1px solid var(--border)",
+                      fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800,
+                      fontSize: "0.88rem", color: "var(--ink)",
+                    }}>
+                      Recent Activity
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                      {activityFeed.length === 0 && (
+                        <div style={{ padding: "20px 16px", color: "var(--muted)", fontSize: "0.82rem", textAlign: "center" }}>No recent activity</div>
+                      )}
+                      {activityFeed.slice(0, 10).map((item, i) => (
+                        <div key={i} style={{
+                          display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 16px",
+                          borderBottom: "1px solid var(--border)", fontSize: "0.8rem",
+                        }}>
+                          <span style={{ fontSize: "0.9rem", flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: "var(--ink2)", lineHeight: 1.4 }} dangerouslySetInnerHTML={{ __html: item.text }} />
+                            <div style={{ fontSize: "0.7rem", color: "var(--faint)", marginTop: 2 }}>{item.time}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <Link href="/customer/create" className="btn btn-gold btn-xs">
               {"\uFF0B"} New Bid Request

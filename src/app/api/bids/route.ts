@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     await dbReady();
 
     const body = await request.json();
-    const { title, description, deadline, parameters, project_id, status } = body;
+    const { title, description, deadline, parameters, project_id, trade_category_id, status } = body;
 
     if (!title || !description || !deadline) {
       return NextResponse.json(
@@ -70,8 +70,8 @@ export async function POST(request: Request) {
 
     const statements: { sql: string; args: (string | number | null)[] }[] = [
       {
-        sql: 'INSERT INTO bids (id, title, description, deadline, status, project_id) VALUES (?, ?, ?, ?, ?, ?)',
-        args: [bidId, title, description, deadline, status || 'draft', project_id || null],
+        sql: 'INSERT INTO bids (id, title, description, deadline, status, project_id, trade_category_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        args: [bidId, title, description, deadline, status || 'draft', project_id || null, trade_category_id || null],
       },
     ];
 
@@ -79,8 +79,8 @@ export async function POST(request: Request) {
       for (const param of parameters) {
         const paramId = crypto.randomUUID();
         statements.push({
-          sql: 'INSERT INTO bid_parameters (id, bid_id, name) VALUES (?, ?, ?)',
-          args: [paramId, bidId, param.name],
+          sql: 'INSERT INTO bid_parameters (id, bid_id, name, is_track, sort_order) VALUES (?, ?, ?, ?, ?)',
+          args: [paramId, bidId, param.name, param.is_track ? 1 : 0, param.sort_order ?? 0],
         });
 
         if (param.options && Array.isArray(param.options)) {

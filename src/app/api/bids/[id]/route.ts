@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 
-const VALID_STATUSES = ['draft', 'active', 'closed', 'awarded'];
+const VALID_STATUSES = ['draft', 'active', 'closed', 'awarded', 'paused'];
 
 export async function GET(
   request: Request,
@@ -35,6 +35,7 @@ export async function GET(
         });
         return {
           name: param.name,
+          is_track: Number(param.is_track) === 1,
           options: optionsResult.rows.map((o) => o.value),
         };
       })
@@ -64,8 +65,13 @@ export async function GET(
       })
     );
 
+    let checklist: { text: string; required: boolean }[] = [];
+    try { checklist = JSON.parse((bid.checklist as string) || '[]'); } catch {}
+
     return NextResponse.json({
       ...bid,
+      checklist,
+      allow_ve: Number(bid.allow_ve) === 1,
       parameters: parametersWithOptions,
       files: filesResult.rows,
       vendor_responses: responsesWithPrices,
@@ -89,7 +95,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const allowedFields = ['title', 'description', 'deadline', 'status', 'project_id'];
+    const allowedFields = ['title', 'description', 'deadline', 'status', 'project_id', 'allow_ve'];
     const setClauses: string[] = [];
     const args: (string | null)[] = [];
 
@@ -106,22 +112,61 @@ export async function PATCH(
       }
     }
 
-    if (setClauses.length === 0) {
+    if (setClauses.length === 0 && !body.parameters) {
       return NextResponse.json(
         { error: 'No valid fields to update' },
         { status: 400 }
       );
     }
 
-    args.push(id);
+    if (setClauses.length > 0) {
+      args.push(id);
+      const result = await db().execute({
+        sql: `UPDATE bids SET ${setClauses.join(', ')} WHERE id = ?`,
+        args,
+      });
+      if (result.rowsAffected === 0) {
+        return NextResponse.json({ error: 'Bid not found' }, { status: 404 });
+      }
+    }
 
-    const result = await db().execute({
-      sql: `UPDATE bids SET ${setClauses.join(', ')} WHERE id = ?`,
-      args,
-    });
+    // Update parameters if provided
+    if (body.parameters && Array.isArray(body.parameters)) {
+      const crypto = await import('crypto');
+      // Delete existing params
+      await db().execute({ sql: 'DELETE FROM bid_parameters WHERE bid_id = ?', args: [id] });
 
-    if (result.rowsAffected === 0) {
-      return NextResponse.json({ error: 'Bid not found' }, { status: 404 });
+      for (const param of body.parameters) {
+        const paramId = crypto.randomUUID();
+        await db().execute({
+          sql: 'INSERT INTO bid_parameters (id, bid_id, name, sort_order, is_track) VALUES (?, ?, ?, ?, ?)',
+          args: [paramId, id, param.name, param.sort_order ?? 0, param.is_track ? 1 : 0],
+        });
+        if (param.options && Array.isArray(param.options)) {
+          for (let oi = 0; oi < param.options.length; oi++) {
+            await db().execute({
+              sql: 'INSERT INTO bid_parameter_options (id, parameter_id, value, sort_order) VALUES (?, ?, ?, ?)',
+              args: [crypto.randomUUID(), paramId, param.options[oi], oi],
+            });
+          }
+        }
+      }
+    }
+
+    // Update checklist if provided
+    if (body.checklist !== undefined) {
+      await db().execute({
+        sql: 'UPDATE bids SET checklist = ? WHERE id = ?',
+        args: [JSON.stringify(body.checklist), id],
+      });
+    }
+
+    // Update allow_ve if provided
+    if (body.allow_ve !== undefined) {
+      await db().execute({
+        sql: 'UPDATE bids SET allow_ve = ? WHERE id = ?',
+        args: [body.allow_ve ? 1 : 0, id],
+      });
     }
 
     const updatedBid = await db().execute({

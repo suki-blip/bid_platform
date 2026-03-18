@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface Bid {
   id: string;
@@ -23,35 +24,50 @@ interface Project {
   bid_count: number;
 }
 
-function showToast(msg: string) {
-  const el = document.getElementById("bm-toast");
-  if (!el) return;
-  el.textContent = msg;
-  el.style.opacity = "1";
-  el.style.transform = "translateY(0)";
-  setTimeout(() => {
-    el.style.opacity = "0";
-    el.style.transform = "translateY(12px)";
-  }, 2200);
+interface VendorInfo {
+  id: string;
+  name: string;
+  email: string;
 }
 
-const STATUS_TAG_CLASS: Record<string, string> = {
-  active: "tag-active",
-  draft: "tag-draft",
-  closed: "tag-overdue",
-  awarded: "tag-win",
-  paused: "tag-draft",
+const TYPE_ICONS: Record<string, string> = {
+  Residential: "🏠",
+  Commercial: "🏢",
+  "Mixed-Use": "🏗️",
+  Renovation: "🔨",
 };
 
 export default function CustomerDashboard() {
+  const router = useRouter();
   const [bids, setBids] = useState<Bid[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({});
-  const [activeFilter, setActiveFilter] = useState("all");
 
-  useEffect(() => {
+  // Modals
+  const [cloneProjectId, setCloneProjectId] = useState<string | null>(null);
+  const [cloneIncludeBids, setCloneIncludeBids] = useState(false);
+  const [cloning, setCloning] = useState(false);
+
+  const [pauseProject, setPauseProject] = useState<Project | null>(null);
+  const [pauseNotify, setPauseNotify] = useState<"all" | "none" | "some">("all");
+  const [pauseMessage, setPauseMessage] = useState("Plans are being updated. Bid submissions are paused until further notice.");
+  const [pauseVendors, setPauseVendors] = useState<VendorInfo[]>([]);
+  const [pauseSelectedVendors, setPauseSelectedVendors] = useState<Set<string>>(new Set());
+  const [pausing, setPausing] = useState(false);
+
+  const [resumeProject, setResumeProject] = useState<Project | null>(null);
+  const [resumeNotify, setResumeNotify] = useState<"all" | "none" | "some">("all");
+  const [resumeMessage, setResumeMessage] = useState("The project is back active. Please submit your bids.");
+  const [resumeVendors, setResumeVendors] = useState<VendorInfo[]>([]);
+  const [resumeSelectedVendors, setResumeSelectedVendors] = useState<Set<string>>(new Set());
+  const [resuming, setResuming] = useState(false);
+
+  // Context menu
+  const [menuProjectId, setMenuProjectId] = useState<string | null>(null);
+
+  function loadData() {
+    setLoading(true);
     Promise.all([
       fetch("/api/projects").then((res) => {
         if (!res.ok) throw new Error("Failed to fetch projects");
@@ -65,59 +81,68 @@ export default function CustomerDashboard() {
       .then(([projData, bidData]) => {
         setProjects(projData);
         setBids(bidData);
-        const init: Record<string, boolean> = {};
-        projData.forEach((p: Project) => {
-          init[p.id] = true;
-        });
-        if (bidData.some((b: Bid) => !b.project_id)) {
-          init["__unassigned"] = true;
-        }
-        setOpenAccordions(init);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }
 
-  const toggleAccordion = (id: string) => {
-    setOpenAccordions((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  useEffect(() => { loadData(); }, []);
 
-  const expandAll = () => {
-    const next: Record<string, boolean> = {};
-    projects.forEach((p) => { next[p.id] = true; });
-    if (bids.some((b) => !b.project_id)) next["__unassigned"] = true;
-    setOpenAccordions(next);
-  };
+  async function loadProjectVendors(projectId: string): Promise<VendorInfo[]> {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/vendors`);
+      if (res.ok) return await res.json();
+    } catch {}
+    return [];
+  }
 
-  const collapseAll = () => {
-    const next: Record<string, boolean> = {};
-    projects.forEach((p) => { next[p.id] = false; });
-    next["__unassigned"] = false;
-    setOpenAccordions(next);
-  };
+  async function handleClone() {
+    if (!cloneProjectId) return;
+    setCloning(true);
+    try {
+      const res = await fetch(`/api/projects/${cloneProjectId}/clone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ include_bids: cloneIncludeBids }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCloneProjectId(null);
+        loadData();
+        router.push(`/customer/project/${data.id}`);
+      }
+    } finally { setCloning(false); }
+  }
 
-  // Filter logic
-  const filteredProjects = activeFilter === "all"
-    ? projects
-    : projects.filter((p) => p.status === activeFilter);
+  async function handlePause() {
+    if (!pauseProject) return;
+    setPausing(true);
+    try {
+      const vendorIds = pauseNotify === "all" ? "all" : pauseNotify === "none" ? "none" : Array.from(pauseSelectedVendors);
+      await fetch(`/api/projects/${pauseProject.id}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notify_vendors: vendorIds, message: pauseMessage }),
+      });
+      setPauseProject(null);
+      loadData();
+    } finally { setPausing(false); }
+  }
 
-  const filteredBids = activeFilter === "all"
-    ? bids
-    : bids.filter((b) => b.status === activeFilter);
-
-  // KPIs computed from real data
-  const activeProjectCount = projects.filter((p) => p.status === "active").length;
-  const openBidCount = bids.filter((b) => b.status === "active" || b.status === "draft").length;
-  const totalResponses = bids.reduce((s, b) => s + (b.vendor_response_count ?? 0), 0);
-  const responseRate = bids.length > 0 ? Math.round((totalResponses / (bids.length * 10)) * 100) : 0;
-
-  const activityFeed = [
-    { icon: "\uD83D\uDCE5", bg: "var(--green-bg)", color: "var(--green)", text: "<strong>BrooklynMill</strong> submitted a bid — Kitchens", time: "2 min ago" },
-    { icon: "\uD83C\uDFC6", bg: "var(--gold-bg)", color: "var(--gold)", text: "Winner selected: <strong>ManhattanCab Co.</strong> – Flooring", time: "1 hr ago" },
-    { icon: "\uD83D\uDCE8", bg: "var(--blue-bg)", color: "var(--blue)", text: "Bid request sent to <strong>8 vendors</strong> — MEP", time: "3 hrs ago" },
-    { icon: "\u23F0", bg: "var(--red-bg)", color: "var(--red)", text: "Auto-reminder sent to <strong>3 vendors</strong>", time: "Yesterday 4:30 PM" },
-    { icon: "\uD83D\uDCE5", bg: "var(--green-bg)", color: "var(--green)", text: "<strong>TriState Imports</strong> submitted 2 options", time: "Yesterday 2:15 PM" },
-  ];
+  async function handleResume() {
+    if (!resumeProject) return;
+    setResuming(true);
+    try {
+      const vendorIds = resumeNotify === "all" ? "all" : resumeNotify === "none" ? "none" : Array.from(resumeSelectedVendors);
+      await fetch(`/api/projects/${resumeProject.id}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notify_vendors: vendorIds, message: resumeMessage }),
+      });
+      setResumeProject(null);
+      loadData();
+    } finally { setResuming(false); }
+  }
 
   if (loading) {
     return (
@@ -137,298 +162,356 @@ export default function CustomerDashboard() {
     );
   }
 
-  const filterChips = [
-    { key: "all", label: "All", icon: "" },
-    { key: "active", label: "Active", icon: "\uD83D\uDFE2" },
-    { key: "draft", label: "Draft", icon: "\uD83D\uDCCB" },
-    { key: "closed", label: "Closed", icon: "\u23F0" },
-  ];
+  const menuBtnStyle: React.CSSProperties = {
+    display: "block", width: "100%", textAlign: "left" as const, padding: "8px 14px",
+    fontSize: "0.8rem", fontWeight: 600, background: "none", border: "none",
+    cursor: "pointer", color: "var(--ink)", fontFamily: "'Plus Jakarta Sans', sans-serif",
+  };
 
-  // Group filtered bids by project
-  const projectGroups = filteredProjects.map((proj) => ({
-    project: proj,
-    bids: filteredBids.filter((b) => b.project_id === proj.id),
-  }));
-  const unassignedBids = filteredBids.filter((b) => !b.project_id);
+  const labelStyle: React.CSSProperties = {
+    fontSize: "0.72rem", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase",
+    letterSpacing: "0.04em", marginBottom: 6,
+  };
+
+  const statusColor = (s: string) =>
+    s === "active" ? { bg: "var(--gold-bg)", c: "var(--gold)", bc: "var(--gold-b)" }
+    : s === "paused" ? { bg: "#fef3c7", c: "#92400e", bc: "#fde68a" }
+    : { bg: "#f3f4f6", c: "var(--muted)", bc: "#e5e7eb" };
 
   return (
     <div className="page on">
-      <div className="fstrip">
-        <div className="fs-search">
-          <span style={{ color: "var(--faint)" }}>{"\uD83D\uDD0D"}</span>
-          <input placeholder="Search projects\u2026" />
-        </div>
-        {filterChips.map((chip) => (
-          <div
-            key={chip.key}
-            className={`chip${activeFilter === chip.key ? " on" : ""}`}
-            onClick={() => setActiveFilter(chip.key)}
-          >
-            {chip.icon ? `${chip.icon} ` : ""}{chip.label}
-          </div>
-        ))}
-        <div className="fright">
-          <select className="sort-sel">
-            <option>Sort: Deadline {"\u2191"}</option>
-            <option>Sort: Bids {"\u2193"}</option>
-            <option>Sort: Recent</option>
-          </select>
-        </div>
-      </div>
+      {/* Click-away for menu */}
+      {menuProjectId && <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setMenuProjectId(null)} />}
+
       <div className="scroll">
-        <div className="kpi-row">
-          <div className="kpi" style={{ "--kc": "var(--gold)" } as React.CSSProperties}>
-            <span className="kpi-icon">{"\uD83D\uDCC1"}</span>
-            <div className="kpi-lbl">Active Projects</div>
-            <div className="kpi-val">{activeProjectCount}</div>
-            <div className="kpi-sub">{"\u2191"} this month</div>
-          </div>
-          <div className="kpi" style={{ "--kc": "var(--blue)" } as React.CSSProperties}>
-            <span className="kpi-icon">{"\uD83D\uDCE8"}</span>
-            <div className="kpi-lbl">Open Bid Requests</div>
-            <div className="kpi-val">{openBidCount}</div>
-            <div className="kpi-sub">{"\u2191"} new this week</div>
-          </div>
-          <div className="kpi" style={{ "--kc": "var(--green)" } as React.CSSProperties}>
-            <span className="kpi-icon">{"\uD83D\uDCE5"}</span>
-            <div className="kpi-lbl">Bids Received</div>
-            <div className="kpi-val">{totalResponses}</div>
-            <div className="kpi-sub">{responseRate}% response rate</div>
-          </div>
-          <div className="kpi" style={{ "--kc": "var(--cyan)" } as React.CSSProperties}>
-            <span className="kpi-icon">{"\uD83D\uDCB0"}</span>
-            <div className="kpi-lbl">Response Rate</div>
-            <div className="kpi-val">
-              {responseRate}
-              <span style={{ fontSize: "1.1rem" }}>%</span>
-            </div>
-            <div className="kpi-sub">across all bids</div>
-          </div>
-        </div>
+        {/* Project Cards Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+          {projects.map((project) => {
+            const projBids = bids.filter(b => b.project_id === project.id);
+            const closed = projBids.filter(b => b.status === "closed" || b.status === "awarded").length;
+            const waiting = projBids.filter(b => b.status === "active").length;
+            const draft = projBids.filter(b => b.status === "draft").length;
+            const overdue = projBids.filter(b => b.status === "active" && new Date(b.deadline) < new Date()).length;
+            const icon = TYPE_ICONS[project.type] || "📁";
+            const sc = statusColor(project.status);
 
-        <div className="dash-grid">
-          <div className="scard">
-            <div className="scard-head" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
-              <h3>Active Projects &amp; Bid Requests</h3>
-              <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
-                <button className="btn btn-outline btn-xs" onClick={expandAll} style={{ fontSize: "0.7rem" }}>
-                  {"\u25BC"} Expand All
-                </button>
-                <button className="btn btn-outline btn-xs" onClick={collapseAll} style={{ fontSize: "0.7rem" }}>
-                  {"\u25B6"} Collapse All
-                </button>
-              </div>
-            </div>
-
-            {projectGroups.length === 0 && unassignedBids.length === 0 && (
-              <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
-                No projects or bids found. Create your first project to get started.
-              </div>
-            )}
-
-            {projectGroups.map(({ project, bids: projBids }) => {
-              const isOpen = openAccordions[project.id];
-              const totalProjResponses = projBids.reduce((s, b) => s + (b.vendor_response_count ?? 0), 0);
-              const tagClass = STATUS_TAG_CLASS[project.status] || "tag-draft";
-
-              return (
-                <div className="pacc-item" key={project.id}>
-                  <div className="pacc-hdr" onClick={() => toggleAccordion(project.id)}>
-                    <span className={`pacc-arrow${isOpen ? " open" : ""}`}>{"\u25B6"}</span>
-                    <span>{"\uD83D\uDCC1"}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 800, fontSize: "0.88rem", color: "var(--ink)" }}>
-                        {project.name}
+            return (
+              <div key={project.id} style={{ position: "relative" }}>
+                <Link
+                  href={`/customer/project/${project.id}`}
+                  style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  <div style={{
+                    background: project.status === "paused" ? "#fffbeb" : "var(--card)",
+                    border: `1.5px solid ${project.status === "paused" ? "#fde68a" : "var(--border)"}`,
+                    borderRadius: 12, padding: "18px 20px", cursor: "pointer", transition: "all 0.18s",
+                    opacity: project.status === "paused" ? 0.8 : 1,
+                  }}
+                  onMouseOver={e => { e.currentTarget.style.borderColor = "var(--gold-b)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                  onMouseOut={e => { e.currentTarget.style.borderColor = project.status === "paused" ? "#fde68a" : "var(--border)"; e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "none"; }}
+                  >
+                    {/* Header */}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 10, background: "var(--gold-bg)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "1.2rem", flexShrink: 0,
+                      }}>
+                        {icon}
                       </div>
-                      <div style={{ display: "flex", gap: "6px", marginTop: "4px", flexWrap: "wrap" }}>
-                        {project.type && (
-                          <span className="pacc-pill" style={{ background: "var(--blue-bg)", color: "var(--blue)", borderColor: "var(--blue-b)" }}>
-                            {project.type}
-                          </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800,
+                          fontSize: "0.92rem", color: "var(--ink)", lineHeight: 1.2,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {project.name}
+                        </div>
+                        {project.address && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 3 }}>
+                            {project.address}
+                          </div>
                         )}
-                        <span className="pacc-pill" style={{ background: "var(--gold-bg)", color: "var(--gold)", borderColor: "var(--gold-b)" }}>
-                          {projBids.length} bid{projBids.length !== 1 ? "s" : ""}
-                        </span>
-                        <span className="pacc-pill" style={{ background: "var(--green-bg)", color: "var(--green)", borderColor: "var(--green-b)" }}>
-                          {totalProjResponses} received
-                        </span>
                       </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                      <div className="pbar" style={{ width: "60px" }}>
-                        <div
-                          className="pbar-fill"
-                          style={{
-                            width: `${projBids.length > 0 ? Math.min(100, (totalProjResponses / (projBids.length * 5)) * 100) : 0}%`,
-                            background: "var(--gold)",
-                          }}
-                        ></div>
-                      </div>
-                      <span className={`tag ${tagClass}`} style={{ flexShrink: 0 }}>{project.status}</span>
-                    </div>
-                  </div>
-                  <div className={`pacc-body${isOpen ? " open" : ""}`}>
-                    {projBids.length === 0 ? (
-                      <div style={{ padding: "16px 28px", color: "var(--muted)", fontSize: "0.82rem" }}>
-                        No bid requests in this project yet.{" "}
-                        <Link href={`/customer/create?project=${project.id}`} style={{ color: "var(--gold)", fontWeight: 600 }}>
-                          Add one
-                        </Link>
-                      </div>
-                    ) : (
-                      <table className="proj-table" style={{ margin: 0 }}>
-                        <thead>
-                          <tr>
-                            <th style={{ paddingLeft: "28px" }}>Bid Request</th>
-                            <th>Status</th>
-                            <th>Bids</th>
-                            <th>Deadline</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {projBids.map((bid) => {
-                            const respCount = bid.vendor_response_count ?? 0;
-                            const bidTagClass = STATUS_TAG_CLASS[bid.status] || "tag-draft";
-                            return (
-                              <tr key={bid.id}>
-                                <td>
-                                  <div className="pname" style={{ paddingLeft: "16px" }}>
-                                    {"\u21B3"} {bid.title}
-                                  </div>
-                                  <div className="psub" style={{ paddingLeft: "16px" }}>
-                                    {bid.description ? bid.description.substring(0, 40) : "No description"}
-                                  </div>
-                                </td>
-                                <td>
-                                  <span className={`tag ${bidTagClass}`}>{bid.status}</span>
-                                </td>
-                                <td>
-                                  <div style={{ fontSize: "0.82rem", fontWeight: 700 }}>{respCount}</div>
-                                  <div className="pbar">
-                                    <div
-                                      className="pbar-fill"
-                                      style={{
-                                        width: `${Math.min(100, respCount * 20)}%`,
-                                        background: "var(--gold)",
-                                      }}
-                                    ></div>
-                                  </div>
-                                </td>
-                                <td style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                                  {bid.deadline ? new Date(bid.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "\u2014"}
-                                </td>
-                                <td>
-                                  <Link href={`/customer/${bid.id}`} className="btn btn-gold btn-xs">
-                                    Compare {"\u2192"}
-                                  </Link>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Unassigned Bids */}
-            {unassignedBids.length > 0 && (
-              <div className="pacc-item">
-                <div className="pacc-hdr" onClick={() => toggleAccordion("__unassigned")}>
-                  <span className={`pacc-arrow${openAccordions["__unassigned"] ? " open" : ""}`}>{"\u25B6"}</span>
-                  <span>{"\uD83D\uDCC2"}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: "0.88rem", color: "var(--ink)" }}>
-                      Unassigned Bids
-                    </div>
-                    <div style={{ display: "flex", gap: "6px", marginTop: "4px", flexWrap: "wrap" }}>
-                      <span className="pacc-pill" style={{ background: "var(--gold-bg)", color: "var(--gold)", borderColor: "var(--gold-b)" }}>
-                        {unassignedBids.length} bid{unassignedBids.length !== 1 ? "s" : ""}
+                      <span style={{
+                        fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase",
+                        padding: "2px 8px", borderRadius: 100, flexShrink: 0,
+                        background: sc.bg, color: sc.c, border: `1px solid ${sc.bc}`,
+                      }}>
+                        {project.status}
                       </span>
                     </div>
-                  </div>
-                  <span className="tag tag-draft" style={{ flexShrink: 0 }}>Unassigned</span>
-                </div>
-                <div className={`pacc-body${openAccordions["__unassigned"] ? " open" : ""}`}>
-                  <table className="proj-table" style={{ margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ paddingLeft: "28px" }}>Bid Request</th>
-                        <th>Status</th>
-                        <th>Bids</th>
-                        <th>Deadline</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {unassignedBids.map((bid) => {
-                        const respCount = bid.vendor_response_count ?? 0;
-                        const bidTagClass = STATUS_TAG_CLASS[bid.status] || "tag-draft";
-                        return (
-                          <tr key={bid.id}>
-                            <td>
-                              <div className="pname" style={{ paddingLeft: "16px" }}>
-                                {"\u21B3"} {bid.title}
-                              </div>
-                              <div className="psub" style={{ paddingLeft: "16px" }}>
-                                {bid.description ? bid.description.substring(0, 40) : "No description"}
-                              </div>
-                            </td>
-                            <td>
-                              <span className={`tag ${bidTagClass}`}>{bid.status}</span>
-                            </td>
-                            <td>
-                              <div style={{ fontSize: "0.82rem", fontWeight: 700 }}>{respCount}</div>
-                              <div className="pbar">
-                                <div
-                                  className="pbar-fill"
-                                  style={{
-                                    width: `${Math.min(100, respCount * 20)}%`,
-                                    background: "var(--gold)",
-                                  }}
-                                ></div>
-                              </div>
-                            </td>
-                            <td style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-                              {bid.deadline ? new Date(bid.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "\u2014"}
-                            </td>
-                            <td>
-                              <Link href={`/customer/${bid.id}`} className="btn btn-gold btn-xs">
-                                Compare {"\u2192"}
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Activity Feed */}
-          <div className="scard">
-            <div className="scard-head">
-              <h3>Activity Feed</h3>
-            </div>
-            {activityFeed.map((item, i) => (
-              <div className="act" key={i}>
-                <div className="act-ico" style={{ background: item.bg, color: item.color }}>
-                  {item.icon}
-                </div>
-                <div>
-                  <div className="act-t" dangerouslySetInnerHTML={{ __html: item.text }} />
-                  <div className="act-time">{item.time}</div>
-                </div>
+                    {/* Bid Stats */}
+                    <div style={{
+                      display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8,
+                      padding: "10px 0", borderTop: "1px solid var(--border)",
+                    }}>
+                      <div>
+                        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800, fontSize: "1.1rem", color: "var(--ink)" }}>{closed}</div>
+                        <div style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Closed</div>
+                      </div>
+                      <div>
+                        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800, fontSize: "1.1rem", color: "var(--gold)" }}>{waiting}</div>
+                        <div style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Waiting</div>
+                      </div>
+                      <div>
+                        <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800, fontSize: "1.1rem", color: "var(--muted)" }}>{draft}</div>
+                        <div style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Not Sent</div>
+                      </div>
+                    </div>
+
+                    {overdue > 0 && (
+                      <div style={{
+                        fontSize: "0.72rem", fontWeight: 700, color: "#92400e",
+                        marginTop: 6, padding: "4px 8px", background: "#fef3c7",
+                        borderRadius: 6, display: "inline-block",
+                      }}>
+                        {overdue} overdue
+                      </div>
+                    )}
+                  </div>
+                </Link>
+
+                {/* 3-dot menu button */}
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuProjectId(menuProjectId === project.id ? null : project.id); }}
+                  style={{
+                    position: "absolute", top: 14, right: 14, background: "none", border: "none",
+                    cursor: "pointer", fontSize: "1.1rem", color: "var(--muted)", padding: "2px 6px",
+                    borderRadius: 6, zIndex: 91,
+                  }}
+                  onMouseOver={e => { e.currentTarget.style.background = "var(--gold-bg)"; }}
+                  onMouseOut={e => { e.currentTarget.style.background = "none"; }}
+                >
+                  ⋯
+                </button>
+
+                {/* Dropdown menu */}
+                {menuProjectId === project.id && (
+                  <div style={{
+                    position: "absolute", top: 38, right: 14, background: "var(--card)",
+                    border: "1.5px solid var(--border)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                    zIndex: 100, minWidth: 180, overflow: "hidden",
+                  }}>
+                    <button style={menuBtnStyle} onMouseOver={e => e.currentTarget.style.background = "var(--gold-bg)"} onMouseOut={e => e.currentTarget.style.background = "none"}
+                      onClick={() => { setMenuProjectId(null); setCloneProjectId(project.id); setCloneIncludeBids(false); }}
+                    >📋 Clone Project</button>
+
+                    {project.status === "active" && (
+                      <button style={menuBtnStyle} onMouseOver={e => e.currentTarget.style.background = "var(--gold-bg)"} onMouseOut={e => e.currentTarget.style.background = "none"}
+                        onClick={async () => {
+                          setMenuProjectId(null);
+                          const vendors = await loadProjectVendors(project.id);
+                          setPauseVendors(vendors);
+                          setPauseSelectedVendors(new Set(vendors.map(v => v.id)));
+                          setPauseNotify("all");
+                          setPauseMessage("Plans are being updated. Bid submissions are paused until further notice.");
+                          setPauseProject(project);
+                        }}
+                      >⏸ Pause Project</button>
+                    )}
+
+                    {project.status === "paused" && (
+                      <button style={menuBtnStyle} onMouseOver={e => e.currentTarget.style.background = "var(--gold-bg)"} onMouseOut={e => e.currentTarget.style.background = "none"}
+                        onClick={async () => {
+                          setMenuProjectId(null);
+                          const vendors = await loadProjectVendors(project.id);
+                          setResumeVendors(vendors);
+                          setResumeSelectedVendors(new Set(vendors.map(v => v.id)));
+                          setResumeNotify("all");
+                          setResumeMessage("The project is back active. Please submit your bids.");
+                          setResumeProject(project);
+                        }}
+                      >▶ Resume Project</button>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
+
+          {/* Add Project Card */}
+          <Link href="/customer/new-project" style={{ textDecoration: "none" }}>
+            <div style={{
+              border: "2px dashed var(--gold-b)", borderRadius: 12,
+              padding: "18px 20px", cursor: "pointer", transition: "all 0.18s",
+              display: "flex", flexDirection: "column", alignItems: "center",
+              justifyContent: "center", minHeight: 160, gap: 6,
+              background: "var(--gold-bg)", color: "var(--gold)",
+            }}
+            onMouseOver={e => { e.currentTarget.style.borderColor = "var(--gold)"; e.currentTarget.style.background = "#fef3c7"; }}
+            onMouseOut={e => { e.currentTarget.style.borderColor = "var(--gold-b)"; e.currentTarget.style.background = "var(--gold-bg)"; }}
+            >
+              <span style={{ fontSize: "1.5rem" }}>+</span>
+              <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>New Project</span>
+            </div>
+          </Link>
         </div>
       </div>
+
+      {/* CLONE MODAL */}
+      {cloneProjectId && (
+        <div className="modal-overlay open" onClick={() => setCloneProjectId(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800, fontSize: "1rem", marginBottom: 14 }}>
+              Clone Project
+            </div>
+            <div style={{ fontSize: "0.84rem", color: "var(--ink2)", marginBottom: 14 }}>
+              This will create a copy of the project including team, categories, and files.
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.84rem", cursor: "pointer", marginBottom: 16 }}>
+              <input type="checkbox" checked={cloneIncludeBids} onChange={e => setCloneIncludeBids(e.target.checked)} />
+              Include bid forms (without vendor responses)
+            </label>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setCloneProjectId(null)}>Cancel</button>
+              <button className="btn btn-gold btn-sm" onClick={handleClone} disabled={cloning}>
+                {cloning ? "Cloning..." : "Clone"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAUSE MODAL */}
+      {pauseProject && (
+        <div className="modal-overlay open" onClick={() => setPauseProject(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800, fontSize: "1rem", marginBottom: 14 }}>
+              ⏸ Pause Project — {pauseProject.name}
+            </div>
+            <div style={{ fontSize: "0.82rem", color: "var(--ink2)", marginBottom: 14 }}>
+              All active bids will be paused. Vendors won&apos;t be able to submit until resumed.
+            </div>
+
+            <div style={labelStyle}>Notify Vendors</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {(["all", "some", "none"] as const).map(opt => (
+                <button key={opt} className={`btn btn-xs ${pauseNotify === opt ? "btn-gold" : "btn-outline"}`}
+                  onClick={() => setPauseNotify(opt)}
+                >
+                  {opt === "all" ? "All" : opt === "some" ? "Select" : "None"}
+                </button>
+              ))}
+            </div>
+
+            {pauseNotify === "some" && (
+              <div style={{ maxHeight: 150, overflow: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: 8, marginBottom: 12 }}>
+                {pauseVendors.map(v => (
+                  <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.8rem", padding: "4px 0", cursor: "pointer" }}>
+                    <input type="checkbox" checked={pauseSelectedVendors.has(v.id)}
+                      onChange={() => {
+                        setPauseSelectedVendors(prev => {
+                          const next = new Set(prev);
+                          next.has(v.id) ? next.delete(v.id) : next.add(v.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span style={{ fontWeight: 600 }}>{v.name}</span>
+                    <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>{v.email}</span>
+                  </label>
+                ))}
+                {pauseVendors.length === 0 && <div style={{ color: "var(--muted)", fontSize: "0.78rem" }}>No vendors found</div>}
+              </div>
+            )}
+
+            {pauseNotify !== "none" && (
+              <>
+                <div style={labelStyle}>Message to Vendors</div>
+                <textarea
+                  value={pauseMessage}
+                  onChange={e => setPauseMessage(e.target.value)}
+                  style={{
+                    width: "100%", padding: "10px 12px", fontSize: "0.82rem",
+                    border: "1.5px solid var(--border)", borderRadius: 8,
+                    background: "var(--surface)", color: "var(--ink)",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: 80,
+                    resize: "vertical", marginBottom: 14, outline: "none",
+                  }}
+                />
+              </>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setPauseProject(null)}>Cancel</button>
+              <button className="btn btn-gold btn-sm" onClick={handlePause} disabled={pausing}>
+                {pausing ? "Pausing..." : "Pause Project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESUME MODAL */}
+      {resumeProject && (
+        <div className="modal-overlay open" onClick={() => setResumeProject(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800, fontSize: "1rem", marginBottom: 14 }}>
+              ▶ Resume Project — {resumeProject.name}
+            </div>
+            <div style={{ fontSize: "0.82rem", color: "var(--ink2)", marginBottom: 14 }}>
+              All paused bids will be reactivated. Vendors will be able to submit again.
+            </div>
+
+            <div style={labelStyle}>Notify Vendors</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {(["all", "some", "none"] as const).map(opt => (
+                <button key={opt} className={`btn btn-xs ${resumeNotify === opt ? "btn-gold" : "btn-outline"}`}
+                  onClick={() => setResumeNotify(opt)}
+                >
+                  {opt === "all" ? "All" : opt === "some" ? "Select" : "None"}
+                </button>
+              ))}
+            </div>
+
+            {resumeNotify === "some" && (
+              <div style={{ maxHeight: 150, overflow: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: 8, marginBottom: 12 }}>
+                {resumeVendors.map(v => (
+                  <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.8rem", padding: "4px 0", cursor: "pointer" }}>
+                    <input type="checkbox" checked={resumeSelectedVendors.has(v.id)}
+                      onChange={() => {
+                        setResumeSelectedVendors(prev => {
+                          const next = new Set(prev);
+                          next.has(v.id) ? next.delete(v.id) : next.add(v.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span style={{ fontWeight: 600 }}>{v.name}</span>
+                    <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>{v.email}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {resumeNotify !== "none" && (
+              <>
+                <div style={labelStyle}>Message to Vendors</div>
+                <textarea
+                  value={resumeMessage}
+                  onChange={e => setResumeMessage(e.target.value)}
+                  style={{
+                    width: "100%", padding: "10px 12px", fontSize: "0.82rem",
+                    border: "1.5px solid var(--border)", borderRadius: 8,
+                    background: "var(--surface)", color: "var(--ink)",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: 80,
+                    resize: "vertical", marginBottom: 14, outline: "none",
+                  }}
+                />
+              </>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn-outline btn-sm" onClick={() => setResumeProject(null)}>Cancel</button>
+              <button className="btn btn-gold btn-sm" onClick={handleResume} disabled={resuming}>
+                {resuming ? "Resuming..." : "Resume Project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

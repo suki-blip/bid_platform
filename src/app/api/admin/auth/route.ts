@@ -1,29 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Sets admin-auth cookie when the admin panel loads with a valid key.
-// The middleware already validated the path key before this page could load,
-// so we trust the key and set a cookie for subsequent API calls.
+// Sets admin-auth cookie when the admin panel loads with a valid key path.
+// Also works when already authenticated via login (cookie already set).
 export async function POST(request: NextRequest) {
   const { key } = await request.json();
-  const secret = process.env.ADMIN_API_SECRET;
 
-  if (!secret) {
-    return NextResponse.json({ error: 'Not configured' }, { status: 500 });
+  // Check if already authenticated via login
+  const existingCookie = request.cookies.get('admin-auth')?.value;
+  if (existingCookie && existingCookie.startsWith('bidmaster-admin-')) {
+    return NextResponse.json({ ok: true });
   }
 
-  // The admin panel key (ADMIN_SECRET_PATH) grants access to set the API cookie
+  // Validate via secret path
   const pathSecret = process.env.ADMIN_SECRET_PATH;
-  if (!pathSecret || key !== pathSecret) {
-    return NextResponse.json({ error: 'Invalid' }, { status: 403 });
+  if (pathSecret && key === pathSecret) {
+    // Set cookie using the same prefix pattern
+    const sessionToken = 'bidmaster-admin-' + crypto.randomUUID();
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set('admin-auth', sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 60 * 60 * 8,
+    });
+    return response;
   }
 
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set('admin-auth', secret, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/',
-    maxAge: 60 * 60 * 8, // 8 hours
-  });
-  return response;
+  // If no path secret is configured but we have key='admin' (default), allow it
+  if (!pathSecret && key === 'admin') {
+    const sessionToken = 'bidmaster-admin-' + crypto.randomUUID();
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set('admin-auth', sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 60 * 60 * 8,
+    });
+    return response;
+  }
+
+  return NextResponse.json({ error: 'Invalid' }, { status: 403 });
 }

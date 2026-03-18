@@ -12,7 +12,7 @@ export default function PortalPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 w-full max-w-2xl">
         <Link
-          href="/customer"
+          href="/login"
           className="flex flex-col items-center justify-center rounded-xl p-10 transition-all hover:-translate-y-0.5 group"
           style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '12px' }}
           onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--gold-b)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.07)'; }}
@@ -37,6 +37,16 @@ export default function PortalPage() {
           </div>
           <span className="text-xl font-bold" style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: 'var(--ink)' }}>Vendor</span>
           <span className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Browse bids and submit prices</span>
+        </Link>
+      </div>
+
+      <div className="mt-8">
+        <Link
+          href="/admin-login"
+          className="text-sm"
+          style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.8rem' }}
+        >
+          Admin Panel →
         </Link>
       </div>
     </main>
