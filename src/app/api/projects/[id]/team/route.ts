@@ -49,6 +49,31 @@ export async function POST(
   }
 }
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbReady();
+    const body = await request.json();
+    const { member_id, role } = body;
+
+    if (!member_id || !role) {
+      return NextResponse.json({ error: 'member_id and role are required' }, { status: 400 });
+    }
+
+    await db().execute({
+      sql: 'UPDATE project_team SET role = ? WHERE id = ?',
+      args: [role, member_id],
+    });
+
+    return NextResponse.json({ ok: true, role });
+  } catch (error) {
+    console.error('Error updating team member:', error);
+    return NextResponse.json({ error: 'Failed to update team member' }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

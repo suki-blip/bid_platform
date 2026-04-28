@@ -14,7 +14,7 @@ export async function GET() {
 
     // Get user info
     const userResult = await client.execute({
-      sql: 'SELECT id, name, company, email, status, payment, plan, joined FROM saas_users WHERE id = ?',
+      sql: 'SELECT id, name, company, email, status, payment, plan, joined, stripe_customer_id, stripe_subscription_id FROM saas_users WHERE id = ?',
       args: [session.userId],
     });
 

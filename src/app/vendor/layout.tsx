@@ -53,7 +53,7 @@ export default function VendorLayout({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     await fetch("/api/vendor-auth/logout", { method: "POST" });
-    router.push("/vendor-login");
+    router.push("/login?tab=vendor");
   }
 
   const vendorName = vendor?.name || "Loading...";

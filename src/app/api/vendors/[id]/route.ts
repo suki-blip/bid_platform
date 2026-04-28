@@ -37,9 +37,9 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const allowedFields = ['name', 'email', 'cc_emails', 'phone', 'contact_person', 'trade_category', 'website', 'license', 'notes', 'status'];
+    const allowedFields = ['name', 'email', 'cc_emails', 'phone', 'contact_person', 'trade_category', 'website', 'license', 'notes', 'status', 'rating'];
     const setClauses: string[] = [];
-    const args: (string | null)[] = [];
+    const args: (string | number | null)[] = [];
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {

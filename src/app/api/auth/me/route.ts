@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     await dbReady();
     const client = db();
     const result = await client.execute({
-      sql: 'SELECT id, name, company, email, status, payment, plan, joined, last_login FROM saas_users WHERE id = ?',
+      sql: 'SELECT id, name, company, email, status, payment, plan, joined, last_login, trial_end_date FROM saas_users WHERE id = ?',
       args: [session.userId],
     });
 

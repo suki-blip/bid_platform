@@ -21,11 +21,12 @@ export async function GET(request: NextRequest) {
 
   if (filter === 'active') { where += " AND status = 'active'"; }
   else if (filter === 'trial') { where += " AND status = 'trial'"; }
+  else if (filter === 'pending') { where += " AND status = 'pending'"; }
   else if (filter === 'suspended') { where += " AND status = 'suspended'"; }
   else if (filter === 'unpaid') { where += " AND payment = 'unpaid'"; }
 
   const result = await client.execute({
-    sql: `SELECT id, name, company, email, status, payment, plan, joined, last_login FROM saas_users WHERE 1=1 ${where} ORDER BY joined DESC LIMIT ? OFFSET ?`,
+    sql: `SELECT id, name, company, email, status, payment, plan, joined, last_login, trial_end_date FROM saas_users WHERE 1=1 ${where} ORDER BY joined DESC LIMIT ? OFFSET ?`,
     args: [...args, limit, offset],
   });
 
@@ -57,9 +58,9 @@ export async function POST(request: NextRequest) {
 
   const passwordHash = await hashPassword(password);
   const id = crypto.randomUUID();
-  const status = plan === 'Pro' ? 'active' : 'trial';
-  const payment = plan === 'Pro' ? 'paid' : 'trial';
-  const planName = plan === 'Pro' ? 'Pro' : 'Trial';
+  const status = plan === 'Pro' ? 'active' : 'pending';
+  const payment = plan === 'Pro' ? 'paid' : 'unpaid';
+  const planName = plan === 'Pro' ? 'Pro' : 'Free';
 
   try {
     await client.execute({

@@ -51,6 +51,18 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  try {
+    await dbReady();
+    const { id, label } = await request.json();
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    await db().execute({ sql: 'UPDATE file_links SET label = ? WHERE id = ?', args: [label || '', id] });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     await dbReady();

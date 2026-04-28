@@ -57,10 +57,30 @@ export async function GET(
           sql: 'SELECT * FROM vendor_prices WHERE response_id = ?',
           args: [response.id as string],
         });
+
+        // Load proposals for open mode
+        const proposalsResult = await db().execute({
+          sql: 'SELECT * FROM vendor_proposals WHERE response_id = ? ORDER BY sort_order',
+          args: [response.id as string],
+        });
+        const proposals = await Promise.all(
+          proposalsResult.rows.map(async (prop) => {
+            const specsResult = await db().execute({
+              sql: 'SELECT * FROM vendor_proposal_specs WHERE proposal_id = ? ORDER BY sort_order',
+              args: [prop.id as string],
+            });
+            return {
+              ...prop,
+              specs: specsResult.rows.map(s => ({ key: s.spec_key, value: s.spec_value })),
+            };
+          })
+        );
+
         return {
           ...response,
           rules: response.rules ? JSON.parse(response.rules as string) : [],
           prices: pricesResult.rows,
+          proposals,
         };
       })
     );
@@ -68,10 +88,15 @@ export async function GET(
     let checklist: { text: string; required: boolean }[] = [];
     try { checklist = JSON.parse((bid.checklist as string) || '[]'); } catch {}
 
+    let suggested_specs: string[] = [];
+    try { suggested_specs = JSON.parse((bid.suggested_specs as string) || '[]'); } catch {}
+
     return NextResponse.json({
       ...bid,
       checklist,
+      suggested_specs,
       allow_ve: Number(bid.allow_ve) === 1,
+      bid_mode: (bid.bid_mode as string) || 'structured',
       parameters: parametersWithOptions,
       files: filesResult.rows,
       vendor_responses: responsesWithPrices,
@@ -95,7 +120,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const allowedFields = ['title', 'description', 'deadline', 'status', 'project_id', 'allow_ve'];
+    const allowedFields = ['title', 'description', 'deadline', 'status', 'project_id', 'allow_ve', 'bid_mode', 'compare_settings', 'suggested_specs'];
     const setClauses: string[] = [];
     const args: (string | null)[] = [];
 
@@ -108,7 +133,10 @@ export async function PATCH(
           );
         }
         setClauses.push(`${field} = ?`);
-        args.push(body[field]);
+        const val = (field === 'compare_settings' || field === 'suggested_specs') && typeof body[field] !== 'string'
+          ? JSON.stringify(body[field])
+          : body[field];
+        args.push(val);
       }
     }
 

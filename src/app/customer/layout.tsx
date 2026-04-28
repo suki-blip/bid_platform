@@ -4,19 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-interface Bid {
-  id: string;
-  title: string;
-  project_id: string | null;
-  status: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-  status: string;
-}
-
 function showToast(msg: string) {
   const el = document.getElementById("bm-toast");
   if (!el) return;
@@ -29,28 +16,6 @@ function showToast(msg: string) {
   }, 2200);
 }
 
-const STATUS_DOT_COLORS: Record<string, string> = {
-  active: "var(--green)",
-  draft: "var(--gold)",
-  closed: "var(--red)",
-  paused: "var(--gold)",
-};
-
-const STATUS_PILL_CLASS: Record<string, string> = {
-  active: "psp-active",
-  draft: "psp-paused",
-  closed: "psp-stopped",
-  paused: "psp-paused",
-};
-
-const BID_DOT_COLORS = [
-  "var(--green)",
-  "var(--gold)",
-  "var(--blue)",
-  "var(--cyan)",
-  "var(--red)",
-];
-
 export default function CustomerLayout({
   children,
 }: {
@@ -58,291 +23,305 @@ export default function CustomerLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [bids, setBids] = useState<Bid[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [user, setUser] = useState<{ name: string; company: string; plan: string; email: string } | null>(null);
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [activityFeed, setActivityFeed] = useState<{ icon: string; text: string; time: string }[]>([]);
+  const [user, setUser] = useState<{ name: string; company: string; plan: string; email: string; status: string; trial_end_date: string | null } | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [accessBlocked, setAccessBlocked] = useState(false);
+  const [trialExpired, setTrialExpired] = useState(false);
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
+  const [isTeamMember, setIsTeamMember] = useState(false);
+  const [teamRole, setTeamRole] = useState<string>("viewer");
 
   useEffect(() => {
-    fetch("/api/auth/me").then(r => r.ok ? r.json() : null).then(setUser).catch(() => {});
-    fetch("/api/activity").then(r => r.ok ? r.json() : []).then(setActivityFeed).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/projects").then((r) => (r.ok ? r.json() : [])),
-      fetch("/api/bids").then((r) => (r.ok ? r.json() : [])),
-    ])
-      .then(([projData, bidData]) => {
-        setProjects(projData);
-        setBids(bidData);
-        // Expand first project by default
-        if (projData.length > 0) {
-          setExpanded({ [projData[0].id]: true });
+    // Try team-auth first, then contractor-auth
+    fetch("/api/team-auth/me").then(r => r.ok ? r.json() : null).then(tm => {
+      if (tm) {
+        setIsTeamMember(true);
+        setTeamRole(tm.role);
+        setUser({ name: tm.name, company: "", plan: "Team", email: tm.email, status: "active", trial_end_date: null });
+        return;
+      }
+      // Not a team member, check regular auth
+      fetch("/api/auth/me").then(r => r.ok ? r.json() : null).then(u => {
+        setUser(u);
+        if (!u) return;
+        if (u.plan === 'Pro' && u.status === 'active') return;
+        if (u.status === 'trial' && u.trial_end_date) {
+          const end = new Date(u.trial_end_date);
+          const now = new Date();
+          const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysLeft <= 0) {
+            setTrialExpired(true);
+            setAccessBlocked(true);
+          } else {
+            setTrialDaysLeft(daysLeft);
+          }
+          return;
         }
-      })
-      .catch(() => {});
+        if (u.status === 'pending') {
+          setAccessBlocked(true);
+        }
+      }).catch(() => {});
+    }).catch(() => {});
   }, []);
-
-  const toggleProject = (projectId: string) => {
-    setExpanded((prev) => ({ ...prev, [projectId]: !prev[projectId] }));
-  };
-
-  const bidsByProject = projects.map((proj) => ({
-    project: proj,
-    bids: bids.filter((b) => b.project_id === proj.id),
-  }));
-  const unassignedBids = bids.filter((b) => !b.project_id);
-
-  const totalBidCount = bids.length;
-
-  const pageTitle = (() => {
-    if (pathname === "/customer") return "Dashboard";
-    if (pathname === "/customer/create") return "Create Bid Request";
-    if (pathname?.startsWith("/customer/vendors")) return "Vendors";
-    if (pathname?.startsWith("/customer/billing")) return "Billing & Subscription";
-    if (pathname?.startsWith("/customer/settings")) return "Settings";
-    if (pathname?.startsWith("/customer/new-project")) return "New Project";
-    if (pathname?.includes("/category/")) return "Category";
-    if (pathname?.startsWith("/customer/project/")) return "Project";
-    if (pathname?.match(/^\/customer\/[^/]+$/)) return "Compare Bids";
-    return "Dashboard";
-  })();
-
-  const pageSub = pathname === "/customer" ? `Welcome back, ${user?.name?.split(" ")[0] || ""}` : "";
-
-  const navItems = [
-    { label: "Dashboard", icon: "\u25A6", href: "/customer" },
-    { label: "Compare Bids", icon: "\u2696", href: "/customer", badge: String(totalBidCount) },
-    { label: "Vendors", icon: "\uD83D\uDC65", href: "/customer/vendors" },
-    { label: "Billing", icon: "\uD83D\uDCB3", href: "/customer/billing" },
-    { label: "Settings", icon: "\u2699\uFE0F", href: "/customer/settings" },
-  ];
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    if (isTeamMember) {
+      await fetch("/api/team-auth/logout", { method: "POST" });
+    } else {
+      await fetch("/api/auth/logout", { method: "POST" });
+    }
     router.push("/login");
   }
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="logo-bar">
-          <div className="logo-text">
-            Bid<em>Master</em>
-          </div>
-          <div className="logo-badge">{user?.plan?.toUpperCase() || "..."}</div>
-        </div>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+      {/* Top Navigation Bar */}
+      <nav style={{
+        position: "sticky", top: 0, zIndex: 100,
+        background: "var(--surface)", borderBottom: "1.5px solid var(--border)",
+        padding: "0 24px", height: 54,
+        display: "flex", alignItems: "center", gap: 20,
+      }}>
+        {/* Logo */}
+        <Link href="/customer" style={{
+          textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
+          marginRight: 12, flexShrink: 0,
+        }}>
+          <span style={{
+            fontFamily: "'Bricolage Grotesque', sans-serif",
+            fontWeight: 800, fontSize: "1.15rem", letterSpacing: "-0.03em",
+            color: "var(--ink)",
+          }}>
+            Bid<span style={{ color: "var(--gold)" }}>Master</span>
+          </span>
+        </Link>
 
-        <div className="sidebar-scroll">
-          <div className="nav-section">
-            <div className="nav-section-label">Main</div>
-            {navItems.map((item) => {
-              const isActive =
-                item.label === "Dashboard"
-                  ? pathname === "/customer"
-                  : item.label === "Compare Bids"
-                  ? pathname?.match(/^\/customer\/[^/]+$/) && pathname !== "/customer/create" && pathname !== "/customer/vendors" && pathname !== "/customer/settings" && pathname !== "/customer/new-project"
-                  : pathname === item.href;
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`nav-item${isActive ? " active" : ""}`}
-                >
-                  <span className="ni">{item.icon}</span> {item.label}
-                  {item.badge && (
-                    <span className="nbadge">{item.badge}</span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-
-          <Link href="/customer/new-project" className="add-proj-btn">
-            <span style={{ fontSize: "1.1rem" }}>{"\uFF0B"}</span> New Project
-          </Link>
-
-          <div className="nav-section">
-            <div className="nav-section-label">Projects</div>
-          </div>
-
-          {bidsByProject.map(({ project, bids: projBids }, pi) => {
-            const isOpen = expanded[project.id] || false;
-            const dotColor = STATUS_DOT_COLORS[project.status] || "var(--gold)";
-            const pillClass = STATUS_PILL_CLASS[project.status] || "psp-paused";
-
+        {/* Nav links */}
+        <div style={{ display: "flex", gap: 2, flex: 1 }}>
+          {[
+            { label: "Projects", href: "/customer" },
+            { label: "Vendors", href: "/customer/vendors" },
+            { label: "Bid Templates", href: "/customer/bid-templates" },
+          ].map(item => {
+            const isActive = item.href === "/customer"
+              ? pathname === "/customer"
+              : pathname?.startsWith(item.href);
             return (
-              <div className="proj-tree" key={project.id}>
-                <div
-                  className={`proj-header${isOpen ? " open" : ""}`}
-                  onClick={() => toggleProject(project.id)}
-                >
-                  <span
-                    className="proj-dot"
-                    style={{ background: dotColor }}
-                  ></span>
-                  <Link
-                    href={`/customer/project/${project.id}`}
-                    className="proj-header-name"
-                    style={{ textDecoration: "none", color: "inherit" }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {project.name}
-                  </Link>
-                  <span className={`proj-status-pill ${pillClass}`}>
-                    {project.status}
-                  </span>
-                  <span className={`proj-arrow${isOpen ? " open" : ""}`}>{"\u25B6"}</span>
-                </div>
-                <div className={`proj-bids${isOpen ? " open" : ""}`}>
-                  {projBids.map((bid, bi) => (
-                    <Link
-                      key={bid.id}
-                      href={`/customer/${bid.id}`}
-                      className="proj-bid-item"
-                      style={{ textDecoration: "none" }}
-                    >
-                      <span
-                        className="bid-dot"
-                        style={{ background: BID_DOT_COLORS[(pi + bi) % BID_DOT_COLORS.length] }}
-                      ></span>
-                      {bid.title}
-                    </Link>
-                  ))}
-                  <Link
-                    href={`/customer/create?project=${project.id}`}
-                    className="proj-bid-item"
-                    style={{ textDecoration: "none", color: "var(--gold)", fontWeight: 600 }}
-                  >
-                    {"\uFF0B"} Add Bid Request
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Unassigned bids */}
-          {unassignedBids.length > 0 && (
-            <div className="proj-tree">
-              <div
-                className={`proj-header${expanded["__unassigned"] ? " open" : ""}`}
-                onClick={() => toggleProject("__unassigned")}
-              >
-                <span
-                  className="proj-dot"
-                  style={{ background: "var(--faint)" }}
-                ></span>
-                <span className="proj-header-name">Unassigned</span>
-                <span className={`proj-arrow${expanded["__unassigned"] ? " open" : ""}`}>{"\u25B6"}</span>
-              </div>
-              <div className={`proj-bids${expanded["__unassigned"] ? " open" : ""}`}>
-                {unassignedBids.map((bid, bi) => (
-                  <Link
-                    key={bid.id}
-                    href={`/customer/${bid.id}`}
-                    className="proj-bid-item"
-                    style={{ textDecoration: "none" }}
-                  >
-                    <span
-                      className="bid-dot"
-                      style={{ background: BID_DOT_COLORS[bi % BID_DOT_COLORS.length] }}
-                    ></span>
-                    {bid.title}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="sidebar-foot">
-          <div className="user-chip" style={{ cursor: "pointer" }} onClick={handleLogout} title="Click to logout">
-            <div className="avatar">{user ? user.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?"}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="u-name">{user?.name || "Loading..."}</div>
-              <div className="u-role">{user?.company || user?.email || ""}</div>
-            </div>
-            <span style={{ fontSize: "0.7rem", color: "var(--faint)", flexShrink: 0 }} title="Logout">&#x23FB;</span>
-          </div>
-        </div>
-      </aside>
-
-      <div className="main">
-        <div className="topbar">
-          <div>
-            <span className="page-heading">{pageTitle}</span>
-            {pageSub && <span className="page-sub">{pageSub}</span>}
-          </div>
-          <div className="topbar-right">
-            <div className="gsearch">
-              <span style={{ color: "var(--faint)", fontSize: "0.85rem" }}>
-                {"\uD83D\uDD0D"}
-              </span>
-              <input placeholder="Search projects, vendors, bids\u2026" />
-              <span
+              <Link
+                key={item.label}
+                href={item.href}
                 style={{
-                  fontSize: "0.67rem",
-                  color: "var(--faint)",
-                  background: "var(--border)",
-                  borderRadius: "4px",
-                  padding: "2px 5px",
+                  padding: "6px 14px", borderRadius: 7,
+                  fontSize: "0.82rem", fontWeight: 600,
+                  color: isActive ? "var(--gold)" : "var(--ink2)",
+                  background: isActive ? "var(--gold-bg)" : "transparent",
+                  textDecoration: "none",
+                  transition: "all 0.15s",
                 }}
               >
-                {"\u2318"}K
-              </span>
-            </div>
-            <div style={{ position: "relative" }}>
-              <div className="ibtn" onClick={() => setActivityOpen(!activityOpen)}>
-                {"\uD83D\uDD14"}
-                {activityFeed.length > 0 && <span className="notif-pip"></span>}
-              </div>
-              {activityOpen && (
-                <>
-                  <div style={{ position: "fixed", inset: 0, zIndex: 98 }} onClick={() => setActivityOpen(false)} />
-                  <div style={{
-                    position: "absolute", top: "calc(100% + 8px)", right: 0, width: 340,
-                    background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 12,
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.12)", zIndex: 99, overflow: "hidden",
-                  }}>
-                    <div style={{
-                      padding: "12px 16px", borderBottom: "1px solid var(--border)",
-                      fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800,
-                      fontSize: "0.88rem", color: "var(--ink)",
-                    }}>
-                      Recent Activity
-                    </div>
-                    <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                      {activityFeed.length === 0 && (
-                        <div style={{ padding: "20px 16px", color: "var(--muted)", fontSize: "0.82rem", textAlign: "center" }}>No recent activity</div>
-                      )}
-                      {activityFeed.slice(0, 10).map((item, i) => (
-                        <div key={i} style={{
-                          display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 16px",
-                          borderBottom: "1px solid var(--border)", fontSize: "0.8rem",
-                        }}>
-                          <span style={{ fontSize: "0.9rem", flexShrink: 0, marginTop: 1 }}>{item.icon}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ color: "var(--ink2)", lineHeight: 1.4 }} dangerouslySetInnerHTML={{ __html: item.text }} />
-                            <div style={{ fontSize: "0.7rem", color: "var(--faint)", marginTop: 2 }}>{item.time}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-            <Link href="/customer/create" className="btn btn-gold btn-xs">
-              {"\uFF0B"} New Bid Request
-            </Link>
-          </div>
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
 
-        <div className="content">{children}</div>
-      </div>
+        {/* Right section */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isTeamMember && (
+            <span style={{
+              padding: "3px 8px", borderRadius: 6, fontSize: "0.68rem", fontWeight: 700,
+              background: teamRole === "editor" ? "var(--blue-bg)" : "var(--bg)",
+              color: teamRole === "editor" ? "var(--blue)" : "var(--muted)",
+              border: "1px solid var(--border)",
+            }}>
+              {teamRole === "editor" ? "Editor" : "Viewer"}
+            </span>
+          )}
+          {(!isTeamMember || teamRole === "editor") && (
+            <Link
+              href="/customer/create"
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                padding: "6px 14px", borderRadius: 7,
+                fontSize: "0.78rem", fontWeight: 700,
+                background: "var(--gold)", color: "#fff",
+                textDecoration: "none", transition: "all 0.15s",
+              }}
+            >
+              + New Bid
+            </Link>
+          )}
+
+          {/* User menu */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "4px 10px 4px 4px", borderRadius: 8,
+                background: "none", border: "1.5px solid var(--border)",
+                cursor: "pointer", fontSize: "0.8rem", color: "var(--ink)",
+              }}
+            >
+              <div style={{
+                width: 28, height: 28, borderRadius: "50%",
+                background: "var(--gold)", color: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 800, fontSize: "0.68rem",
+              }}>
+                {user ? user.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?"}
+              </div>
+              <span style={{ fontWeight: 600, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user?.name?.split(" ")[0] || "..."}
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+
+            {showUserMenu && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 98 }} onClick={() => setShowUserMenu(false)} />
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", right: 0, width: 200,
+                  background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 10,
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.12)", zIndex: 99, overflow: "hidden",
+                  padding: "4px",
+                }}>
+                  <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{user?.name}</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
+                      {user?.email}
+                      {isTeamMember && <span style={{ marginLeft: 6, color: "var(--gold)" }}>(Team)</span>}
+                    </div>
+                  </div>
+                  {!isTeamMember && (
+                    <>
+                      <Link
+                        href="/customer/settings"
+                        onClick={() => setShowUserMenu(false)}
+                        style={{
+                          display: "block", padding: "8px 12px", fontSize: "0.82rem",
+                          color: "var(--ink)", textDecoration: "none", borderRadius: 6,
+                          fontWeight: 600,
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = "var(--bg)"; }}
+                        onMouseOut={e => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        Settings
+                      </Link>
+                      <Link
+                        href="/customer/billing"
+                        onClick={() => setShowUserMenu(false)}
+                        style={{
+                          display: "block", padding: "8px 12px", fontSize: "0.82rem",
+                          color: "var(--ink)", textDecoration: "none", borderRadius: 6,
+                          fontWeight: 600,
+                        }}
+                        onMouseOver={e => { e.currentTarget.style.background = "var(--bg)"; }}
+                        onMouseOut={e => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        Billing
+                      </Link>
+                    </>
+                  )}
+                  <button
+                    onClick={handleLogout}
+                    style={{
+                      display: "block", width: "100%", padding: "8px 12px", fontSize: "0.82rem",
+                      color: "var(--muted)", textAlign: "left", borderRadius: 6,
+                      background: "none", border: "none", cursor: "pointer",
+                      fontWeight: 600,
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.background = "var(--bg)"; }}
+                    onMouseOut={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    Logout
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* Trial days remaining banner */}
+      {trialDaysLeft !== null && trialDaysLeft <= 7 && !accessBlocked && (
+        <div style={{
+          background: trialDaysLeft <= 3 ? "#fef2f2" : "#fffbeb",
+          borderBottom: `1.5px solid ${trialDaysLeft <= 3 ? "#fecaca" : "#fde68a"}`,
+          padding: "8px 24px", display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+          fontSize: "0.82rem", fontWeight: 600,
+          color: trialDaysLeft <= 3 ? "#991b1b" : "#92400e",
+        }}>
+          <span>{trialDaysLeft <= 3 ? "⚠️" : "⏰"} Trial ends in {trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</span>
+          <Link href="/customer/billing" style={{
+            padding: "4px 12px", borderRadius: 6, fontSize: "0.78rem", fontWeight: 700,
+            background: "var(--gold)", color: "#fff", textDecoration: "none",
+          }}>Subscribe Now</Link>
+        </div>
+      )}
+
+      {/* Access blocked screen (allow billing page through) */}
+      {accessBlocked && !pathname?.includes('/billing') ? (
+        <div style={{
+          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "40px 20px",
+        }}>
+          <div style={{
+            maxWidth: 480, width: "100%", textAlign: "center",
+            background: "var(--surface)", border: "1.5px solid var(--border)",
+            borderRadius: 16, padding: "48px 36px",
+          }}>
+            <div style={{ fontSize: "3rem", marginBottom: 16 }}>{trialExpired ? "⏰" : "🔒"}</div>
+            <h2 style={{
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              fontWeight: 800, fontSize: "1.3rem", marginBottom: 8,
+              color: "var(--ink)",
+            }}>
+              {trialExpired ? "Trial Period Ended" : "Account Not Active"}
+            </h2>
+            <p style={{ color: "var(--muted)", fontSize: "0.88rem", lineHeight: 1.6, marginBottom: 24 }}>
+              {trialExpired
+                ? "Your trial period has expired. Subscribe to Pro to continue using BidMaster, or contact us to extend your trial."
+                : "Your account is pending activation. Subscribe to Pro to get started, or request a free trial period."
+              }
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+              <Link href="/customer/billing" style={{
+                display: "inline-block", padding: "12px 32px", borderRadius: 8,
+                background: "var(--gold)", color: "#fff", fontWeight: 700, fontSize: "0.92rem",
+                textDecoration: "none", width: "100%",
+              }}>
+                Subscribe — $199/mo
+              </Link>
+              <a href={`mailto:info@bidmaster.app?subject=Trial%20Request&body=${encodeURIComponent(`Hi,\n\nI would like to request a free trial for BidMaster.\n\nMy name: ${user?.name || ''}\nMy email: ${user?.email || ''}\nCompany: ${user?.company || ''}\n\nThank you!`)}`} style={{
+                display: "inline-block", padding: "12px 32px", borderRadius: 8,
+                border: "1.5px solid var(--border)", background: "var(--surface)",
+                color: "var(--ink)", fontWeight: 700, fontSize: "0.92rem",
+                textDecoration: "none", width: "100%",
+              }}>
+                Request Free Trial
+              </a>
+            </div>
+            <button
+              onClick={handleLogout}
+              style={{
+                marginTop: 20, background: "none", border: "none",
+                color: "var(--muted)", fontSize: "0.8rem", cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Page content */}
+          <div className="content" style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px", width: "100%", flex: 1 }}>
+            {children}
+          </div>
+        </>
+      )}
 
       {/* Toast */}
       <div

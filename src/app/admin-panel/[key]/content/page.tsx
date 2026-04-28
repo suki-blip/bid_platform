@@ -108,7 +108,7 @@ function MarketingEditor({ onSave }: { onSave: () => void }) {
       </div>
       <div className="fg">
         <label className="flbl">CTA Button Text</label>
-        <input className="finput" defaultValue="Start Free Trial" />
+        <input className="finput" defaultValue="Get Started — $199/mo" />
       </div>
       <div className="fg">
         <label className="flbl">Statistics Section</label>

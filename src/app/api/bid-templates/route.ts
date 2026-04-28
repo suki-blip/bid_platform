@@ -13,6 +13,7 @@ export async function GET() {
       ...r,
       parameters: JSON.parse(r.parameters as string || '[]'),
       checklist: JSON.parse(r.checklist as string || '[]'),
+      is_default: r.is_default === 1,
     })));
   } catch (error) {
     console.error('Error fetching templates:', error);
@@ -47,6 +48,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ id, name, category_id, title, description, parameters, checklist }, { status: 201 });
   } catch (error) {
     console.error('Error creating template:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    await dbReady();
+    const body = await request.json();
+    const { id, name, category_id, title, description, parameters, checklist, bid_mode, suggested_specs } = body;
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+    const sets: string[] = [];
+    const args: any[] = [];
+    if (name !== undefined) { sets.push('name = ?'); args.push(name); }
+    if (category_id !== undefined) { sets.push('category_id = ?'); args.push(category_id || null); }
+    if (title !== undefined) { sets.push('title = ?'); args.push(title); }
+    if (description !== undefined) { sets.push('description = ?'); args.push(description); }
+    if (parameters !== undefined) { sets.push('parameters = ?'); args.push(JSON.stringify(parameters)); }
+    if (checklist !== undefined) { sets.push('checklist = ?'); args.push(JSON.stringify(checklist)); }
+    if (bid_mode !== undefined) { sets.push('bid_mode = ?'); args.push(bid_mode); }
+    if (suggested_specs !== undefined) { sets.push('suggested_specs = ?'); args.push(JSON.stringify(suggested_specs)); }
+
+    if (sets.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    args.push(id);
+    await db().execute({ sql: `UPDATE bid_templates SET ${sets.join(', ')} WHERE id = ?`, args });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating template:', error);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }

@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     await dbReady();
 
     const body = await request.json();
-    const { title, description, deadline, parameters, project_id, trade_category_id, status } = body;
+    const { title, description, deadline, parameters, project_id, trade_category_id, status, checklist, allow_ve, bid_mode, suggested_specs } = body;
 
     if (!title || !description || !deadline) {
       return NextResponse.json(
@@ -68,10 +68,12 @@ export async function POST(request: Request) {
 
     const bidId = crypto.randomUUID();
 
+    const checklistJson = checklist ? JSON.stringify(checklist) : '[]';
+    const suggestedSpecsJson = suggested_specs ? JSON.stringify(suggested_specs) : '[]';
     const statements: { sql: string; args: (string | number | null)[] }[] = [
       {
-        sql: 'INSERT INTO bids (id, title, description, deadline, status, project_id, trade_category_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        args: [bidId, title, description, deadline, status || 'draft', project_id || null, trade_category_id || null],
+        sql: 'INSERT INTO bids (id, title, description, deadline, status, project_id, trade_category_id, checklist, allow_ve, bid_mode, suggested_specs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [bidId, title, description, deadline, status || 'draft', project_id || null, trade_category_id || null, checklistJson, allow_ve ? 1 : 0, bid_mode || 'structured', suggestedSpecsJson],
       },
     ];
 

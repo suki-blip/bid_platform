@@ -6,6 +6,7 @@ import { useToast } from '../layout';
 interface User {
   id: string; name: string; company: string; email: string;
   status: string; payment: string; plan: string; joined: string; last_login: string;
+  trial_end_date: string | null;
 }
 
 function initials(name: string) { return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
@@ -13,7 +14,7 @@ const avColors = [['#dbeafe','var(--blue)'],['#dcfce7','var(--green)'],['#fef3c7
 function avColor(id: string) { return avColors[id.charCodeAt(0) % 5]; }
 
 function StatusTag({ status }: { status: string }) {
-  const cls = status === 'active' ? 'tag-active' : status === 'trial' ? 'tag-trial' : 'tag-suspended';
+  const cls = status === 'active' ? 'tag-active' : status === 'trial' ? 'tag-trial' : status === 'pending' ? 'tag-unpaid' : 'tag-suspended';
   return <span className={`tag ${cls}`}>{status}</span>;
 }
 function PaymentTag({ payment }: { payment: string }) {
@@ -41,6 +42,9 @@ export default function UsersPage() {
   // Change password form
   const [pwd1, setPwd1] = useState('');
   const [pwd2, setPwd2] = useState('');
+
+  // Trial grant
+  const [trialDays, setTrialDays] = useState('14');
 
   const loadUsers = useCallback(() => {
     const params = new URLSearchParams();
@@ -130,7 +134,7 @@ export default function UsersPage() {
             <input placeholder="Search name or email…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <div className="filter-chips">
-            {['all', 'active', 'trial', 'unpaid', 'suspended'].map(f => (
+            {['all', 'active', 'trial', 'pending', 'unpaid', 'suspended'].map(f => (
               <div key={f} className={`chip ${filter === f ? 'on' : ''}`} onClick={() => setFilter(f)}>
                 {f.charAt(0).toUpperCase() + f.slice(1)}
               </div>
@@ -143,6 +147,7 @@ export default function UsersPage() {
           <div><input type="checkbox" className="user-checkbox" checked={selected.size === users.length && users.length > 0} onChange={toggleAll} /></div>
           <div className="utbl-col">User</div>
           <div className="utbl-col">Email</div>
+          <div className="utbl-col">Plan</div>
           <div className="utbl-col">Status</div>
           <div className="utbl-col">Payment</div>
           <div className="utbl-col">Joined</div>
@@ -159,6 +164,7 @@ export default function UsersPage() {
                 <div><div className="user-name">{u.name}</div><div className="user-email">{u.company}</div></div>
               </div>
               <div className="user-email" style={{ fontSize: '0.78rem' }}>{u.email}</div>
+              <span className={`tag ${u.plan === 'Pro' ? 'tag-paid' : 'tag-trial'}`} style={u.plan === 'Pro' ? { background: '#f3e8ff', color: '#7c3aed', borderColor: '#c4b5fd' } : {}}>{u.plan || 'Free'}</span>
               <StatusTag status={u.status} />
               <PaymentTag payment={u.payment} />
               <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{u.joined ? new Date(u.joined).toLocaleDateString() : '-'}</div>
@@ -190,7 +196,73 @@ export default function UsersPage() {
               <div className="info-box"><div className="info-label">Plan</div><div className="info-value">{activeUser.plan}</div></div>
               <div className="info-box"><div className="info-label">Last Login</div><div className="info-value">{activeUser.last_login || 'Never'}</div></div>
               <div className="info-box"><div className="info-label">Joined</div><div className="info-value">{activeUser.joined ? new Date(activeUser.joined).toLocaleDateString() : '-'}</div></div>
+              <div className="info-box">
+                <div className="info-label">Trial End</div>
+                <div className="info-value" style={{ color: activeUser.trial_end_date && new Date(activeUser.trial_end_date) < new Date() ? 'var(--red)' : undefined }}>
+                  {activeUser.trial_end_date ? new Date(activeUser.trial_end_date).toLocaleDateString() : 'No trial'}
+                  {activeUser.trial_end_date && new Date(activeUser.trial_end_date) < new Date() && ' (Expired)'}
+                  {activeUser.trial_end_date && new Date(activeUser.trial_end_date) >= new Date() && (() => {
+                    const days = Math.ceil((new Date(activeUser.trial_end_date!).getTime() - Date.now()) / (1000*60*60*24));
+                    return ` (${days}d left)`;
+                  })()}
+                </div>
+              </div>
             </div>
+
+            {/* Plan Management */}
+            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', marginBottom: 12, border: `1.5px solid ${activeUser.plan === 'Pro' ? '#c4b5fd' : 'var(--border)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--ink)' }}>
+                  Plan: <span style={{ color: activeUser.plan === 'Pro' ? '#7c3aed' : 'var(--muted)' }}>{activeUser.plan || 'Free'}</span>
+                </div>
+                {activeUser.plan === 'Pro' ? (
+                  <button className="btn btn-sm btn-outline" onClick={async () => {
+                    if (!confirm(`Downgrade ${activeUser.name} from Pro to Free?`)) return;
+                    await fetch(`/api/admin/users/${activeUser.id}`, {
+                      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ plan: 'Free', payment: 'trial', status: 'trial' }),
+                    });
+                    toast(`${activeUser.name} downgraded to Free`);
+                    setModal(null);
+                    loadUsers();
+                  }}>↓ Downgrade to Free</button>
+                ) : (
+                  <button className="btn btn-sm btn-gold" style={{ background: '#7c3aed' }} onClick={async () => {
+                    await fetch(`/api/admin/users/${activeUser.id}`, {
+                      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ plan: 'Pro', payment: 'paid', status: 'active' }),
+                    });
+                    toast(`${activeUser.name} upgraded to Pro!`);
+                    setModal(null);
+                    loadUsers();
+                  }}>↑ Upgrade to Pro</button>
+                )}
+              </div>
+
+              {/* Grant Pro Trial (only if not Pro) */}
+              {activeUser.plan !== 'Pro' && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 8 }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: 6, color: 'var(--muted)' }}>Grant Pro Trial</div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input className="finput" type="number" min="1" max="365" value={trialDays} onChange={e => setTrialDays(e.target.value)}
+                      style={{ width: 80, textAlign: 'center' }} />
+                    <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>days</span>
+                    <button className="btn btn-sm btn-gold" onClick={async () => {
+                      const days = Number(trialDays);
+                      if (!days || days < 1) { toast('Enter valid days'); return; }
+                      await fetch(`/api/admin/users/${activeUser.id}`, {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ trial_days: days }),
+                      });
+                      toast(`${days}-day Pro trial granted to ${activeUser.name}`);
+                      setModal(null);
+                      loadUsers();
+                    }}>Grant Trial →</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {activeUser.status === 'suspended'
                 ? <button className="btn btn-sm btn-green" onClick={() => { toggleStatus(activeUser.id, activeUser.status); setModal(null); }}>✅ Activate Account</button>
@@ -241,7 +313,7 @@ export default function UsersPage() {
               <div className="fg"><label className="flbl">Password *</label><input className="finput" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 8 chars" /></div>
               <div className="fg"><label className="flbl">Plan</label>
                 <select className="finput" value={newPlan} onChange={e => setNewPlan(e.target.value)}>
-                  <option value="trial">Trial (14 days)</option>
+                  <option value="trial">Free (No Subscription)</option>
                   <option value="pro">Pro - $199/mo</option>
                 </select>
               </div>

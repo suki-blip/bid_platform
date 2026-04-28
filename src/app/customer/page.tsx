@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 interface Bid {
@@ -22,6 +23,8 @@ interface Project {
   description: string;
   status: string;
   bid_count: number;
+  category_count: number;
+  image_url?: string | null;
 }
 
 interface VendorInfo {
@@ -211,14 +214,25 @@ export default function CustomerDashboard() {
                   onMouseOut={e => { e.currentTarget.style.borderColor = project.status === "paused" ? "#fde68a" : "var(--border)"; e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "none"; }}
                   >
                     {/* Header */}
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
-                      <div style={{
-                        width: 40, height: 40, borderRadius: 10, background: "var(--gold-bg)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: "1.2rem", flexShrink: 0,
-                      }}>
-                        {icon}
-                      </div>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14, paddingRight: 28 }}>
+                      {project.image_url ? (
+                        <img
+                          src={project.image_url}
+                          alt=""
+                          style={{
+                            width: 40, height: 40, borderRadius: 10, objectFit: "cover",
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: 40, height: 40, borderRadius: 10, background: "var(--gold-bg)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "1.2rem", flexShrink: 0,
+                        }}>
+                          {icon}
+                        </div>
+                      )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
                           fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800,
@@ -261,15 +275,27 @@ export default function CustomerDashboard() {
                       </div>
                     </div>
 
-                    {overdue > 0 && (
-                      <div style={{
-                        fontSize: "0.72rem", fontWeight: 700, color: "#92400e",
-                        marginTop: 6, padding: "4px 8px", background: "#fef3c7",
-                        borderRadius: 6, display: "inline-block",
-                      }}>
-                        {overdue} overdue
-                      </div>
-                    )}
+                    {/* Category + Overdue info */}
+                    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                      {project.category_count > 0 && (
+                        <div style={{
+                          fontSize: "0.72rem", fontWeight: 600, color: "var(--muted)",
+                          padding: "3px 8px", background: "var(--bg)",
+                          borderRadius: 6,
+                        }}>
+                          {project.category_count} categories
+                        </div>
+                      )}
+                      {overdue > 0 && (
+                        <div style={{
+                          fontSize: "0.72rem", fontWeight: 700, color: "#92400e",
+                          padding: "3px 8px", background: "#fef3c7",
+                          borderRadius: 6,
+                        }}>
+                          {overdue} overdue
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Link>
 
@@ -350,6 +376,8 @@ export default function CustomerDashboard() {
         </div>
       </div>
 
+      {/* MODALS — portaled to body to avoid overflow/layout issues */}
+      {typeof document !== "undefined" && createPortal(<>
       {/* CLONE MODAL */}
       {cloneProjectId && (
         <div className="modal-overlay open" onClick={() => setCloneProjectId(null)}>
@@ -512,6 +540,7 @@ export default function CustomerDashboard() {
           </div>
         </div>
       )}
+      </>, document.body)}
     </div>
   );
 }

@@ -36,7 +36,18 @@ export async function GET(
     });
 
     const categoriesResult = await db().execute({
-      sql: `SELECT pc.id, pc.category_id, tc.name, tc.grp FROM project_categories pc JOIN trade_categories tc ON pc.category_id = tc.id WHERE pc.project_id = ? ORDER BY tc.grp, tc.name`,
+      sql: `SELECT pc.id, pc.category_id, pc.budget, tc.name, tc.grp FROM project_categories pc JOIN trade_categories tc ON pc.category_id = tc.id WHERE pc.project_id = ? ORDER BY tc.grp, tc.name`,
+      args: [id],
+    });
+
+    // Get awarded prices: for each bid with a winner, get the winning vendor response base_price
+    const winnersResult = await db().execute({
+      sql: `SELECT bw.bid_id, b.trade_category_id, vr.base_price,
+            (SELECT SUM(vp.price) FROM vendor_proposals vp WHERE vp.response_id = vr.id) as proposals_total
+            FROM bid_winners bw
+            JOIN bids b ON bw.bid_id = b.id
+            JOIN vendor_responses vr ON bw.vendor_response_id = vr.id
+            WHERE b.project_id = ?`,
       args: [id],
     });
 
@@ -46,6 +57,7 @@ export async function GET(
       files: filesResult.rows,
       team: teamResult.rows,
       categories: categoriesResult.rows,
+      winners: winnersResult.rows,
     });
   } catch (error) {
     console.error('Error fetching project:', error);
@@ -66,7 +78,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const allowedFields = ['name', 'address', 'type', 'description', 'status'];
+    const allowedFields = ['name', 'address', 'type', 'description', 'status', 'image_url', 'budget', 'budget_visible'];
     const setClauses: string[] = [];
     const args: (string | null)[] = [];
 

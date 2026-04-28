@@ -1,8 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Script from 'next/script';
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: any) => void;
+          renderButton: (element: HTMLElement, config: any) => void;
+        };
+      };
+    };
+  }
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -13,6 +27,65 @@ export default function RegisterPage() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const handleGoogleResponse = useCallback(async (response: any) => {
+    setError('');
+    setGoogleLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Google sign-up failed');
+        setGoogleLoading(false);
+        return;
+      }
+
+      router.push('/customer');
+    } catch {
+      setError('Network error. Please try again.');
+      setGoogleLoading(false);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    fetch('/api/auth/google-client-id')
+      .then(r => r.json())
+      .then(d => {
+        if (d.clientId) setGoogleClientId(d.clientId);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!googleClientId || !window.google) return;
+    initGoogleBtn();
+  }, [googleClientId, handleGoogleResponse]);
+
+  function initGoogleBtn() {
+    if (!googleClientId || !window.google) return;
+    window.google.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: handleGoogleResponse,
+    });
+    const el = document.getElementById('google-signup-btn');
+    if (el) {
+      window.google.accounts.id.renderButton(el, {
+        theme: 'outline',
+        size: 'large',
+        width: '100%',
+        text: 'signup_with',
+        shape: 'rectangular',
+      });
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +138,12 @@ export default function RegisterPage() {
       fontFamily: "'DM Sans', sans-serif",
       color: '#fff',
     }}>
+      <Script
+        src="https://accounts.google.com/gsi/client"
+        strategy="afterInteractive"
+        onLoad={initGoogleBtn}
+      />
+
       <div style={{ width: '100%', maxWidth: 420, padding: '0 24px' }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <Link href="/" style={{ textDecoration: 'none' }}>
@@ -80,8 +159,27 @@ export default function RegisterPage() {
             </div>
           </Link>
           <p style={{ color: '#8a8fa8', fontSize: '0.95rem' }}>Create your contractor account</p>
-          <p style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: 4 }}>14-day free trial — no credit card required</p>
+          <p style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: 4 }}>Professional plan — $199/month</p>
         </div>
+
+        {/* Google Sign Up */}
+        {googleClientId && (
+          <>
+            <div style={{ position: 'relative', minHeight: 44, marginBottom: 20 }}>
+              {googleLoading && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', borderRadius: 8, zIndex: 2, fontSize: '0.9rem', color: '#fff' }}>
+                  Creating account...
+                </div>
+              )}
+              <div id="google-signup-btn" style={{ display: 'flex', justifyContent: 'center' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+              <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>or register with email</span>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+            </div>
+          </>
+        )}
 
         <form onSubmit={handleSubmit} style={{
           background: '#1c1f2e',
@@ -141,7 +239,7 @@ export default function RegisterPage() {
               transition: 'all 0.2s',
             }}
           >
-            {loading ? 'Creating Account...' : 'Start Free Trial'}
+            {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 

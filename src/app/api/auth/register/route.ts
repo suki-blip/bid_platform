@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     try {
       await client.execute({
         sql: 'INSERT INTO saas_users (id, name, company, email, password_hash, status, payment, plan) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [id, name, company || null, email.toLowerCase().trim(), passwordHash, 'trial', 'trial', 'Trial'],
+        args: [id, name, company || null, email.toLowerCase().trim(), passwordHash, 'pending', 'unpaid', 'Free'],
       });
     } catch (e: any) {
       if (e.message?.includes('UNIQUE')) {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     // Log activity
     await client.execute({
       sql: 'INSERT INTO activity_log (id, type, text) VALUES (?, ?, ?)',
-      args: [crypto.randomUUID(), 'signup', `${name} — new account registered (Trial)`],
+      args: [crypto.randomUUID(), 'signup', `${name} — new account registered (Pending)`],
     });
 
     // Auto-login: create session
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       email: email.toLowerCase().trim(),
       name,
       company: company || null,
-      plan: 'Trial',
+      plan: 'Free',
       token,
     });
     const encoded = Buffer.from(sessionData).toString('base64');
@@ -56,9 +56,9 @@ export async function POST(request: NextRequest) {
       name,
       email: email.toLowerCase().trim(),
       company: company || null,
-      plan: 'Trial',
-      status: 'trial',
-      payment: 'trial',
+      plan: 'Free',
+      status: 'pending',
+      payment: 'unpaid',
     }, { status: 201 });
 
     response.cookies.set('contractor-auth', encoded, {

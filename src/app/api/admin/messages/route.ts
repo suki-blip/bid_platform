@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     const statusMap: Record<string, string> = {
       active: "status = 'active'",
       trial: "status = 'trial'",
+      pending: "status = 'pending'",
       suspended: "status = 'suspended'",
       unpaid: "payment = 'unpaid'",
     };

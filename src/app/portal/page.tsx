@@ -26,7 +26,7 @@ export default function PortalPage() {
         </Link>
 
         <Link
-          href="/vendor-login"
+          href="/login?tab=vendor"
           className="flex flex-col items-center justify-center rounded-xl p-10 transition-all hover:-translate-y-0.5 group"
           style={{ background: 'var(--card)', border: '1.5px solid var(--border)', borderRadius: '12px' }}
           onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--gold-b)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.07)'; }}

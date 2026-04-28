@@ -28,7 +28,10 @@ interface BidTemplate {
   title: string;
   description: string;
   parameters: Parameter[];
-  checklist: string[];
+  checklist: (string | { text: string; required?: boolean })[];
+  bid_mode?: string;
+  suggested_specs?: string[];
+  is_default?: boolean;
 }
 
 function showToast(msg: string) {
@@ -87,10 +90,19 @@ function CreateBidContent() {
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateSearchVal, setTemplateSearchVal] = useState("");
 
   // Checklist
   const [checklist, setChecklist] = useState<{ text: string; checked: boolean }[]>([]);
   const [newCheckItem, setNewCheckItem] = useState("");
+
+  // Bid mode
+  const [bidMode, setBidMode] = useState<"structured" | "open">("structured");
+  const [suggestedSpecs, setSuggestedSpecs] = useState<string[]>([]);
+
+  // Category selection (when not coming from a category page)
+  const [projectCategories, setProjectCategories] = useState<{ category_id: string; name: string }[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(categoryIdFromUrl || "");
 
   useEffect(() => {
     fetch("/api/projects")
@@ -106,19 +118,49 @@ function CreateBidContent() {
       .finally(() => setLoadingProjects(false));
   }, [projectIdFromUrl]);
 
-  // Load templates
+  // Load templates + auto-load default template for category
+  const [autoTemplateLoaded, setAutoTemplateLoaded] = useState(false);
   useEffect(() => {
     fetch("/api/bid-templates")
       .then(r => r.ok ? r.json() : [])
-      .then(setTemplates)
+      .then((data: BidTemplate[]) => {
+        setTemplates(data);
+        // Auto-load matching default template if category specified and form is empty
+        if (categoryIdFromUrl && !autoTemplateLoaded && !title) {
+          const match = data.find((t: BidTemplate) => t.is_default && t.category_id === categoryIdFromUrl);
+          if (match) {
+            setTitle(match.title);
+            setDescription(match.description);
+            setParameters(match.parameters.map(p => ({ ...p, options: [...p.options] })));
+            setChecklist((match.checklist as any[]).map((c: any) => typeof c === "string" ? { text: c, checked: false } : { text: c.text || "", checked: false }));
+            setAutoTemplateLoaded(true);
+            showToast(`Default template loaded for ${match.name.replace(' Bid', '')}`);
+          }
+        }
+      })
       .catch(() => {});
-  }, []);
+  }, [categoryIdFromUrl]);
+
+  // Load project categories when project changes
+  useEffect(() => {
+    if (!selectedProjectId) { setProjectCategories([]); return; }
+    fetch(`/api/projects/${selectedProjectId}/categories`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setProjectCategories)
+      .catch(() => setProjectCategories([]));
+  }, [selectedProjectId]);
 
   function loadTemplate(t: BidTemplate) {
     setTitle(t.title);
     setDescription(t.description);
     setParameters(t.parameters.map(p => ({ ...p, options: [...p.options] })));
-    setChecklist(t.checklist.map(text => ({ text, checked: false })));
+    // Checklist items can be strings or objects {text, required}
+    setChecklist((t.checklist as any[]).map(c =>
+      typeof c === "string" ? { text: c, checked: false } : { text: c.text || "", checked: false }
+    ));
+    // Apply bid_mode and suggested_specs if present
+    if ((t as any).bid_mode) setBidMode((t as any).bid_mode);
+    if ((t as any).suggested_specs) setSuggestedSpecs((t as any).suggested_specs);
     setShowTemplates(false);
     showToast(`Template "${t.name}" loaded`);
   }
@@ -220,13 +262,16 @@ function CreateBidContent() {
         parameters: parameters
           .filter((p) => p.name.trim() && p.options.length > 0)
           .map((p, i) => ({ name: p.name.trim(), options: p.options, is_track: !!p.is_track, sort_order: i })),
+        checklist: checklist.filter(c => c.text.trim()).map(c => ({ text: c.text.trim(), required: true })),
+        bid_mode: bidMode,
       };
 
       if (projectId) {
         body.project_id = projectId;
       }
-      if (categoryIdFromUrl) {
-        body.trade_category_id = categoryIdFromUrl;
+      const catId = categoryIdFromUrl || selectedCategoryId;
+      if (catId) {
+        body.trade_category_id = catId;
       }
 
       const res = await fetch("/api/bids", {
@@ -352,48 +397,89 @@ function CreateBidContent() {
               </div>
 
               {/* Template list */}
-              {showTemplates && (
+              {showTemplates && (() => {
+                const activeCatId = categoryIdFromUrl || selectedCategoryId || "";
+                const [templateSearch, setTemplateSearch] = [templateSearchVal, setTemplateSearchVal];
+                const searchFn = (t: BidTemplate) => !templateSearch ||
+                  t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
+                  t.title.toLowerCase().includes(templateSearch.toLowerCase());
+
+                // Sort: same category first, then others; default templates always first within each group
+                const thisCatTemplates = templates.filter(t => activeCatId && t.category_id === activeCatId && searchFn(t));
+                const otherTemplates = templates.filter(t => (!activeCatId || t.category_id !== activeCatId) && searchFn(t));
+                // Within each group: default first
+                const sortGroup = (arr: BidTemplate[]) => [...arr.filter(t => t.is_default), ...arr.filter(t => !t.is_default)];
+
+                const renderTemplateRow = (t: BidTemplate) => (
+                  <div
+                    key={t.id}
+                    onClick={() => loadTemplate(t)}
+                    style={{
+                      padding: "8px 12px", background: "var(--card)", borderRadius: 8,
+                      border: "1px solid var(--border)", marginBottom: 4,
+                      cursor: "pointer", transition: "all 0.12s",
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.borderColor = "var(--gold-b)"; e.currentTarget.style.background = "var(--surface)"; }}
+                    onMouseOut={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--card)"; }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "var(--ink)" }}>{t.name}</span>
+                          {t.is_default && <span style={{ fontSize: "0.56rem", fontWeight: 800, color: "var(--gold)", background: "var(--gold-bg)", border: "1px solid var(--gold-b)", borderRadius: 3, padding: "0 4px" }}>DEFAULT</span>}
+                        </div>
+                        <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: 1 }}>
+                          {t.parameters.length} params · {t.checklist.length} checklist
+                        </div>
+                      </div>
+                      <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--gold)" }}>Load →</span>
+                    </div>
+                  </div>
+                );
+
+                return (
                 <div style={{
                   marginBottom: 14, border: "1.5px solid var(--gold-b)", borderRadius: 10,
-                  background: "var(--gold-bg)", padding: 14, maxHeight: 280, overflowY: "auto",
+                  background: "var(--gold-bg)", padding: 14, maxHeight: 380, overflowY: "auto",
                 }}>
-                  {templates.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "16px", color: "var(--muted)", fontSize: "0.82rem" }}>
-                      No templates saved yet. Create a bid and save it as a template.
-                    </div>
-                  ) : (
+                  {/* Search */}
+                  <input
+                    value={templateSearch}
+                    onChange={e => setTemplateSearchVal(e.target.value)}
+                    placeholder="Search templates..."
+                    className="finput"
+                    style={{ fontSize: "0.8rem", marginBottom: 10, width: "100%", padding: "6px 10px" }}
+                  />
+
+                  {/* This category's templates (shown first) */}
+                  {sortGroup(thisCatTemplates).length > 0 && (
                     <>
                       <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "var(--gold)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
-                        Saved Templates
+                        ⭐ This Category ({thisCatTemplates.length})
                       </div>
-                      {templates.map(t => (
-                        <div
-                          key={t.id}
-                          onClick={() => loadTemplate(t)}
-                          style={{
-                            padding: "10px 12px", background: "var(--card)", borderRadius: 8,
-                            border: "1px solid var(--border)", marginBottom: 6,
-                            cursor: "pointer", transition: "all 0.12s",
-                          }}
-                          onMouseOver={e => { e.currentTarget.style.borderColor = "var(--gold-b)"; e.currentTarget.style.background = "var(--surface)"; }}
-                          onMouseOut={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--card)"; }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{t.name}</div>
-                              <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 2 }}>
-                                {t.parameters.length} parameters · {t.checklist.length} checklist items
-                                {t.category_id && <span style={{ marginLeft: 6, color: "var(--gold)", fontWeight: 600 }}>{t.category_id}</span>}
-                              </div>
-                            </div>
-                            <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--gold)" }}>Load →</span>
-                          </div>
-                        </div>
-                      ))}
+                      {sortGroup(thisCatTemplates).map(renderTemplateRow)}
                     </>
                   )}
+
+                  {/* Other templates */}
+                  {sortGroup(otherTemplates).length > 0 && (
+                    <>
+                      <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8, marginTop: thisCatTemplates.length > 0 ? 12 : 0 }}>
+                        {thisCatTemplates.length > 0 ? "Other Templates" : "All Templates"} ({otherTemplates.length})
+                      </div>
+                      {sortGroup(otherTemplates).map(renderTemplateRow)}
+                    </>
+                  )}
+
+                  {thisCatTemplates.length === 0 && otherTemplates.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "16px", color: "var(--muted)", fontSize: "0.82rem" }}>
+                      No templates found
+                    </div>
+                  )}
+
                 </div>
-              )}
+                );
+              })()}
 
               {/* Save template form */}
               {showSaveTemplate && (
@@ -474,6 +560,24 @@ function CreateBidContent() {
                       </select>
                     </div>
                   )}
+                  {/* Category selector */}
+                  {!categoryIdFromUrl && selectedProjectId && projectCategories.length > 0 && (
+                    <div className="fg" style={{ marginTop: 10 }}>
+                      <label className="flbl">Category</label>
+                      <select
+                        className="finput"
+                        value={selectedCategoryId}
+                        onChange={(e) => setSelectedCategoryId(e.target.value)}
+                      >
+                        <option value="">-- No Category --</option>
+                        {projectCategories.map((c: any) => (
+                          <option key={c.category_id} value={c.category_id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -518,7 +622,49 @@ function CreateBidContent() {
                 </div>
               </div>
 
+              {/* Bid Mode */}
+              <div className="fcard">
+                <div className="fsect">
+                  <div className="fsect-title">
+                    <span className="fsect-num">⚙</span> Bid Mode
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div
+                      onClick={() => setBidMode("structured")}
+                      style={{
+                        flex: 1, padding: "14px", borderRadius: 10, cursor: "pointer",
+                        border: `2px solid ${bidMode === "structured" ? "var(--ink)" : "var(--border)"}`,
+                        background: bidMode === "structured" ? "var(--ink)" : "var(--card)",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: "0.86rem", color: bidMode === "structured" ? "#fff" : "var(--ink)", marginBottom: 4 }}>
+                        Structured
+                      </div>
+                      <div style={{ fontSize: "0.74rem", color: bidMode === "structured" ? "rgba(255,255,255,0.7)" : "var(--muted)" }}>
+                        You define parameters — vendors price each option
+                      </div>
+                    </div>
+                    <div
+                      onClick={() => setBidMode("open")}
+                      style={{
+                        flex: 1, padding: "14px", borderRadius: 10, cursor: "pointer",
+                        border: `2px solid ${bidMode === "open" ? "var(--gold)" : "var(--border)"}`,
+                        background: bidMode === "open" ? "var(--gold-bg)" : "var(--card)",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: "0.86rem", color: bidMode === "open" ? "var(--gold)" : "var(--ink)", marginBottom: 4 }}>
+                        Open Proposal
+                      </div>
+                      <div style={{ fontSize: "0.74rem", color: bidMode === "open" ? "var(--gold)" : "var(--muted)" }}>
+                        Vendors define their own specs & options — for complex items (elevators, HVAC, etc.)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Section 2: Parameters */}
+              {bidMode === "structured" && (
               <div className="fcard">
                 <div className="fsect">
                   <div className="fsect-title" style={{ justifyContent: "space-between" }}>
@@ -639,6 +785,31 @@ function CreateBidContent() {
                   ))}
                 </div>
               </div>
+              )}
+
+              {/* Open Proposal info */}
+              {bidMode === "open" && (
+                <div className="fcard">
+                  <div className="fsect">
+                    <div className="fsect-title">
+                      <span className="fsect-num">2</span> Open Proposal Mode
+                    </div>
+                    <div style={{
+                      padding: "16px", background: "var(--gold-bg)", borderRadius: 10,
+                      border: "1.5px solid var(--gold-b)",
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "var(--gold)", marginBottom: 6 }}>
+                        How it works
+                      </div>
+                      <div style={{ fontSize: "0.8rem", color: "var(--ink2)", lineHeight: 1.6 }}>
+                        Each vendor will define their own options with specs and prices.
+                        For example, an elevator vendor can submit multiple proposals with different brands, capacities, speeds, and prices.
+                        You&apos;ll see all proposals in a side-by-side comparison table.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Section 2.5: Checklist */}
               {checklist.length > 0 && (

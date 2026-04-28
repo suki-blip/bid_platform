@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
+import { getCategoryIcon } from "@/lib/category-icons";
 
 interface TradeCategory {
   id: string;
@@ -23,6 +25,7 @@ interface Vendor {
   license: string | null;
   notes: string | null;
   status: string;
+  rating: number | null;
 }
 
 function showToast(msg: string) {
@@ -41,6 +44,7 @@ export default function VendorsPage() {
   const [search, setSearch] = useState("");
   const [tradeFilter, setTradeFilter] = useState("");
   const [groupByCategory, setGroupByCategory] = useState(false);
+  const [vendorViewMode, setVendorViewMode] = useState<"list" | "grid">("list");
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; errors: { row: number; reason: string }[] } | null>(null);
@@ -48,6 +52,84 @@ export default function VendorsPage() {
 
   // Form state
   const [form, setForm] = useState({ name: "", email: "", cc_emails: "", phone: "", contact_person: "", trade_category: "", website: "", license: "", notes: "" });
+
+  // Edit modal state
+  const [editVendor, setEditVendor] = useState<Vendor | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", email: "", cc_emails: "", phone: "", contact_person: "", trade_category: "", website: "", license: "", notes: "", rating: null as number | null });
+  const [editSaving, setEditSaving] = useState(false);
+
+  // New category creation
+  const [newCatName, setNewCatName] = useState("");
+  const [addingCat, setAddingCat] = useState(false);
+
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) return;
+    setAddingCat(true);
+    try {
+      const res = await fetch("/api/trade-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCatName.trim(), grp: "Other" }),
+      });
+      if (res.status === 409) { showToast("Category already exists"); setAddingCat(false); return; }
+      if (!res.ok) { showToast("Failed to add category"); setAddingCat(false); return; }
+      const created = await res.json();
+      setTrades(prev => [...prev, created]);
+      // Auto-select the new category in whichever form is open
+      if (editVendor) {
+        setEditForm(prev => ({ ...prev, trade_category: created.id }));
+      } else {
+        setForm(prev => ({ ...prev, trade_category: created.id }));
+      }
+      setNewCatName("");
+      showToast(`Category "${created.name}" added`);
+    } catch { showToast("Failed to add category"); }
+    setAddingCat(false);
+  };
+
+  const openEditModal = (v: Vendor) => {
+    setEditVendor(v);
+    setEditForm({
+      name: v.name,
+      email: v.email,
+      cc_emails: v.cc_emails || "",
+      phone: v.phone || "",
+      contact_person: v.contact_person || "",
+      trade_category: v.trade_category || "",
+      website: v.website || "",
+      license: v.license || "",
+      notes: v.notes || "",
+      rating: v.rating,
+    });
+  };
+
+  const handleEditSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editVendor) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/vendors/${editVendor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editForm,
+          trade_category: editForm.trade_category || null,
+          cc_emails: editForm.cc_emails || null,
+          phone: editForm.phone || null,
+          contact_person: editForm.contact_person || null,
+          website: editForm.website || null,
+          license: editForm.license || null,
+          notes: editForm.notes || null,
+          rating: editForm.rating,
+        }),
+      });
+      if (!res.ok) { showToast("Failed to save vendor"); return; }
+      showToast("Vendor updated");
+      setEditVendor(null);
+      fetchVendors();
+    } catch { showToast("Failed to save vendor"); }
+    finally { setEditSaving(false); }
+  };
 
   const fetchVendors = () => {
     fetch("/api/vendors")
@@ -169,6 +251,22 @@ export default function VendorsPage() {
         >
           {groupByCategory ? "☰ Grouped" : "☰ Group by Category"}
         </button>
+        <div style={{ display: "flex", gap: 0, border: "1.5px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
+          <button
+            onClick={() => setVendorViewMode("list")}
+            style={{ padding: "4px 8px", border: "none", cursor: "pointer", background: vendorViewMode === "list" ? "var(--ink)" : "var(--surface)", color: vendorViewMode === "list" ? "#fff" : "var(--muted)", display: "flex", alignItems: "center" }}
+            title="List view"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </button>
+          <button
+            onClick={() => { setVendorViewMode("grid"); setGroupByCategory(true); }}
+            style={{ padding: "4px 8px", border: "none", cursor: "pointer", background: vendorViewMode === "grid" ? "var(--ink)" : "var(--surface)", color: vendorViewMode === "grid" ? "#fff" : "var(--muted)", display: "flex", alignItems: "center" }}
+            title="Grid view"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          </button>
+        </div>
         <span className="fcount">{filtered.length} vendors</span>
         <div className="fright">
           <button className="btn btn-outline btn-xs" onClick={() => { setShowImport(true); setImportResult(null); }}>&#128196; Import CSV</button>
@@ -196,7 +294,7 @@ export default function VendorsPage() {
                 <tr><td colSpan={6} style={{ textAlign: "center", padding: 24, color: "var(--muted)", fontSize: "0.85rem" }}>No vendors found.</td></tr>
               )}
               {filtered.map(v => (
-                <tr key={v.id}>
+                <tr key={v.id} onClick={() => openEditModal(v)} style={{ cursor: "pointer", transition: "background 0.15s" }} onMouseEnter={e => (e.currentTarget.style.background = "var(--gold-bg)")} onMouseLeave={e => (e.currentTarget.style.background = "")}>
                   <td>
                     <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{v.name}</div>
                     {v.contact_person && <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{v.contact_person}</div>}
@@ -211,13 +309,13 @@ export default function VendorsPage() {
                   </td>
                   <td>
                     {v.status === "active" && (
-                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "suspended")}>Suspend</button>
+                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={e => { e.stopPropagation(); handleStatusChange(v.id, "suspended"); }}>Suspend</button>
                     )}
                     {v.status === "suspended" && (
-                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "active")}>Reactivate</button>
+                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={e => { e.stopPropagation(); handleStatusChange(v.id, "active"); }}>Reactivate</button>
                     )}
                     {v.status !== "removed" && (
-                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem", color: "var(--red)", borderColor: "var(--red-b)", marginLeft: 4 }} onClick={() => handleStatusChange(v.id, "removed")}>Remove</button>
+                      <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem", color: "var(--red)", borderColor: "var(--red-b)", marginLeft: 4 }} onClick={e => { e.stopPropagation(); handleStatusChange(v.id, "removed"); }}>Remove</button>
                     )}
                   </td>
                 </tr>
@@ -280,6 +378,7 @@ export default function VendorsPage() {
                     borderBottom: "1px solid var(--gold-b)",
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: "1.1rem" }}>{getCategoryIcon(key)}</span>
                       <span style={{
                         fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800,
                         fontSize: "0.88rem", color: "var(--ink)",
@@ -295,36 +394,70 @@ export default function VendorsPage() {
                       </span>
                     </div>
                   </div>
-                  <table className="ctable">
-                    <tbody>
+                  {vendorViewMode === "grid" ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, padding: 12 }}>
                       {group.vendors.map(v => (
-                        <tr key={v.id}>
-                          <td>
-                            <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{v.name}</div>
-                            {v.contact_person && <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{v.contact_person}</div>}
-                          </td>
-                          <td style={{ fontSize: "0.82rem" }}>{v.email}</td>
-                          <td style={{ fontSize: "0.82rem", color: "var(--muted)" }}>{v.phone || "—"}</td>
-                          <td>
-                            <span className={`tag ${v.status === "active" ? "tag-active" : v.status === "suspended" ? "tag-pending" : "tag-closed"}`}>
-                              {v.status}
-                            </span>
-                          </td>
-                          <td>
-                            {v.status === "active" && (
-                              <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "suspended")}>Suspend</button>
-                            )}
-                            {v.status === "suspended" && (
-                              <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={() => handleStatusChange(v.id, "active")}>Reactivate</button>
-                            )}
-                            {v.status !== "removed" && (
-                              <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem", color: "var(--red)", borderColor: "var(--red-b)", marginLeft: 4 }} onClick={() => handleStatusChange(v.id, "removed")}>Remove</button>
-                            )}
-                          </td>
-                        </tr>
+                        <div key={v.id} onClick={() => openEditModal(v)} style={{
+                          cursor: "pointer", padding: "12px 14px", borderRadius: 8,
+                          border: "1.5px solid var(--border)", background: "var(--bg)",
+                          transition: "all 0.15s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--gold)"; e.currentTarget.style.background = "var(--gold-bg)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg)"; }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            <div style={{
+                              width: 32, height: 32, borderRadius: "50%", background: "var(--gold-bg)",
+                              border: "1.5px solid var(--gold-b)", display: "flex", alignItems: "center",
+                              justifyContent: "center", fontWeight: 800, fontSize: "0.65rem",
+                              color: "var(--gold)", flexShrink: 0,
+                            }}>
+                              {v.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: "0.82rem", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</div>
+                              <div style={{ fontSize: "0.68rem", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.email}</div>
+                            </div>
+                          </div>
+                          {v.phone && <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>{v.phone}</div>}
+                          <span className={`tag ${v.status === "active" ? "tag-active" : v.status === "suspended" ? "tag-pending" : "tag-closed"}`} style={{ fontSize: "0.6rem", marginTop: 4 }}>
+                            {v.status}
+                          </span>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  ) : (
+                    <table className="ctable">
+                      <tbody>
+                        {group.vendors.map(v => (
+                          <tr key={v.id} onClick={() => openEditModal(v)} style={{ cursor: "pointer", transition: "background 0.15s" }} onMouseEnter={e => (e.currentTarget.style.background = "var(--gold-bg)")} onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                            <td>
+                              <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "var(--ink)" }}>{v.name}</div>
+                              {v.contact_person && <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{v.contact_person}</div>}
+                            </td>
+                            <td style={{ fontSize: "0.82rem" }}>{v.email}</td>
+                            <td style={{ fontSize: "0.82rem", color: "var(--muted)" }}>{v.phone || "—"}</td>
+                            <td>
+                              <span className={`tag ${v.status === "active" ? "tag-active" : v.status === "suspended" ? "tag-pending" : "tag-closed"}`}>
+                                {v.status}
+                              </span>
+                            </td>
+                            <td>
+                              {v.status === "active" && (
+                                <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={e => { e.stopPropagation(); handleStatusChange(v.id, "suspended"); }}>Suspend</button>
+                              )}
+                              {v.status === "suspended" && (
+                                <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem" }} onClick={e => { e.stopPropagation(); handleStatusChange(v.id, "active"); }}>Reactivate</button>
+                              )}
+                              {v.status !== "removed" && (
+                                <button className="btn btn-outline btn-xs" style={{ fontSize: "0.7rem", color: "var(--red)", borderColor: "var(--red-b)", marginLeft: 4 }} onClick={e => { e.stopPropagation(); handleStatusChange(v.id, "removed"); }}>Remove</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               );
             }
@@ -357,6 +490,11 @@ export default function VendorsPage() {
                     </optgroup>
                   ))}
                 </select>
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <input className="finput" value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="New category name..." style={{ flex: 1 }}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddCategory(); } }} />
+                  <button type="button" className="btn btn-outline btn-xs" onClick={handleAddCategory} disabled={addingCat || !newCatName.trim()}>+ Add</button>
+                </div>
               </div>
               <div><label className="flbl">Website</label><input className="finput" value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} /></div>
               <div><label className="flbl">License #</label><input className="finput" value={form.license} onChange={e => setForm({ ...form, license: e.target.value })} /></div>
@@ -379,7 +517,7 @@ export default function VendorsPage() {
               <p style={{ fontSize: "0.82rem", color: "var(--muted)", marginBottom: 12 }}>
                 CSV must have columns: <strong>name</strong>, <strong>email</strong>. Optional: <strong>phone</strong>, <strong>trade</strong>.
               </p>
-              <input ref={fileRef} type="file" accept=".csv" style={{ marginBottom: 12 }} />
+              <input ref={fileRef} type="file" accept=".csv,.txt,text/csv,text/plain,application/csv" style={{ marginBottom: 12 }} />
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button className="btn btn-outline" onClick={() => setShowImport(false)}>Cancel</button>
                 <button className="btn btn-gold" onClick={handleCSVUpload}>Upload &amp; Import</button>
@@ -401,6 +539,66 @@ export default function VendorsPage() {
           </div>
         </div>
       )}
+      {/* Edit Vendor Modal — portaled */}
+      {typeof document !== "undefined" && editVendor && createPortal(
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setEditVendor(null)}>
+          <div className="scard" style={{ width: 480, maxHeight: "90vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+            <div className="scard-head"><h3>Edit Vendor</h3></div>
+            <form onSubmit={handleEditSave} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div><label className="flbl">Name *</label><input className="finput" required value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} /></div>
+              <div><label className="flbl">Email *</label><input className="finput" type="email" required value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} /></div>
+              <div><label className="flbl">CC Emails</label><input className="finput" placeholder="comma-separated" value={editForm.cc_emails} onChange={e => setEditForm({ ...editForm, cc_emails: e.target.value })} /></div>
+              <div><label className="flbl">Phone</label><input className="finput" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} /></div>
+              <div><label className="flbl">Contact Person</label><input className="finput" value={editForm.contact_person} onChange={e => setEditForm({ ...editForm, contact_person: e.target.value })} /></div>
+              <div>
+                <label className="flbl">Trade Category</label>
+                <select className="finput" value={editForm.trade_category} onChange={e => setEditForm({ ...editForm, trade_category: e.target.value })}>
+                  <option value="">— None —</option>
+                  {Object.entries(tradeGroups).map(([grp, cats]) => (
+                    <optgroup key={grp} label={grp}>
+                      {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <input className="finput" value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="New category name..." style={{ flex: 1 }}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddCategory(); } }} />
+                  <button type="button" className="btn btn-outline btn-xs" onClick={handleAddCategory} disabled={addingCat || !newCatName.trim()}>+ Add</button>
+                </div>
+              </div>
+              <div><label className="flbl">Website</label><input className="finput" value={editForm.website} onChange={e => setEditForm({ ...editForm, website: e.target.value })} /></div>
+              <div><label className="flbl">License #</label><input className="finput" value={editForm.license} onChange={e => setEditForm({ ...editForm, license: e.target.value })} /></div>
+              <div><label className="flbl">Notes</label><textarea className="finput" rows={2} value={editForm.notes} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} /></div>
+              <div>
+                <label className="flbl">Rating</label>
+                <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setEditForm({ ...editForm, rating: editForm.rating === star ? null : star })}
+                      style={{
+                        background: "none", border: "none", cursor: "pointer", padding: 2, fontSize: "1.4rem",
+                        color: editForm.rating !== null && star <= editForm.rating ? "#d97706" : "var(--border)",
+                        transition: "color 0.15s",
+                      }}
+                    >
+                      ★
+                    </button>
+                  ))}
+                  {editForm.rating && (
+                    <span style={{ fontSize: "0.78rem", color: "var(--muted)", alignSelf: "center", marginLeft: 4 }}>{editForm.rating}/5</span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+                <button type="button" className="btn btn-outline" onClick={() => setEditVendor(null)}>Cancel</button>
+                <button type="submit" className="btn btn-gold" disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      , document.body)}
       </div>
     </div>
   );

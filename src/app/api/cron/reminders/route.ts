@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
 import { sendEmail, reminderEmail, getAppUrl } from '@/lib/email';
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
     await dbReady();
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
             JOIN bids b ON b.id = bi.bid_id
             JOIN vendors v ON v.id = bi.vendor_id
             WHERE b.status = 'active'
-              AND b.deadline = ?
+              AND substr(b.deadline, 1, 10) = ?
               AND bi.status IN ('pending', 'opened')
               AND bi.id NOT IN (SELECT bid_invitation_id FROM reminder_log WHERE reminder_type = 'first')`,
       args: [firstStr],
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
             JOIN bids b ON b.id = bi.bid_id
             JOIN vendors v ON v.id = bi.vendor_id
             WHERE b.status = 'active'
-              AND b.deadline = ?
+              AND substr(b.deadline, 1, 10) = ?
               AND bi.status IN ('pending', 'opened')
               AND bi.id NOT IN (SELECT bid_invitation_id FROM reminder_log WHERE reminder_type = 'second')`,
       args: [secondStr],

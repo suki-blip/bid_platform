@@ -11,7 +11,7 @@ export async function GET(
     const { id } = await params;
 
     const result = await db().execute({
-      sql: `SELECT pc.id, pc.category_id, tc.name, tc.grp
+      sql: `SELECT pc.id, pc.category_id, pc.budget, tc.name, tc.grp
             FROM project_categories pc
             JOIN trade_categories tc ON pc.category_id = tc.id
             WHERE pc.project_id = ?
@@ -23,6 +23,32 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching categories:', error);
     return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await dbReady();
+    const { id } = await params;
+    const body = await request.json();
+    const { category_id, budget } = body;
+
+    if (!category_id) {
+      return NextResponse.json({ error: 'category_id is required' }, { status: 400 });
+    }
+
+    await db().execute({
+      sql: 'UPDATE project_categories SET budget = ? WHERE project_id = ? AND category_id = ?',
+      args: [budget ?? null, id, category_id],
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating category budget:', error);
+    return NextResponse.json({ error: 'Failed to update category budget' }, { status: 500 });
   }
 }
 

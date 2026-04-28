@@ -13,7 +13,7 @@ export async function GET(
     const result = await db().execute({
       sql: `SELECT bi.id as invitation_id, bi.status as invitation_status,
                    b.id as bid_id, b.title, b.description, b.deadline, b.status as bid_status,
-                   b.checklist, b.allow_ve,
+                   b.checklist, b.allow_ve, b.bid_mode, b.suggested_specs,
                    v.name as vendor_name, v.password_hash
             FROM bid_invitations bi
             JOIN bids b ON b.id = bi.bid_id
@@ -74,6 +74,9 @@ export async function GET(
     let checklist: { text: string; required: boolean }[] = [];
     try { checklist = JSON.parse((invitation.checklist as string) || '[]'); } catch {}
 
+    let suggested_specs: string[] = [];
+    try { suggested_specs = JSON.parse((invitation.suggested_specs as string) || '[]'); } catch {}
+
     return NextResponse.json({
       bid_id: invitation.bid_id,
       title: invitation.title,
@@ -83,7 +86,9 @@ export async function GET(
       has_portal_account: !!invitation.password_hash,
       parameters: parametersWithOptions,
       checklist,
+      suggested_specs,
       allow_ve: Number(invitation.allow_ve) === 1,
+      bid_mode: (invitation.bid_mode as string) || 'structured',
     });
   } catch (error) {
     console.error('Error fetching bid for vendor:', error);
@@ -131,38 +136,115 @@ export async function POST(
       return NextResponse.json({ error: 'Bid is not active' }, { status: 410 });
     }
 
-    const body = await request.json();
-    const { prices, pricing_mode, base_price, rules, checklist_answers } = body;
+    // Support both JSON and FormData (when files are attached)
+    let body: any;
+    let uploadedFiles: { name: string; data: ArrayBuffer }[] = [];
+    const contentType = request.headers.get('content-type') || '';
 
-    if (!prices || !Array.isArray(prices) || prices.length === 0) {
-      return NextResponse.json({ error: 'Missing required field: prices' }, { status: 400 });
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      const jsonStr = formData.get('json') as string;
+      body = JSON.parse(jsonStr);
+      // Collect files
+      const files = formData.getAll('files');
+      for (const f of files) {
+        if (f instanceof File) {
+          uploadedFiles.push({ name: f.name, data: await f.arrayBuffer() });
+        }
+      }
+    } else {
+      body = await request.json();
     }
 
-    const mode = pricing_mode === 'additive' ? 'additive' : 'combination';
+    const { prices, pricing_mode, base_price, rules, checklist_answers, proposals, notes } = body;
+
     const responseId = crypto.randomUUID();
-    const rulesJson = mode === 'additive' && rules ? JSON.stringify(rules) : null;
 
-    const statements: { sql: string; args: (string | number | null)[] }[] = [
-      {
-        sql: 'INSERT INTO vendor_responses (id, bid_id, vendor_name, vendor_id, pricing_mode, base_price, rules, checklist_answers) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [responseId, invitation.bid_id as string, invitation.vendor_name as string, invitation.vid as string, mode, mode === 'additive' ? base_price : null, rulesJson, checklist_answers ? JSON.stringify(checklist_answers) : '[]'],
-      },
-    ];
+    // Check if this is an open proposal submission
+    if (proposals && Array.isArray(proposals) && proposals.length > 0) {
+      // Open proposal mode
+      const statements: { sql: string; args: (string | number | null)[] }[] = [
+        {
+          sql: 'INSERT INTO vendor_responses (id, bid_id, vendor_name, vendor_id, pricing_mode, checklist_answers, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          args: [responseId, invitation.bid_id as string, invitation.vendor_name as string, invitation.vid as string, 'open', checklist_answers ? JSON.stringify(checklist_answers) : '[]', notes || null],
+        },
+      ];
 
-    for (const p of prices) {
+      for (let pi = 0; pi < proposals.length; pi++) {
+        const prop = proposals[pi];
+        const proposalId = crypto.randomUUID();
+        statements.push({
+          sql: 'INSERT INTO vendor_proposals (id, response_id, name, price, sort_order) VALUES (?, ?, ?, ?, ?)',
+          args: [proposalId, responseId, prop.name || `Option ${pi + 1}`, prop.price, pi],
+        });
+        if (prop.specs && Array.isArray(prop.specs)) {
+          for (let si = 0; si < prop.specs.length; si++) {
+            const spec = prop.specs[si];
+            if (spec.key && spec.value) {
+              statements.push({
+                sql: 'INSERT INTO vendor_proposal_specs (id, proposal_id, spec_key, spec_value, sort_order) VALUES (?, ?, ?, ?, ?)',
+                args: [crypto.randomUUID(), proposalId, spec.key, spec.value, si],
+              });
+            }
+          }
+        }
+      }
+
+      // Also save a flat price entry per proposal for backward compatibility
+      for (let pi = 0; pi < proposals.length; pi++) {
+        const prop = proposals[pi];
+        statements.push({
+          sql: 'INSERT INTO vendor_prices (id, response_id, combination_key, price) VALUES (?, ?, ?, ?)',
+          args: [crypto.randomUUID(), responseId, JSON.stringify({ _proposal: prop.name || `Option ${pi + 1}` }), prop.price],
+        });
+      }
+
       statements.push({
-        sql: 'INSERT INTO vendor_prices (id, response_id, combination_key, price) VALUES (?, ?, ?, ?)',
-        args: [crypto.randomUUID(), responseId, p.combination_key, p.price],
+        sql: "UPDATE bid_invitations SET status = 'submitted', submitted_at = datetime('now') WHERE id = ?",
+        args: [invitation.id as string],
       });
+
+      await db().batch(statements, 'write');
+    } else {
+      // Structured mode (original behavior)
+      if (!prices || !Array.isArray(prices) || prices.length === 0) {
+        return NextResponse.json({ error: 'Missing required field: prices' }, { status: 400 });
+      }
+
+      const mode = pricing_mode === 'additive' ? 'additive' : 'combination';
+      const rulesJson = mode === 'additive' && rules ? JSON.stringify(rules) : null;
+
+      const statements: { sql: string; args: (string | number | null)[] }[] = [
+        {
+          sql: 'INSERT INTO vendor_responses (id, bid_id, vendor_name, vendor_id, pricing_mode, base_price, rules, checklist_answers, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          args: [responseId, invitation.bid_id as string, invitation.vendor_name as string, invitation.vid as string, mode, mode === 'additive' ? base_price : null, rulesJson, checklist_answers ? JSON.stringify(checklist_answers) : '[]', notes || null],
+        },
+      ];
+
+      for (const p of prices) {
+        statements.push({
+          sql: 'INSERT INTO vendor_prices (id, response_id, combination_key, price) VALUES (?, ?, ?, ?)',
+          args: [crypto.randomUUID(), responseId, p.combination_key, p.price],
+        });
+      }
+
+      statements.push({
+        sql: "UPDATE bid_invitations SET status = 'submitted', submitted_at = datetime('now') WHERE id = ?",
+        args: [invitation.id as string],
+      });
+
+      await db().batch(statements, 'write');
     }
 
-    // Update invitation status
-    statements.push({
-      sql: "UPDATE bid_invitations SET status = 'submitted', submitted_at = datetime('now') WHERE id = ?",
-      args: [invitation.id as string],
-    });
-
-    await db().batch(statements, 'write');
+    // Save uploaded files
+    if (uploadedFiles.length > 0) {
+      for (const f of uploadedFiles) {
+        await db().execute({
+          sql: 'INSERT INTO vendor_response_files (id, response_id, filename, data) VALUES (?, ?, ?, ?)',
+          args: [crypto.randomUUID(), responseId, f.name, Buffer.from(f.data)],
+        });
+      }
+    }
 
     return NextResponse.json({ success: true, responseId }, { status: 201 });
   } catch (error) {

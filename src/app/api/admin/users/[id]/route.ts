@@ -7,7 +7,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   const client = db();
   const result = await client.execute({
-    sql: 'SELECT id, name, company, email, status, payment, plan, joined, last_login FROM saas_users WHERE id = ?',
+    sql: 'SELECT id, name, company, email, status, payment, plan, joined, last_login, trial_end_date FROM saas_users WHERE id = ?',
     args: [id],
   });
   if (!result.rows.length) {
@@ -57,12 +57,31 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
   }
 
+  // Grant trial with days
+  if (body.trial_days && Number(body.trial_days) > 0) {
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + Number(body.trial_days));
+    await client.execute({
+      sql: "UPDATE saas_users SET status = 'trial', plan = 'Trial', trial_end_date = ? WHERE id = ?",
+      args: [endDate.toISOString(), id],
+    });
+    await client.execute({
+      sql: 'INSERT INTO activity_log (id, type, text) VALUES (?, ?, ?)',
+      args: [crypto.randomUUID(), 'admin', `Admin granted ${body.trial_days}-day trial to ${current.name}`],
+    });
+  }
+
+  // Plan change
+  if (body.plan && body.plan !== current.plan) {
+    await client.execute({ sql: 'UPDATE saas_users SET plan = ? WHERE id = ?', args: [body.plan, id] });
+  }
+
   // Name/company/email update
   if (body.name) await client.execute({ sql: 'UPDATE saas_users SET name = ? WHERE id = ?', args: [body.name, id] });
   if (body.company !== undefined) await client.execute({ sql: 'UPDATE saas_users SET company = ? WHERE id = ?', args: [body.company, id] });
 
   const updated = await client.execute({
-    sql: 'SELECT id, name, company, email, status, payment, plan, joined, last_login FROM saas_users WHERE id = ?',
+    sql: 'SELECT id, name, company, email, status, payment, plan, joined, last_login, trial_end_date FROM saas_users WHERE id = ?',
     args: [id],
   });
   return NextResponse.json(updated.rows[0]);
