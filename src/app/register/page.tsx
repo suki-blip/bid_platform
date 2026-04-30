@@ -30,6 +30,15 @@ export default function RegisterPage() {
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Brand the page based on the host the user arrived from.
+  const [isFundraisingBrand, setIsFundraisingBrand] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hostname.includes('easyfundraisings')) {
+      setIsFundraisingBrand(true);
+    }
+  }, []);
+  const postSignupRedirect = isFundraisingBrand ? '/fundraising' : '/customer';
+
   const handleGoogleResponse = useCallback(async (response: any) => {
     setError('');
     setGoogleLoading(true);
@@ -48,12 +57,12 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push('/customer');
+      router.push(postSignupRedirect);
     } catch {
       setError('Network error. Please try again.');
       setGoogleLoading(false);
     }
-  }, [router]);
+  }, [router, postSignupRedirect]);
 
   useEffect(() => {
     fetch('/api/auth/google-client-id')
@@ -112,7 +121,7 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push('/customer');
+      router.push(postSignupRedirect);
     } catch {
       setError('Network error. Please try again.');
       setLoading(false);
@@ -147,19 +156,40 @@ export default function RegisterPage() {
       <div style={{ width: '100%', maxWidth: 420, padding: '0 24px' }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <Link href="/" style={{ textDecoration: 'none' }}>
-            <div style={{
-              fontFamily: "'Syne', sans-serif",
-              fontWeight: 800,
-              fontSize: '1.8rem',
-              letterSpacing: '-0.02em',
-              color: '#fff',
-              marginBottom: 8,
-            }}>
-              Bid<span style={{ color: '#f5a623' }}>Master</span>
-            </div>
+            {isFundraisingBrand ? (
+              <div
+                style={{
+                  fontFamily: "'Syne', sans-serif",
+                  fontWeight: 800,
+                  fontSize: '1.8rem',
+                  letterSpacing: '-0.02em',
+                  color: '#fff',
+                  marginBottom: 8,
+                }}
+              >
+                YeshivaRaise
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontFamily: "'Syne', sans-serif",
+                  fontWeight: 800,
+                  fontSize: '1.8rem',
+                  letterSpacing: '-0.02em',
+                  color: '#fff',
+                  marginBottom: 8,
+                }}
+              >
+                Bid<span style={{ color: '#f5a623' }}>Master</span>
+              </div>
+            )}
           </Link>
-          <p style={{ color: '#8a8fa8', fontSize: '0.95rem' }}>Create your contractor account</p>
-          <p style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: 4 }}>Professional plan — $199/month</p>
+          <p style={{ color: '#8a8fa8', fontSize: '0.95rem' }}>
+            {isFundraisingBrand ? 'Create your fundraising account' : 'Create your contractor account'}
+          </p>
+          {!isFundraisingBrand && (
+            <p style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: 4 }}>Professional plan — $199/month</p>
+          )}
         </div>
 
         {/* Google Sign Up */}
