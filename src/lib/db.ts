@@ -474,6 +474,9 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE fr_email_queue ADD COLUMN payment_id TEXT'); } catch {}
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_queue_payment ON fr_email_queue(payment_id)'); } catch {}
 
+  // Free tier: lift the paywall — promote any pending users to active.
+  try { await client.execute("UPDATE saas_users SET status = 'active' WHERE status = 'pending'"); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

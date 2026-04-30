@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     try {
       await client.execute({
         sql: 'INSERT INTO saas_users (id, name, company, email, password_hash, status, payment, plan) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [id, name, company || null, email.toLowerCase().trim(), passwordHash, 'pending', 'unpaid', 'Free'],
+        args: [id, name, company || null, email.toLowerCase().trim(), passwordHash, 'active', 'unpaid', 'Free'],
       });
     } catch (e: any) {
       if (e.message?.includes('UNIQUE')) {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     // Log activity
     await client.execute({
       sql: 'INSERT INTO activity_log (id, type, text) VALUES (?, ?, ?)',
-      args: [crypto.randomUUID(), 'signup', `${name} — new account registered (Pending)`],
+      args: [crypto.randomUUID(), 'signup', `${name} — new account registered`],
     });
 
     // Auto-login: create session
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       email: email.toLowerCase().trim(),
       company: company || null,
       plan: 'Free',
-      status: 'pending',
+      status: 'active',
       payment: 'unpaid',
     }, { status: 201 });
 

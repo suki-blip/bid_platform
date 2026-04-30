@@ -75,15 +75,15 @@ export async function POST(request: NextRequest) {
       const dummyHash = `google:${googleId}`;
       await client.execute({
         sql: 'INSERT INTO saas_users (id, name, email, password_hash, google_id, avatar_url, status, payment, plan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [id, name || email.split('@')[0], email.toLowerCase().trim(), dummyHash, googleId, picture || null, 'pending', 'unpaid', 'Free'],
+        args: [id, name || email.split('@')[0], email.toLowerCase().trim(), dummyHash, googleId, picture || null, 'active', 'unpaid', 'Free'],
       });
 
       await client.execute({
         sql: 'INSERT INTO activity_log (id, type, text) VALUES (?, ?, ?)',
-        args: [crypto.randomUUID(), 'signup', `${name || email} — new account via Google (Pending)`],
+        args: [crypto.randomUUID(), 'signup', `${name || email} — new account via Google`],
       });
 
-      user = { id, name: name || email.split('@')[0], email: email.toLowerCase().trim(), company: null, plan: 'Free', status: 'pending', payment: 'unpaid' };
+      user = { id, name: name || email.split('@')[0], email: email.toLowerCase().trim(), company: null, plan: 'Free', status: 'active', payment: 'unpaid' };
     }
 
     if (user.status === 'suspended') {
