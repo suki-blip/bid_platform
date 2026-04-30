@@ -421,7 +421,7 @@ function LoginContent() {
               className="login-submit"
               style={activeTab === 'vendor' ? { background: 'var(--blueprint)', color: 'var(--paper-3)' } : {}}
             >
-              {loading ? 'Signing in…' : (activeTab === 'vendor' ? 'Sign in to portal' : 'Open chase list')}
+              {loading ? 'Signing in…' : (activeTab === 'vendor' ? 'Sign in to portal' : isFundraisingBrand ? 'Open today\'s desk' : 'Open chase list')}
             </button>
           </form>
 
