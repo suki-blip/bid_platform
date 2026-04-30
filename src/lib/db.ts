@@ -236,6 +236,206 @@ async function initializeDatabase() {
       spec_value TEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0
     )`,
+
+    // ===== FUNDRAISING MODULE =====
+    // Each manager (saas_users.id) owns an isolated fundraising org.
+    // Fundraisers are team_members with role='fundraiser'.
+    // assigned_to = team_members.id (or NULL = manager-owned, no fundraiser assigned).
+
+    `CREATE TABLE IF NOT EXISTS fr_projects (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      goal_amount REAL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      status TEXT NOT NULL DEFAULT 'active',
+      start_date TEXT,
+      end_date TEXT,
+      color TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_sources (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_donors (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      assigned_to TEXT REFERENCES team_members(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'prospect',
+      first_name TEXT NOT NULL,
+      last_name TEXT,
+      hebrew_name TEXT,
+      title TEXT,
+      spouse_name TEXT,
+      email TEXT,
+      organization TEXT,
+      occupation TEXT,
+      birthday TEXT,
+      yahrzeit TEXT,
+      anniversary TEXT,
+      tags TEXT NOT NULL DEFAULT '[]',
+      source_id TEXT REFERENCES fr_sources(id) ON DELETE SET NULL,
+      source_notes TEXT,
+      preferred_contact TEXT,
+      do_not_contact INTEGER NOT NULL DEFAULT 0,
+      converted_at TEXT,
+      total_pledged REAL NOT NULL DEFAULT 0,
+      total_paid REAL NOT NULL DEFAULT 0,
+      lifetime_value REAL NOT NULL DEFAULT 0,
+      last_contact_at TEXT,
+      next_followup_at TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by TEXT
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_donor_phones (
+      id TEXT PRIMARY KEY,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      label TEXT NOT NULL DEFAULT 'mobile',
+      phone TEXT NOT NULL,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_donor_addresses (
+      id TEXT PRIMARY KEY,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      label TEXT NOT NULL DEFAULT 'home',
+      street TEXT,
+      city TEXT,
+      state TEXT,
+      zip TEXT,
+      country TEXT,
+      is_reception INTEGER NOT NULL DEFAULT 0,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_calls (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      fundraiser_id TEXT REFERENCES team_members(id) ON DELETE SET NULL,
+      project_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL,
+      direction TEXT NOT NULL DEFAULT 'outbound',
+      channel TEXT NOT NULL DEFAULT 'phone',
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now')),
+      duration_min INTEGER,
+      outcome TEXT,
+      summary TEXT,
+      transcript TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by TEXT
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_pledges (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      project_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL,
+      fundraiser_id TEXT REFERENCES team_members(id) ON DELETE SET NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      status TEXT NOT NULL DEFAULT 'open',
+      pledge_date TEXT NOT NULL DEFAULT (datetime('now')),
+      due_date TEXT,
+      installments_total INTEGER NOT NULL DEFAULT 1,
+      payment_plan TEXT NOT NULL DEFAULT 'lump_sum',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_pledge_payments (
+      id TEXT PRIMARY KEY,
+      pledge_id TEXT NOT NULL REFERENCES fr_pledges(id) ON DELETE CASCADE,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      project_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL,
+      installment_number INTEGER NOT NULL DEFAULT 1,
+      method TEXT NOT NULL DEFAULT 'credit_card',
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      due_date TEXT,
+      paid_date TEXT,
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      check_number TEXT,
+      check_date TEXT,
+      bank_name TEXT,
+      cc_last4 TEXT,
+      cc_holder TEXT,
+      cc_expiry TEXT,
+      transaction_ref TEXT,
+      receipt_number TEXT,
+      receipt_sent_at TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_followups (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      donor_id TEXT REFERENCES fr_donors(id) ON DELETE CASCADE,
+      project_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL,
+      fundraiser_id TEXT REFERENCES team_members(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      due_at TEXT NOT NULL,
+      end_at TEXT,
+      kind TEXT NOT NULL DEFAULT 'task',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      status TEXT NOT NULL DEFAULT 'pending',
+      completed_at TEXT,
+      hebrew_date TEXT,
+      remind_minutes_before INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_email_queue (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      donor_id TEXT REFERENCES fr_donors(id) ON DELETE SET NULL,
+      project_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL,
+      to_email TEXT NOT NULL,
+      cc TEXT,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      send_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      sent_at TEXT,
+      opened_at TEXT,
+      delivered_at TEXT,
+      bounced_at TEXT,
+      error TEXT,
+      provider_message_id TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_notes (
+      id TEXT PRIMARY KEY,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      author_type TEXT NOT NULL DEFAULT 'manager',
+      author_id TEXT,
+      author_name TEXT,
+      body TEXT NOT NULL,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS fr_donor_assignments (
+      id TEXT PRIMARY KEY,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      fundraiser_id TEXT REFERENCES team_members(id) ON DELETE SET NULL,
+      assigned_by TEXT,
+      assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
+      reason TEXT
+    )`,
   ];
 
   // Run each CREATE TABLE individually to avoid batch failures on existing schemas
@@ -270,6 +470,10 @@ async function initializeDatabase() {
   try { await client.execute("ALTER TABLE saas_users ADD COLUMN trial_end_date TEXT"); } catch {}
   try { await client.execute("ALTER TABLE saas_users ADD COLUMN google_id TEXT"); } catch {}
   try { await client.execute("ALTER TABLE bid_templates ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // Reminder dedup pointer — links scheduled emails back to the payment they remind about
+  try { await client.execute('ALTER TABLE fr_email_queue ADD COLUMN payment_id TEXT'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_queue_payment ON fr_email_queue(payment_id)'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (
@@ -572,6 +776,34 @@ async function initializeDatabase() {
         ],
       });
     } catch {}
+  }
+
+  // ===== FUNDRAISING INDEXES =====
+  const fundraisingIndexes = [
+    'CREATE INDEX IF NOT EXISTS idx_fr_donors_owner ON fr_donors(owner_id)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_donors_assigned ON fr_donors(assigned_to)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_donors_status ON fr_donors(owner_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_calls_donor ON fr_calls(donor_id, occurred_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_calls_owner ON fr_calls(owner_id, occurred_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_pledges_donor ON fr_pledges(donor_id)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_pledges_owner ON fr_pledges(owner_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_pledges_project ON fr_pledges(project_id)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_payments_pledge ON fr_pledge_payments(pledge_id)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_payments_status ON fr_pledge_payments(status, due_date)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_payments_donor ON fr_pledge_payments(donor_id, paid_date DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_followups_owner_due ON fr_followups(owner_id, due_at)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_followups_fundraiser ON fr_followups(fundraiser_id, due_at)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_followups_donor ON fr_followups(donor_id, due_at)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_email_queue_send ON fr_email_queue(status, send_at)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_email_queue_owner ON fr_email_queue(owner_id, send_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_notes_donor ON fr_notes(donor_id, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_phones_donor ON fr_donor_phones(donor_id)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_addresses_donor ON fr_donor_addresses(donor_id)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_projects_owner ON fr_projects(owner_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_fr_sources_owner ON fr_sources(owner_id)',
+  ];
+  for (const sql of fundraisingIndexes) {
+    try { await client.execute(sql); } catch {}
   }
 
   // Seed default admin settings

@@ -85,6 +85,54 @@ export function middleware(request: NextRequest) {
     }
   }
 
+  // Protect fundraising routes: /fundraising/*
+  // Accept both manager (contractor-auth) and fundraiser (team-auth) cookies.
+  if (pathname.startsWith('/fundraising')) {
+    const cookie = request.cookies.get('contractor-auth')?.value;
+    const teamCookie = request.cookies.get('team-auth')?.value;
+
+    if (!cookie && !teamCookie) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    if (cookie) {
+      try {
+        const session = JSON.parse(Buffer.from(cookie, 'base64').toString());
+        if (!session.userId) {
+          const response = NextResponse.redirect(new URL('/login', request.url));
+          response.cookies.delete('contractor-auth');
+          return response;
+        }
+      } catch {
+        const response = NextResponse.redirect(new URL('/login', request.url));
+        response.cookies.delete('contractor-auth');
+        return response;
+      }
+    } else if (teamCookie) {
+      try {
+        const session = JSON.parse(Buffer.from(teamCookie, 'base64').toString());
+        if (!session.teamMemberId) {
+          const response = NextResponse.redirect(new URL('/login', request.url));
+          response.cookies.delete('team-auth');
+          return response;
+        }
+      } catch {
+        const response = NextResponse.redirect(new URL('/login', request.url));
+        response.cookies.delete('team-auth');
+        return response;
+      }
+    }
+  }
+
+  // Protect fundraising API routes: /api/fundraising/*
+  if (pathname.startsWith('/api/fundraising/')) {
+    const cookie = request.cookies.get('contractor-auth')?.value;
+    const teamCookie = request.cookies.get('team-auth')?.value;
+    if (!cookie && !teamCookie) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
   // Protect vendor portal pages: /vendor/* (except /vendor-submit and /vendor-login)
   if (pathname.startsWith('/vendor') && !pathname.startsWith('/vendor-submit') && !pathname.startsWith('/vendor-login')) {
     const cookie = request.cookies.get('vendor-auth')?.value;
@@ -123,5 +171,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin-panel/:path*', '/api/admin/:path*', '/customer/:path*', '/vendor/:path*', '/vendor-login', '/api/vendor/:path*', '/api/team/:path*'],
+  matcher: ['/admin-panel/:path*', '/api/admin/:path*', '/customer/:path*', '/vendor/:path*', '/vendor-login', '/api/vendor/:path*', '/api/team/:path*', '/fundraising/:path*', '/api/fundraising/:path*'],
 };
