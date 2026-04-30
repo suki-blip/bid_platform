@@ -17,11 +17,20 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get('host')?.toLowerCase() || '';
 
-  // Host-based rewrite: when accessed via the fundraising domain, prefix all app paths with /fundraising
-  if (FUNDRAISING_HOSTS.has(host) && !PASSTHROUGH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
-    const url = request.nextUrl.clone();
-    url.pathname = pathname === '/' ? '/fundraising' : `/fundraising${pathname}`;
-    return NextResponse.rewrite(url);
+  // Fundraising domain: gate auth before the rewrite, so unauthenticated visits go to /login.
+  if (FUNDRAISING_HOSTS.has(host)) {
+    const isPassthrough = PASSTHROUGH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+    if (!isPassthrough) {
+      const cookie = request.cookies.get('contractor-auth')?.value;
+      const teamCookie = request.cookies.get('team-auth')?.value;
+      if (!cookie && !teamCookie) {
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
+      // Authenticated — rewrite root + app paths into /fundraising/* so the URL stays clean.
+      const url = request.nextUrl.clone();
+      url.pathname = pathname === '/' ? '/fundraising' : `/fundraising${pathname}`;
+      return NextResponse.rewrite(url);
+    }
   }
 
   // Protect admin panel pages: /admin-panel/[key]/...
