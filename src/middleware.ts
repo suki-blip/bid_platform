@@ -4,8 +4,25 @@ import type { NextRequest } from 'next/server';
 // Fixed admin token prefix — the login API sets a cookie starting with this
 const ADMIN_COOKIE_PREFIX = 'bidmaster-admin-';
 
+// Domains that should be served as the fundraising app (root → /fundraising)
+const FUNDRAISING_HOSTS = new Set([
+  'easyfundraisings.com',
+  'www.easyfundraisings.com',
+]);
+
+// Paths that stay as-is even on the fundraising-domain (auth, system, assets)
+const PASSTHROUGH_PREFIXES = ['/api', '/_next', '/fundraising', '/login', '/register', '/forgot-password', '/reset-password', '/favicon'];
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get('host')?.toLowerCase() || '';
+
+  // Host-based rewrite: when accessed via the fundraising domain, prefix all app paths with /fundraising
+  if (FUNDRAISING_HOSTS.has(host) && !PASSTHROUGH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname === '/' ? '/fundraising' : `/fundraising${pathname}`;
+    return NextResponse.rewrite(url);
+  }
 
   // Protect admin panel pages: /admin-panel/[key]/...
   if (pathname.startsWith('/admin-panel/')) {
@@ -171,5 +188,19 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin-panel/:path*', '/api/admin/:path*', '/customer/:path*', '/vendor/:path*', '/vendor-login', '/api/vendor/:path*', '/api/team/:path*', '/fundraising/:path*', '/api/fundraising/:path*'],
+  matcher: [
+    // Existing protections
+    '/admin-panel/:path*',
+    '/api/admin/:path*',
+    '/customer/:path*',
+    '/vendor/:path*',
+    '/vendor-login',
+    '/api/vendor/:path*',
+    '/api/team/:path*',
+    '/fundraising/:path*',
+    '/api/fundraising/:path*',
+    // Catch root + arbitrary paths so the host-based fundraising rewrite can fire.
+    // Excludes _next, favicon, and API routes that don't need it.
+    '/((?!_next/static|_next/image|favicon.ico|api/).*)',
+  ],
 };
