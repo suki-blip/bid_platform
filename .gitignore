@@ -48,3 +48,8 @@ next-env.d.ts
 # seed scripts (dev only)
 seed-*.js
 .deploy-secrets/
+
+# libsql / sqlite local artifacts
+auth
+auth-wal
+*.db-shm
