@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
+import StarRating from "./StarRating";
 
 interface DonorPanelData {
   donor: {
@@ -21,6 +22,8 @@ interface DonorPanelData {
     last_contact_at: string | null;
     next_followup_at: string | null;
     tags: string[];
+    financial_rating: number | null;
+    giving_rating: number | null;
     do_not_contact: boolean;
     source: { id: string; name: string } | null;
   };
@@ -86,6 +89,7 @@ export default function DonorSidePanel({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className="fr-side-panel"
         style={{
           width: "min(540px, 95vw)",
           background: "#fff",
@@ -211,6 +215,12 @@ export default function DonorSidePanel({
               {(data.donor.organization || data.donor.occupation) && (
                 <div style={{ fontSize: 13, opacity: 0.6, marginTop: 6 }}>
                   {[data.donor.organization, data.donor.occupation].filter(Boolean).join(" · ")}
+                </div>
+              )}
+              {(data.donor.financial_rating != null || data.donor.giving_rating != null) && (
+                <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
+                  <StarRating label="Capacity" value={data.donor.financial_rating} size={12} readonly hideEmpty />
+                  <StarRating label="Giving" value={data.donor.giving_rating} size={12} readonly hideEmpty />
                 </div>
               )}
               {data.donor.tags.length > 0 && (

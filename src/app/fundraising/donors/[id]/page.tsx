@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/fundraising-format";
+import StarRating from "../../_components/StarRating";
 
 interface Donor {
   id: string;
@@ -30,6 +31,8 @@ interface Donor {
   converted_at: string | null;
   created_at: string;
   tags: string[];
+  financial_rating: number | null;
+  giving_rating: number | null;
   source: { id: string; name: string } | null;
   assigned: { id: string; name: string; email: string } | null;
 }
@@ -318,6 +321,17 @@ export default function DonorProfilePage() {
     load();
   }
 
+  async function updateRating(field: "financial_rating" | "giving_rating", value: number | null) {
+    if (!data) return;
+    // Optimistic update
+    setData({ ...data, donor: { ...data.donor, [field]: value } });
+    await fetch(`/api/fundraising/donors/${params.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+  }
+
   async function deleteDonor() {
     if (!data) return;
     if (!confirm(`Delete ${data.donor.first_name} ${data.donor.last_name || ""}? This is irreversible.`)) return;
@@ -474,6 +488,18 @@ export default function DonorProfilePage() {
               )}
             </div>
           )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+            <StarRating
+              label="Capacity"
+              value={donor.financial_rating}
+              onChange={(v) => updateRating("financial_rating", v)}
+            />
+            <StarRating
+              label="Giving"
+              value={donor.giving_rating}
+              onChange={(v) => updateRating("giving_rating", v)}
+            />
+          </div>
           <button
             onClick={deleteDonor}
             style={{

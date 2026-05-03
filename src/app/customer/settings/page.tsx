@@ -225,7 +225,14 @@ export default function SettingsPage() {
 
   return (
     <div className="page on">
-      <div className="scroll">
+      <div className="so-page-head">
+        <div>
+          <div className="so-page-eyebrow">SITE OFFICE SETTINGS</div>
+          <h1>Settings</h1>
+          <p>Profile, team, and notification preferences</p>
+        </div>
+      </div>
+      <div>
         {/* Profile */}
         <div className="scard" style={{ maxWidth: 640 }}>
           <div className="scard-head"><h3>Profile</h3></div>

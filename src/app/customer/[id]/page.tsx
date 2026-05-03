@@ -283,16 +283,8 @@ export default function CustomerBidDetailPage() {
 
   if (loading) {
     return (
-      <div className="scroll" style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}>
-        <div
-          style={{
-            width: "32px", height: "32px",
-            border: "4px solid var(--gold-b)",
-            borderTopColor: "var(--gold)",
-            borderRadius: "50%",
-            animation: "spin 0.8s linear infinite",
-          }}
-        ></div>
+      <div style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}>
+        <div className="so-spinner" />
       </div>
     );
   }

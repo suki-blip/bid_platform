@@ -47,3 +47,4 @@ next-env.d.ts
 
 # seed scripts (dev only)
 seed-*.js
+.deploy-secrets/

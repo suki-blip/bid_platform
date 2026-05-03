@@ -226,15 +226,28 @@ export default function VendorsPage() {
 
   if (loading) {
     return (
-      <div className="scroll" style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}>
-        <div style={{ width: 32, height: 32, border: "4px solid var(--gold-b)", borderTopColor: "var(--gold)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}>
+        <div className="so-spinner" />
       </div>
     );
   }
 
   return (
     <div className="page on">
-      {/* Header strip */}
+      {/* Page header */}
+      <div className="so-page-head">
+        <div>
+          <div className="so-page-eyebrow">SUBCONTRACTOR ROSTER</div>
+          <h1>Vendors</h1>
+          <p>{filtered.length} vendor{filtered.length !== 1 ? "s" : ""} on file · trades color-coded by hardhat</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="stamp ok">{vendors.filter(v => v.status === "active").length} ACTIVE</span>
+          {vendors.filter(v => v.status === "suspended").length > 0 && <span className="stamp notes">{vendors.filter(v => v.status === "suspended").length} SUSPENDED</span>}
+        </div>
+      </div>
+
+      {/* Filter strip */}
       <div className="fstrip">
         <div className="fs-search">
           <span style={{ color: "var(--faint)" }}>&#128269;</span>
@@ -251,20 +264,24 @@ export default function VendorsPage() {
         >
           {groupByCategory ? "☰ Grouped" : "☰ Group by Category"}
         </button>
-        <div style={{ display: "flex", gap: 0, border: "1.5px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
+        <div className="so-view-toggle" style={{ padding: 2 }}>
           <button
+            type="button"
             onClick={() => setVendorViewMode("list")}
-            style={{ padding: "4px 8px", border: "none", cursor: "pointer", background: vendorViewMode === "list" ? "var(--ink)" : "var(--surface)", color: vendorViewMode === "list" ? "#fff" : "var(--muted)", display: "flex", alignItems: "center" }}
+            className={vendorViewMode === "list" ? "on" : ""}
             title="List view"
+            style={{ padding: "4px 8px" }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
           </button>
           <button
+            type="button"
             onClick={() => { setVendorViewMode("grid"); setGroupByCategory(true); }}
-            style={{ padding: "4px 8px", border: "none", cursor: "pointer", background: vendorViewMode === "grid" ? "var(--ink)" : "var(--surface)", color: vendorViewMode === "grid" ? "#fff" : "var(--muted)", display: "flex", alignItems: "center" }}
+            className={vendorViewMode === "grid" ? "on" : ""}
             title="Grid view"
+            style={{ padding: "4px 8px" }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           </button>
         </div>
         <span className="fcount">{filtered.length} vendors</span>
@@ -579,7 +596,7 @@ export default function VendorsPage() {
                       onClick={() => setEditForm({ ...editForm, rating: editForm.rating === star ? null : star })}
                       style={{
                         background: "none", border: "none", cursor: "pointer", padding: 2, fontSize: "1.4rem",
-                        color: editForm.rating !== null && star <= editForm.rating ? "#d97706" : "var(--border)",
+                        color: editForm.rating !== null && star <= editForm.rating ? "var(--high-vis)" : "var(--border)",
                         transition: "color 0.15s",
                       }}
                     >

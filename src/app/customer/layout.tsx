@@ -74,34 +74,24 @@ export default function CustomerLayout({
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+    <div className="so-shell" style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column" }}>
+      {/* Sidewalk-shed-green signature ribbon */}
+      <div className="so-shed-ribbon" />
+
       {/* Top Navigation Bar */}
-      <nav style={{
-        position: "sticky", top: 0, zIndex: 100,
-        background: "var(--surface)", borderBottom: "1.5px solid var(--border)",
-        padding: "0 24px", height: 54,
-        display: "flex", alignItems: "center", gap: 20,
-      }}>
+      <nav className="so-topnav">
         {/* Logo */}
-        <Link href="/customer" style={{
-          textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-          marginRight: 12, flexShrink: 0,
-        }}>
-          <span style={{
-            fontFamily: "'Bricolage Grotesque', sans-serif",
-            fontWeight: 800, fontSize: "1.15rem", letterSpacing: "-0.03em",
-            color: "var(--ink)",
-          }}>
-            Bid<span style={{ color: "var(--gold)" }}>Master</span>
-          </span>
+        <Link href="/customer" className="so-logo-link">
+          <div className="so-logo-icon">M</div>
+          <span className="so-logo-text">Bid<span>Master</span></span>
         </Link>
 
         {/* Nav links */}
-        <div style={{ display: "flex", gap: 2, flex: 1 }}>
+        <div className="so-nav-links">
           {[
             { label: "Projects", href: "/customer" },
             { label: "Vendors", href: "/customer/vendors" },
-            { label: "Bid Templates", href: "/customer/bid-templates" },
+            { label: "Templates", href: "/customer/bid-templates" },
           ].map(item => {
             const isActive = item.href === "/customer"
               ? pathname === "/customer"
@@ -110,14 +100,7 @@ export default function CustomerLayout({
               <Link
                 key={item.label}
                 href={item.href}
-                style={{
-                  padding: "6px 14px", borderRadius: 7,
-                  fontSize: "0.82rem", fontWeight: 600,
-                  color: isActive ? "var(--gold)" : "var(--ink2)",
-                  background: isActive ? "var(--gold-bg)" : "transparent",
-                  textDecoration: "none",
-                  transition: "all 0.15s",
-                }}
+                className={`so-nav-link${isActive ? " on" : ""}`}
               >
                 {item.label}
               </Link>
@@ -126,29 +109,16 @@ export default function CustomerLayout({
         </div>
 
         {/* Right section */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="so-topnav-right">
           {isTeamMember && (
-            <span style={{
-              padding: "3px 8px", borderRadius: 6, fontSize: "0.68rem", fontWeight: 700,
-              background: teamRole === "editor" ? "var(--blue-bg)" : "var(--bg)",
-              color: teamRole === "editor" ? "var(--blue)" : "var(--muted)",
-              border: "1px solid var(--border)",
-            }}>
-              {teamRole === "editor" ? "Editor" : "Viewer"}
+            <span className={`stamp ${teamRole === "editor" ? "ok" : "draft"}`}>
+              {teamRole === "editor" ? "EDITOR" : "VIEWER"}
             </span>
           )}
           {(!isTeamMember || teamRole === "editor") && (
-            <Link
-              href="/customer/create"
-              style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "6px 14px", borderRadius: 7,
-                fontSize: "0.78rem", fontWeight: 700,
-                background: "var(--gold)", color: "#fff",
-                textDecoration: "none", transition: "all 0.15s",
-              }}
-            >
-              + New Bid
+            <Link href="/customer/create" className="so-cta">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <span>New Bid</span>
             </Link>
           )}
 
@@ -156,25 +126,15 @@ export default function CustomerLayout({
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "4px 10px 4px 4px", borderRadius: 8,
-                background: "none", border: "1.5px solid var(--border)",
-                cursor: "pointer", fontSize: "0.8rem", color: "var(--ink)",
-              }}
+              className="so-user-btn"
             >
-              <div style={{
-                width: 28, height: 28, borderRadius: "50%",
-                background: "var(--gold)", color: "#fff",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: 800, fontSize: "0.68rem",
-              }}>
+              <div className="so-avatar">
                 {user ? user.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?"}
               </div>
               <span style={{ fontWeight: 600, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user?.name?.split(" ")[0] || "..."}
+                {user?.name?.split(" ")[0] || "…"}
               </span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M6 9l6 6 6-6"/></svg>
             </button>
 
             {showUserMenu && (
@@ -245,71 +205,45 @@ export default function CustomerLayout({
 
       {/* Trial days remaining banner */}
       {trialDaysLeft !== null && trialDaysLeft <= 7 && !accessBlocked && (
-        <div style={{
-          background: trialDaysLeft <= 3 ? "#fef2f2" : "#fffbeb",
-          borderBottom: `1.5px solid ${trialDaysLeft <= 3 ? "#fecaca" : "#fde68a"}`,
-          padding: "8px 24px", display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
-          fontSize: "0.82rem", fontWeight: 600,
-          color: trialDaysLeft <= 3 ? "#991b1b" : "#92400e",
-        }}>
-          <span>{trialDaysLeft <= 3 ? "⚠️" : "⏰"} Trial ends in {trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</span>
-          <Link href="/customer/billing" style={{
-            padding: "4px 12px", borderRadius: 6, fontSize: "0.78rem", fontWeight: 700,
-            background: "var(--gold)", color: "#fff", textDecoration: "none",
-          }}>Subscribe Now</Link>
+        <div className={`so-trial-banner${trialDaysLeft <= 3 ? " urgent" : ""}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+          </svg>
+          <span>Trial ends in <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong></span>
+          <Link href="/customer/billing" className="so-trial-cta">Subscribe Now</Link>
         </div>
       )}
 
       {/* Access blocked screen (allow billing page through) */}
       {accessBlocked && !pathname?.includes('/billing') ? (
-        <div style={{
-          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "40px 20px",
-        }}>
-          <div style={{
-            maxWidth: 480, width: "100%", textAlign: "center",
-            background: "var(--surface)", border: "1.5px solid var(--border)",
-            borderRadius: 16, padding: "48px 36px",
-          }}>
-            <div style={{ fontSize: "3rem", marginBottom: 16 }}>{trialExpired ? "⏰" : "🔒"}</div>
-            <h2 style={{
-              fontFamily: "'Bricolage Grotesque', sans-serif",
-              fontWeight: 800, fontSize: "1.3rem", marginBottom: 8,
-              color: "var(--ink)",
-            }}>
-              {trialExpired ? "Trial Period Ended" : "Account Not Active"}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>
+          <div className="so-blocked-card">
+            <div className="so-blocked-stamp">
+              <span className={`stamp ${trialExpired ? "revise" : "draft"}`}>
+                {trialExpired ? "TRIAL EXPIRED" : "ACCOUNT PENDING"}
+              </span>
+            </div>
+            <h2 className="so-blocked-title">
+              {trialExpired ? "Your trial period ended" : "Account not active yet"}
             </h2>
-            <p style={{ color: "var(--muted)", fontSize: "0.88rem", lineHeight: 1.6, marginBottom: 24 }}>
+            <p className="so-blocked-body">
               {trialExpired
-                ? "Your trial period has expired. Subscribe to Pro to continue using BidMaster, or contact us to extend your trial."
-                : "Your account is pending activation. Subscribe to Pro to get started, or request a free trial period."
+                ? "Subscribe to Pro to keep running your bid pipeline, or contact us if you need a trial extension."
+                : "Subscribe to Pro to start, or ask us about a free trial period."
               }
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
-              <Link href="/customer/billing" style={{
-                display: "inline-block", padding: "12px 32px", borderRadius: 8,
-                background: "var(--gold)", color: "#fff", fontWeight: 700, fontSize: "0.92rem",
-                textDecoration: "none", width: "100%",
-              }}>
+              <Link href="/customer/billing" className="so-blocked-primary">
                 Subscribe — $199/mo
               </Link>
-              <a href={`mailto:info@bidmaster.app?subject=Trial%20Request&body=${encodeURIComponent(`Hi,\n\nI would like to request a free trial for BidMaster.\n\nMy name: ${user?.name || ''}\nMy email: ${user?.email || ''}\nCompany: ${user?.company || ''}\n\nThank you!`)}`} style={{
-                display: "inline-block", padding: "12px 32px", borderRadius: 8,
-                border: "1.5px solid var(--border)", background: "var(--surface)",
-                color: "var(--ink)", fontWeight: 700, fontSize: "0.92rem",
-                textDecoration: "none", width: "100%",
-              }}>
+              <a
+                href={`mailto:info@bidmaster.app?subject=Trial%20Request&body=${encodeURIComponent(`Hi,\n\nI would like to request a free trial for BidMaster.\n\nMy name: ${user?.name || ''}\nMy email: ${user?.email || ''}\nCompany: ${user?.company || ''}\n\nThank you!`)}`}
+                className="so-blocked-secondary"
+              >
                 Request Free Trial
               </a>
             </div>
-            <button
-              onClick={handleLogout}
-              style={{
-                marginTop: 20, background: "none", border: "none",
-                color: "var(--muted)", fontSize: "0.8rem", cursor: "pointer",
-                textDecoration: "underline",
-              }}
-            >
+            <button onClick={handleLogout} className="so-blocked-signout">
               Sign out
             </button>
           </div>
@@ -317,7 +251,7 @@ export default function CustomerLayout({
       ) : (
         <>
           {/* Page content */}
-          <div className="content" style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px", width: "100%", flex: 1 }}>
+          <div className="content so-content">
             {children}
           </div>
         </>

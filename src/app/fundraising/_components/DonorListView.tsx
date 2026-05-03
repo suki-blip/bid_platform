@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import DonorSidePanel from "./DonorSidePanel";
+import StarRating from "./StarRating";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
 
 interface DonorRow {
@@ -23,6 +24,8 @@ interface DonorRow {
   primary_city: string | null;
   tags: string[];
   assigned_name: string | null;
+  financial_rating: number | null;
+  giving_rating: number | null;
 }
 
 interface SourceRow {
@@ -222,6 +225,7 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
             <thead>
               <tr style={{ background: "transparent", textAlign: "left", borderBottom: "1px solid rgba(10,16,25,0.08)" }}>
                 <Th>Name</Th>
+                <Th>Rating</Th>
                 <Th>Contact</Th>
                 <Th>Organization</Th>
                 <Th>Source</Th>
@@ -257,6 +261,15 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
                         {d.hebrew_name}
                       </div>
                     )}
+                  </td>
+                  <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <StarRating value={d.financial_rating} size={11} readonly hideEmpty />
+                      <StarRating value={d.giving_rating} size={11} readonly hideEmpty />
+                      {d.financial_rating == null && d.giving_rating == null && (
+                        <span style={{ fontSize: 11, opacity: 0.35 }}>—</span>
+                      )}
+                    </div>
                   </td>
                   <td style={{ padding: "10px 14px" }}>
                     <div style={{ fontSize: 12 }}>{d.primary_phone || "—"}</div>

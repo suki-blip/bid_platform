@@ -477,6 +477,10 @@ async function initializeDatabase() {
   // Free tier: lift the paywall — promote any pending users to active.
   try { await client.execute("UPDATE saas_users SET status = 'active' WHERE status = 'pending'"); } catch {}
 
+  // Donor ratings: 1-5 (financial capacity = how wealthy; giving = how generous in practice).
+  try { await client.execute('ALTER TABLE fr_donors ADD COLUMN financial_rating INTEGER'); } catch {}
+  try { await client.execute('ALTER TABLE fr_donors ADD COLUMN giving_rating INTEGER'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

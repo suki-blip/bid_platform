@@ -701,7 +701,7 @@ export default function ProjectDetailPage() {
 
   if (loading) return (
     <div className="page on" style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
-      <div style={{ width: 32, height: 32, borderRadius: "50%", border: "4px solid var(--gold-b)", borderTopColor: "var(--gold)", animation: "spin 0.8s linear infinite" }} />
+      <div className="so-spinner" />
     </div>
   );
 
@@ -1077,8 +1077,8 @@ export default function ProjectDetailPage() {
                       </div>
                       {rows.map(row => {
                         const statusLabel =
-                          row.status === "awarded" ? "🏆 Awarded" :
-                          row.status === "paused" ? "⏸ Paused" :
+                          row.status === "awarded" ? "Awarded" :
+                          row.status === "paused" ? "Paused" :
                           row.status === "has_bids" ? `${row.totalResponses} response${row.totalResponses !== 1 ? "s" : ""}` :
                           row.status === "waiting" ? "Waiting for bids" :
                           row.status === "not_sent" ? "Ready · Not sent" :
@@ -1427,10 +1427,10 @@ export default function ProjectDetailPage() {
                         showToast("Label updated");
                       });
                     }}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: "0.68rem", fontWeight: 600 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, display: "inline-flex", alignItems: "center" }}
                     title="Rename link"
                   >
-                    ✏️
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
                   </button>
                   <button
                     onClick={async () => {

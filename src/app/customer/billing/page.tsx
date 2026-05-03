@@ -94,7 +94,17 @@ function BillingPage() {
 
   return (
     <div className="page on">
-      <div className="scroll">
+      <div className="so-page-head">
+        <div>
+          <div className="so-page-eyebrow">PAYMENT APPLICATION</div>
+          <h1>Billing</h1>
+          <p>Plan, payment, and subscription details</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className={`stamp ${user.plan === 'Pro' ? 'ok' : 'draft'}`}>{user.plan?.toUpperCase() || 'FREE'}</span>
+        </div>
+      </div>
+      <div>
         {/* Success/Cancel banners */}
         {success && (
           <div style={{

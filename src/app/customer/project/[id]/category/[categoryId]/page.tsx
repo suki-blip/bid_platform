@@ -1322,7 +1322,7 @@ export default function CategoryDetailPage() {
 
   if (loading) return (
     <div className="page on" style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
-      <div style={{ width: 32, height: 32, borderRadius: "50%", border: "4px solid var(--gold-b)", borderTopColor: "var(--gold)", animation: "spin 0.8s linear infinite" }} />
+      <div className="so-spinner" />
     </div>
   );
 
@@ -2366,7 +2366,7 @@ export default function CategoryDetailPage() {
                                     {va.missing_info?.length > 0 && (
                                       <div style={{ marginBottom: 6 }}>
                                         {va.missing_info.map((m: string, mi: number) => (
-                                          <div key={mi} style={{ fontSize: "0.74rem", color: "#d97706", marginBottom: 2, display: "flex", gap: 4 }}>
+                                          <div key={mi} style={{ fontSize: "0.74rem", color: "var(--high-vis)", marginBottom: 2, display: "flex", gap: 4 }}>
                                             <span style={{ flexShrink: 0 }}>?</span> {m}
                                           </div>
                                         ))}
@@ -4911,7 +4911,7 @@ export default function CategoryDetailPage() {
 
               {bidMode === "open" ? (
                 <div>
-                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#d97706", marginBottom: 8, textTransform: "uppercase" }}>Open Proposal Mode</div>
+                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--high-vis)", marginBottom: 8, textTransform: "uppercase" }}>Open Proposal Mode</div>
                   <div style={{ background: "#fff", border: "1px solid #e5e5e0", borderRadius: 8, padding: 14, marginBottom: 10 }}>
                     <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                       <div style={{ flex: 2 }}>
@@ -4919,7 +4919,7 @@ export default function CategoryDetailPage() {
                         <div style={{ padding: "8px", background: "#f5f5f5", borderRadius: 6, fontSize: "0.82rem", color: "#aaa" }}>e.g. Premium Package</div>
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#d97706", marginBottom: 3 }}>Price ($) *</div>
+                        <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--high-vis)", marginBottom: 3 }}>Price ($) *</div>
                         <div style={{ padding: "8px", background: "#fffbf0", borderRadius: 6, fontSize: "0.82rem", color: "#aaa", border: "1px solid #fde68a" }}>0.00</div>
                       </div>
                     </div>
@@ -4940,7 +4940,7 @@ export default function CategoryDetailPage() {
                 <div>
                   {editParams.filter(p => p.name && p.options.length > 0).map((p, pi) => (
                     <div key={pi} style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: "0.74rem", fontWeight: 700, marginBottom: 6, color: p.is_track ? "#d97706" : "#1a1a1a" }}>
+                      <div style={{ fontSize: "0.74rem", fontWeight: 700, marginBottom: 6, color: p.is_track ? "var(--high-vis)" : "#1a1a1a" }}>
                         {p.is_track ? `⚡ ${p.name} (Track)` : p.name}
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -4954,7 +4954,7 @@ export default function CategoryDetailPage() {
                   ))}
                   {editParams.filter(p => p.name && p.options.length > 0).length > 0 && (
                     <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "#d97706", marginBottom: 6 }}>Price per combination ($)</div>
+                      <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "var(--high-vis)", marginBottom: 6 }}>Price per combination ($)</div>
                       <div style={{ padding: "8px", background: "#fffbf0", borderRadius: 6, fontSize: "0.82rem", color: "#aaa", border: "1px solid #fde68a" }}>
                         Vendors fill prices for each combination...
                       </div>
@@ -4968,7 +4968,7 @@ export default function CategoryDetailPage() {
                   <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "#1a1a1a", marginBottom: 8 }}>Required Documents & Conditions</div>
                   {editChecklist.map((c, ci) => (
                     <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <div style={{ width: 16, height: 16, borderRadius: 3, border: `1.5px solid ${c.required ? "#d97706" : "#ccc"}`, background: "transparent", flexShrink: 0 }} />
+                      <div style={{ width: 16, height: 16, borderRadius: 3, border: `1.5px solid ${c.required ? "var(--high-vis)" : "#ccc"}`, background: "transparent", flexShrink: 0 }} />
                       <span style={{ fontSize: "0.8rem", color: "#1a1a1a" }}>{c.text}</span>
                       {!c.required && <span style={{ fontSize: "0.6rem", color: "#999", fontWeight: 600 }}>Optional</span>}
                     </div>

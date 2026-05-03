@@ -60,7 +60,7 @@ export default function NewProjectPage() {
     <div className="page on">
       <div className="fstrip">
         <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-          <Link href="/customer" style={{ color: "var(--gold)", textDecoration: "none", fontWeight: 600 }}>
+          <Link href="/customer" style={{ color: "var(--blueprint)", textDecoration: "none", fontWeight: 600 }}>
             Dashboard
           </Link>
           <span style={{ color: "var(--border2)", margin: "0 6px" }}>{"\u203A"}</span>

@@ -48,7 +48,7 @@ function showToast(msg: string) {
 
 export default function CreateBidPage() {
   return (
-    <Suspense fallback={<div className="scroll" style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}><div style={{ width: "32px", height: "32px", border: "4px solid var(--gold-b)", borderTopColor: "var(--gold)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }}></div></div>}>
+    <Suspense fallback={<div className="scroll" style={{ display: "flex", justifyContent: "center", paddingTop: "80px" }}><div className="so-spinner" /></div>}>
       <CreateBidContent />
     </Suspense>
   );
@@ -895,8 +895,9 @@ function CreateBidContent() {
                       border: "1.5px solid var(--gold-b)", borderRadius: 10, padding: 14,
                       background: "var(--gold-bg)", marginBottom: 12,
                     }}>
-                      <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--gold)", marginBottom: 8 }}>
-                        📁 Project Files — select to include
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.78rem", fontWeight: 700, color: "var(--gold)", marginBottom: 8 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        Project Files — select to include
                       </div>
                       {projectFiles.map(pf => (
                         <label key={pf.id} style={{

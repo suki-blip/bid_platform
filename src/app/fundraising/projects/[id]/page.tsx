@@ -4,6 +4,24 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
+import StarRating from "../../_components/StarRating";
+
+interface AISuggestion {
+  id: string;
+  name: string;
+  organization: string | null;
+  total_paid: number;
+  financial_rating: number | null;
+  giving_rating: number | null;
+  rank: number;
+  reasoning: string;
+  estimated_amount: number;
+}
+interface AIResponse {
+  suggestions: AISuggestion[];
+  summary: string;
+  total_estimate: number;
+}
 
 interface Project {
   id: string;
@@ -50,6 +68,29 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const [data, setData] = useState<{ project: Project; totals: Totals; pledges: Pledge[]; payments: Payment[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ai, setAi] = useState<AIResponse | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  async function runAiSuggest() {
+    if (!params?.id) return;
+    setAiLoading(true);
+    setAiError("");
+    setAi(null);
+    try {
+      const r = await fetch(`/api/fundraising/projects/${params.id}/ai-suggestions`, { method: "POST" });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setAiError(e.error || `AI failed (HTTP ${r.status})`);
+        setAiLoading(false);
+        return;
+      }
+      setAi(await r.json());
+    } catch {
+      setAiError("Network error");
+    }
+    setAiLoading(false);
+  }
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", description: "", goal_amount: "" });
 
@@ -231,6 +272,164 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </div>
+
+      {/* AI suggestions */}
+      <section
+        style={{
+          background: "#fff",
+          border: "1px solid rgba(10,16,25,0.08)",
+          borderRadius: 8,
+          padding: 18,
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h2
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                margin: "0 0 4px",
+              }}
+            >
+              AI donor suggestions
+            </h2>
+            <div style={{ fontSize: 12, opacity: 0.6 }}>
+              Claude analyzes your donor base — capacity, giving history, prior projects, occupation — and suggests the best matches for this project.
+            </div>
+          </div>
+          <button
+            onClick={runAiSuggest}
+            disabled={aiLoading}
+            style={{
+              padding: "8px 14px",
+              background: "var(--cast-iron)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: aiLoading ? "not-allowed" : "pointer",
+              opacity: aiLoading ? 0.5 : 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {aiLoading ? "Analyzing…" : ai ? "Re-run analysis" : "✨ Suggest donors"}
+          </button>
+        </div>
+
+        {aiError && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 10,
+              background: "rgba(232,93,31,0.08)",
+              color: "var(--cone-orange)",
+              borderRadius: 6,
+              fontSize: 13,
+            }}
+          >
+            {aiError}
+          </div>
+        )}
+
+        {ai && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 13, lineHeight: 1.55, marginBottom: 12, fontStyle: "italic", opacity: 0.8 }}>
+              {ai.summary}
+            </div>
+            {ai.suggestions.length === 0 ? (
+              <Empty>No matches found. Add more donor data and rate them by capacity / giving.</Empty>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    paddingBottom: 8,
+                    marginBottom: 6,
+                    borderBottom: "1px solid rgba(10,16,25,0.06)",
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.55 }}>
+                    {ai.suggestions.length} suggestions
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--shed-green)" }}>
+                    Estimated total: {fmtMoney(ai.total_estimate)}
+                  </div>
+                </div>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {ai.suggestions.map((s) => (
+                    <li
+                      key={s.id}
+                      style={{
+                        padding: "10px 0",
+                        borderBottom: "1px solid rgba(10,16,25,0.05)",
+                        display: "flex",
+                        gap: 14,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          minWidth: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          background: "rgba(10,16,25,0.06)",
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          fontFamily: "var(--font-bricolage), sans-serif",
+                        }}
+                      >
+                        {s.rank}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <Link
+                            href={`/fundraising/donors/${s.id}`}
+                            style={{ color: "var(--cast-iron)", textDecoration: "none", fontWeight: 700, fontSize: 14 }}
+                          >
+                            {s.name}
+                          </Link>
+                          {s.organization && (
+                            <span style={{ fontSize: 11, opacity: 0.55 }}>{s.organization}</span>
+                          )}
+                          <StarRating value={s.financial_rating} size={11} readonly hideEmpty />
+                          <StarRating value={s.giving_rating} size={11} readonly hideEmpty />
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4, lineHeight: 1.5 }}>
+                          {s.reasoning}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <div
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 800,
+                            fontFamily: "var(--font-bricolage), sans-serif",
+                            color: "var(--shed-green)",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {fmtMoney(s.estimated_amount)}
+                        </div>
+                        <div style={{ fontSize: 10, opacity: 0.55 }}>
+                          {s.total_paid > 0 ? `lifetime: ${fmtMoney(s.total_paid)}` : "no prior gifts"}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+      </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <Panel title={`Pledges (${pledges.length})`}>

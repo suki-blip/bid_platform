@@ -111,6 +111,8 @@ const EDITABLE_FIELDS = [
   'notes',
 ] as const;
 
+const RATING_FIELDS = ['financial_rating', 'giving_rating'] as const;
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getFundraisingSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -128,6 +130,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (field in body) {
       sets.push(`${field} = ?`);
       args.push(body[field] === '' ? null : body[field] ?? null);
+    }
+  }
+  for (const field of RATING_FIELDS) {
+    if (field in body) {
+      const v = body[field];
+      if (v === null || v === '') {
+        sets.push(`${field} = NULL`);
+      } else {
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 1 || n > 5) {
+          return NextResponse.json({ error: `${field} must be an integer 1-5` }, { status: 400 });
+        }
+        sets.push(`${field} = ?`);
+        args.push(n);
+      }
     }
   }
   if ('tags' in body) {

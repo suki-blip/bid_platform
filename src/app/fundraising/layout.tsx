@@ -54,7 +54,7 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
   const visibleNav = NAV.filter((n) => !n.managerOnly || session?.role === "manager");
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column", color: "var(--cast-iron)" }}>
+    <div className="fr-shell" style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column", color: "var(--cast-iron)" }}>
       <div className="so-shed-ribbon" />
 
       <header
@@ -95,17 +95,17 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
               lineHeight: 1,
             }}
           >
-            ₪
+            e
           </div>
           <span
             style={{
               fontFamily: "var(--font-bricolage), sans-serif",
               fontSize: 17,
               fontWeight: 700,
-              letterSpacing: "-0.015em",
+              letterSpacing: "-0.02em",
             }}
           >
-            YeshivaRaise
+            easyfundraisings
           </span>
         </Link>
 
@@ -165,7 +165,7 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
           }}
           title="Search and quick actions (⌘K)"
         >
-          <span>Search</span>
+          <span className="fr-search-label">Search</span>
           <kbd
             style={{
               padding: "1px 5px",
@@ -214,7 +214,7 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
             >
               {session?.name?.[0]?.toUpperCase() || "?"}
             </div>
-            <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span className="fr-user-name" style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {loading ? "…" : session?.name || "Guest"}
             </span>
           </button>

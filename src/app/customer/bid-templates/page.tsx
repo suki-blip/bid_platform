@@ -277,29 +277,26 @@ export default function BidTemplatesPage() {
 
   if (loading) return (
     <div className="page on" style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
-      <div style={{ width: 32, height: 32, borderRadius: "50%", border: "4px solid var(--gold-b)", borderTopColor: "var(--gold)", animation: "spin 0.8s linear infinite" }} />
+      <div className="so-spinner" />
     </div>
   );
 
   return (
-    <div className="page on" style={{ padding: "20px 24px" }}>
+    <div className="page on">
       {/* Toast */}
       <div id="bm-toast" style={{
         position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%) translateY(12px)",
-        background: "#0f0f0f", color: "#fff", padding: "10px 20px", borderRadius: 10,
+        background: "var(--cast-iron)", color: "var(--high-vis)", padding: "10px 20px", borderRadius: 10,
         fontSize: "0.82rem", fontWeight: 600, opacity: 0, transition: "all 0.3s", zIndex: 9999,
         pointerEvents: "none",
       }} />
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+      {/* Page header */}
+      <div className="so-page-head">
         <div>
-          <h1 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontWeight: 800, fontSize: "1.3rem", color: "var(--ink)", margin: 0 }}>
-            Bid Templates
-          </h1>
-          <p style={{ fontSize: "0.82rem", color: "var(--muted)", marginTop: 4 }}>
-            Create and manage reusable bid form templates for each trade category
-          </p>
+          <div className="so-page-eyebrow">SCOPE LIBRARY</div>
+          <h1>Bid Templates</h1>
+          <p>Reusable bid forms for each trade · {templates.length} template{templates.length !== 1 ? "s" : ""} on file</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-gold btn-xs" onClick={openNew}>
@@ -576,7 +573,7 @@ export default function BidTemplatesPage() {
 
               {previewTemplate.bid_mode === "open" ? (
                 <div>
-                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#d97706", marginBottom: 8, textTransform: "uppercase" }}>Open Proposal Mode</div>
+                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--high-vis)", marginBottom: 8, textTransform: "uppercase" }}>Open Proposal Mode</div>
                   <div style={{ background: "#fff", border: "1px solid #e5e5e0", borderRadius: 8, padding: 14, marginBottom: 10 }}>
                     <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                       <div style={{ flex: 2 }}>
@@ -584,7 +581,7 @@ export default function BidTemplatesPage() {
                         <div style={{ padding: "8px", background: "#f5f5f5", borderRadius: 6, fontSize: "0.82rem", color: "#aaa" }}>e.g. Premium Package</div>
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#d97706", marginBottom: 3 }}>Price ($) *</div>
+                        <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--high-vis)", marginBottom: 3 }}>Price ($) *</div>
                         <div style={{ padding: "8px", background: "#fffbf0", borderRadius: 6, fontSize: "0.82rem", color: "#aaa", border: "1px solid #fde68a" }}>0.00</div>
                       </div>
                     </div>
@@ -607,7 +604,7 @@ export default function BidTemplatesPage() {
                     <div key={pi} style={{ marginBottom: 12 }}>
                       <div style={{
                         fontSize: "0.74rem", fontWeight: 700, marginBottom: 6,
-                        color: p.is_track ? "#d97706" : "#1a1a1a",
+                        color: p.is_track ? "var(--high-vis)" : "#1a1a1a",
                       }}>
                         {p.is_track ? `⚡ ${p.name} (Track)` : p.name}
                       </div>
@@ -625,7 +622,7 @@ export default function BidTemplatesPage() {
                   ))}
                   {previewTemplate.parameters.length > 0 && (
                     <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "#d97706", marginBottom: 6 }}>Price per combination ($)</div>
+                      <div style={{ fontSize: "0.74rem", fontWeight: 700, color: "var(--high-vis)", marginBottom: 6 }}>Price per combination ($)</div>
                       <div style={{ padding: "8px", background: "#fffbf0", borderRadius: 6, fontSize: "0.82rem", color: "#aaa", border: "1px solid #fde68a" }}>
                         Vendors fill prices for each parameter combination...
                       </div>
@@ -642,7 +639,7 @@ export default function BidTemplatesPage() {
                     <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <div style={{
                         width: 16, height: 16, borderRadius: 3,
-                        border: `1.5px solid ${c.required ? "#d97706" : "#ccc"}`,
+                        border: `1.5px solid ${c.required ? "var(--high-vis)" : "#ccc"}`,
                         background: "transparent", flexShrink: 0,
                       }} />
                       <span style={{ fontSize: "0.8rem", color: "#1a1a1a" }}>{typeof c === "string" ? c : c.text}</span>
@@ -674,7 +671,8 @@ export default function BidTemplatesPage() {
                     fontWeight: 700, cursor: "pointer",
                   }}
                 >
-                  🤖 Fill from Quote (AI)
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M9 12h6M12 9v6"/><path d="M12 2v4"/></svg>
+                  Fill from Quote (AI)
                 </button>
               </div>
             </div>
@@ -689,7 +687,7 @@ export default function BidTemplatesPage() {
                   <div style={{ display: "flex", gap: 6 }}>
                     <button className="btn btn-outline btn-xs" onClick={() => setShowAiScan(false)}>Cancel</button>
                     <button className="btn btn-gold btn-xs" onClick={handleAiScan} disabled={aiScanning}>
-                      {aiScanning ? "Scanning..." : "🤖 Scan & Fill"}
+                      {aiScanning ? "Scanning..." : "Scan & Fill"}
                     </button>
                   </div>
                 </div>

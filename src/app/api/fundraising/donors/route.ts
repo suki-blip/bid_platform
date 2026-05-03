@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     sql: `SELECT
             d.id, d.status, d.first_name, d.last_name, d.hebrew_name, d.email, d.organization,
             d.total_pledged, d.total_paid, d.last_contact_at, d.next_followup_at,
-            d.created_at, d.assigned_to, d.tags,
+            d.created_at, d.assigned_to, d.tags, d.financial_rating, d.giving_rating,
             s.name AS source_name,
             tm.name AS assigned_name,
             (SELECT phone FROM fr_donor_phones p WHERE p.donor_id = d.id ORDER BY is_primary DESC, sort_order ASC LIMIT 1) AS primary_phone,
@@ -110,6 +110,8 @@ export async function GET(request: NextRequest) {
           return [];
         }
       })(),
+      financial_rating: r.financial_rating == null ? null : Number(r.financial_rating),
+      giving_rating: r.giving_rating == null ? null : Number(r.giving_rating),
     })),
   });
 }
