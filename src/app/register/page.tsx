@@ -35,6 +35,9 @@ export default function RegisterPage() {
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hostname.includes('easyfundraisings')) {
       setIsFundraisingBrand(true);
+      document.title = 'easyfundraisings — register';
+    } else if (typeof document !== 'undefined') {
+      document.title = 'BidMaster — register';
     }
   }, []);
   const postSignupRedirect = isFundraisingBrand ? '/fundraising' : '/customer';

@@ -4,7 +4,7 @@ export type DonorStatus = (typeof DONOR_STATUSES)[number];
 export const PAYMENT_PLANS = ['lump_sum', 'monthly', 'quarterly', 'annual', 'custom'] as const;
 export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
 
-export const PAYMENT_METHODS = ['credit_card', 'check', 'cash', 'wire', 'ach'] as const;
+export const PAYMENT_METHODS = ['credit_card', 'check', 'cash', 'wire', 'ach', 'pending'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const PAYMENT_STATUSES = ['scheduled', 'paid', 'bounced', 'failed', 'cancelled'] as const;

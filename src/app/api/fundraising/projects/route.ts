@@ -53,8 +53,8 @@ export async function POST(request: Request) {
 
   const id = crypto.randomUUID();
   await db().execute({
-    sql: `INSERT INTO fr_projects (id, owner_id, name, description, goal_amount, currency, status, start_date, end_date, color)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO fr_projects (id, owner_id, name, description, goal_amount, currency, status, start_date, end_date, color, parent_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       session.ownerId,
@@ -66,6 +66,7 @@ export async function POST(request: Request) {
       body.start_date || null,
       body.end_date || null,
       body.color || null,
+      body.parent_id || null,
     ],
   });
 

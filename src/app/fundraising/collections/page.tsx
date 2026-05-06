@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import DonorSidePanel from "../_components/DonorSidePanel";
-import { fmtMoney, fmtDate, daysOverdue } from "@/lib/fundraising-format";
+import { fmtMoney, fmtDate, daysOverdue, fmtMethod } from "@/lib/fundraising-format";
 
 interface CollectionItem {
   id: string;
@@ -200,7 +200,7 @@ export default function CollectionsPage() {
                     </td>
                     <td style={{ padding: "10px 14px", fontSize: 12 }}>{item.project_name || "—"}</td>
                     <td style={{ padding: "10px 14px", fontSize: 12 }}>
-                      <div style={{ textTransform: "capitalize" }}>{item.method.replace("_", " ")}</div>
+                      <div style={{ textTransform: "capitalize" }}>{fmtMethod(item.method)}</div>
                       <div style={{ fontSize: 10, opacity: 0.55 }}>
                         {item.method === "check" && item.check_number && `#${item.check_number}`}
                         {item.method === "credit_card" && item.cc_last4 && `····${item.cc_last4}`}

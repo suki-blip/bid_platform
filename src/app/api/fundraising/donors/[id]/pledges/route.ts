@@ -39,7 +39,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const plan: Plan = VALID_PLANS.includes(body.payment_plan) ? body.payment_plan : 'lump_sum';
   const installmentsTotal = Math.max(1, Number(body.installments_total) || 1);
   const pledgeDate = body.pledge_date || new Date().toISOString().slice(0, 10);
-  const defaultMethod = body.default_method || 'credit_card';
+  // 'pending' means the donor pledged but the payment method will be decided later
+  // (the Collections team will fill it in when the payment is actually made).
+  const defaultMethod = body.default_method || 'pending';
   const projectId = body.project_id || null;
 
   const pledgeId = crypto.randomUUID();
@@ -110,6 +112,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         p.notes || null,
       ],
     });
+  });
+
+  // Promote prospect to donor automatically — they just made a financial commitment.
+  statements.push({
+    sql: "UPDATE fr_donors SET status = 'donor', converted_at = COALESCE(converted_at, datetime('now')) WHERE id = ? AND status = 'prospect'",
+    args: [donorId],
   });
 
   await db().batch(statements, 'write');

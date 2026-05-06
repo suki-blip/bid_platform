@@ -16,6 +16,7 @@ interface Project {
   pledged_amount: number;
   paid_amount: number;
   donor_count: number;
+  parent_id: string | null;
 }
 
 export default function ProjectsPage() {
@@ -48,6 +49,7 @@ export default function ProjectsPage() {
 
   const active = projects.filter((p) => p.status === "active");
   const archived = projects.filter((p) => p.status !== "active");
+  const projectsById = new Map(projects.map((p) => [p.id, p]));
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
@@ -83,37 +85,72 @@ export default function ProjectsPage() {
         <Empty onCreate={() => setShowCreate(true)} />
       ) : (
         <>
-          <Section title="Active" projects={active} onChange={load} />
+          <Section title="Active" projects={active} projectsById={projectsById} onChange={load} />
           {archived.length > 0 && (
             <div style={{ marginTop: 20 }}>
-              <Section title="Archived & closed" projects={archived} onChange={load} />
+              <Section title="Archived & closed" projects={archived} projectsById={projectsById} onChange={load} />
             </div>
           )}
         </>
       )}
 
-      {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={load} />}
+      {showCreate && <CreateModal projects={projects} onClose={() => setShowCreate(false)} onCreated={load} />}
     </div>
   );
 }
 
-function Section({ title, projects, onChange }: { title: string; projects: Project[]; onChange: () => void }) {
+function Section({
+  title,
+  projects,
+  projectsById,
+  onChange,
+}: {
+  title: string;
+  projects: Project[];
+  projectsById: Map<string, Project>;
+  onChange: () => void;
+}) {
   if (projects.length === 0) return null;
+
+  // Top-level projects (no parent, or parent not in this section)
+  const topLevel = projects.filter((p) => !p.parent_id || !projectsById.has(p.parent_id));
+  // Children grouped by parent_id
+  const childrenByParent = new Map<string, Project[]>();
+  for (const p of projects) {
+    if (p.parent_id && projectsById.has(p.parent_id)) {
+      const arr = childrenByParent.get(p.parent_id) || [];
+      arr.push(p);
+      childrenByParent.set(p.parent_id, arr);
+    }
+  }
+
   return (
     <section>
       <h2 style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 12px", opacity: 0.6 }}>
         {title}
       </h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-        {projects.map((p) => (
-          <ProjectCard key={p.id} project={p} onChange={onChange} />
-        ))}
+        {topLevel.map((p) => {
+          const children = childrenByParent.get(p.id) || [];
+          return (
+            <div key={p.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <ProjectCard project={p} onChange={onChange} />
+              {children.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 18, borderLeft: "2px solid rgba(10,16,25,0.08)", marginLeft: 8 }}>
+                  {children.map((c) => (
+                    <ProjectCard key={c.id} project={c} onChange={onChange} isChild />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function ProjectCard({ project, onChange }: { project: Project; onChange: () => void }) {
+function ProjectCard({ project, onChange, isChild = false }: { project: Project; onChange: () => void; isChild?: boolean }) {
   const goal = project.goal_amount;
   const pct = goal && goal > 0 ? Math.min(100, (project.paid_amount / goal) * 100) : null;
 
@@ -133,12 +170,15 @@ function ProjectCard({ project, onChange }: { project: Project; onChange: () => 
         background: "#fff",
         border: "1px solid rgba(10,16,25,0.08)",
         borderRadius: 12,
-        padding: 18,
+        padding: isChild ? 14 : 18,
         position: "relative",
       }}
     >
       <Link href={`/fundraising/projects/${project.id}`} style={{ textDecoration: "none", color: "var(--cast-iron)" }}>
-        <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-0.01em" }}>{project.name}</h3>
+        <h3 style={{ fontSize: isChild ? 14 : 16, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-0.01em" }}>
+          {isChild && <span style={{ opacity: 0.4, marginRight: 4 }}>↳</span>}
+          {project.name}
+        </h3>
       </Link>
       {project.description && (
         <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12, lineHeight: 1.5 }}>{project.description}</div>
@@ -226,14 +266,18 @@ function Empty({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateModal({ projects, onClose, onCreated }: { projects: Project[]; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [goalAmount, setGoalAmount] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [parentId, setParentId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Only top-level active projects can be parents (no nested grandchildren for now)
+  const parentChoices = projects.filter((p) => p.status === "active" && !p.parent_id);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -248,6 +292,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         goal_amount: goalAmount || null,
         start_date: startDate || null,
         end_date: endDate || null,
+        parent_id: parentId || null,
       }),
     });
     if (!res.ok) {
@@ -276,6 +321,19 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             style={{ ...inputStyle, minHeight: 70, fontFamily: "inherit" }}
           />
         </Field>
+        {parentChoices.length > 0 && (
+          <Field label="Parent project (optional)">
+            <select value={parentId} onChange={(e) => setParentId(e.target.value)} style={inputStyle}>
+              <option value="">— None (top-level project) —</option>
+              {parentChoices.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+              Use this for sub-campaigns (e.g. &quot;Dinner 2025&quot; under &quot;Dinner&quot;).
+            </div>
+          </Field>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <Field label="Goal amount">
             <input

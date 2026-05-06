@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/fundraising-format";
+import { fmtMoney, fmtDate, fmtDateTime, fmtMethod } from "@/lib/fundraising-format";
 import StarRating from "../../_components/StarRating";
+import DonorEditModal from "../../_components/DonorEditModal";
+import CallEditModal from "../../_components/CallEditModal";
+import PaymentEditModal from "../../_components/PaymentEditModal";
 
 interface Donor {
   id: string;
@@ -147,6 +150,9 @@ export default function DonorProfilePage() {
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [showFollowupModal, setShowFollowupModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showDonorEdit, setShowDonorEdit] = useState(false);
+  const [editingCall, setEditingCall] = useState<Call | null>(null);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
 
   function loadSchedule() {
     if (!params?.id) return;
@@ -204,7 +210,7 @@ export default function DonorProfilePage() {
   }, [params]);
 
   async function convertToDonor() {
-    if (!confirm("Convert this prospect to an active donor?")) return;
+    if (!confirm("Convert this lead to an active donor?")) return;
     const r = await fetch(`/api/fundraising/donors/${params.id}/convert`, { method: "POST" });
     if (r.ok) load();
   }
@@ -353,7 +359,7 @@ export default function DonorProfilePage() {
           href={isProspect ? "/fundraising/prospects" : "/fundraising/donors"}
           style={{ fontSize: 12, color: "rgba(10,16,25,0.55)", textDecoration: "none", fontWeight: 500 }}
         >
-          ← Back to {isProspect ? "prospects" : "donors"}
+          ← Back to {isProspect ? "leads" : "donors"}
         </Link>
       </div>
 
@@ -379,7 +385,7 @@ export default function DonorProfilePage() {
               marginBottom: 6,
             }}
           >
-            {donor.status}
+            {isProspect ? "lead" : donor.status}
             {donor.do_not_contact && <span style={{ color: "var(--cone-orange)", marginLeft: 10 }}>· Do not contact</span>}
             {donor.source && <span style={{ marginLeft: 10, opacity: 0.85 }}>· From {donor.source.name}</span>}
           </div>
@@ -500,20 +506,57 @@ export default function DonorProfilePage() {
               onChange={(v) => updateRating("giving_rating", v)}
             />
           </div>
-          <button
-            onClick={deleteDonor}
-            style={{
-              fontSize: 11,
-              color: "rgba(10,16,25,0.45)",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 500,
-              padding: 0,
-            }}
-          >
-            Delete donor
-          </button>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <button
+              onClick={() => setShowDonorEdit(true)}
+              title="Edit donor details"
+              style={{
+                fontSize: 11,
+                color: "var(--cast-iron)",
+                background: "transparent",
+                border: "1px solid rgba(10,16,25,0.18)",
+                cursor: "pointer",
+                fontWeight: 600,
+                padding: "5px 10px",
+                borderRadius: 6,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Edit donor
+            </button>
+            <button
+              onClick={deleteDonor}
+              title="Delete donor permanently"
+              style={{
+                fontSize: 11,
+                color: "var(--cone-orange)",
+                background: "transparent",
+                border: "1px solid rgba(232,93,31,0.3)",
+                cursor: "pointer",
+                fontWeight: 600,
+                padding: "5px 10px",
+                borderRadius: 6,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+              Delete donor
+            </button>
+          </div>
         </div>
       </div>
 
@@ -744,6 +787,9 @@ export default function DonorProfilePage() {
                           {fmtDateTime(c.occurred_at)}
                           {c.fundraiser_name ? ` · ${c.fundraiser_name}` : ""}
                         </span>
+                        <button onClick={() => setEditingCall(c)} style={{ background: "transparent", border: "none", color: "var(--blueprint)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                          Edit
+                        </button>
                         <button onClick={() => deleteCall(c.id)} style={{ background: "transparent", border: "none", color: "var(--cone-orange)", cursor: "pointer", fontSize: 12 }}>
                           Delete
                         </button>
@@ -914,7 +960,7 @@ export default function DonorProfilePage() {
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ fontWeight: 700 }}>
                         {fmtMoney(pay.amount)}{" "}
-                        <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 12 }}>· {pay.method.replace("_", " ")}</span>
+                        <span style={{ fontWeight: 400, opacity: 0.6, fontSize: 12 }}>· {fmtMethod(pay.method)}</span>
                       </div>
                       <div style={{ fontSize: 11, opacity: 0.6 }}>
                         {pay.project_name || "General"} · #{pay.installment_number}
@@ -977,6 +1023,21 @@ export default function DonorProfilePage() {
                           Bounce
                         </button>
                       )}
+                      <button
+                        onClick={() => setEditingPayment(pay)}
+                        style={{
+                          padding: "4px 10px",
+                          background: "transparent",
+                          color: "var(--blueprint)",
+                          border: "1px solid rgba(28,93,142,0.3)",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Edit
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -1208,6 +1269,57 @@ export default function DonorProfilePage() {
           }}
         />
       )}
+
+      {showDonorEdit && (
+        <DonorEditModal
+          donor={{
+            id: donor.id,
+            first_name: donor.first_name,
+            last_name: donor.last_name,
+            hebrew_name: donor.hebrew_name,
+            title: donor.title,
+            spouse_name: donor.spouse_name,
+            email: donor.email,
+            organization: donor.organization,
+            occupation: donor.occupation,
+            birthday: donor.birthday,
+            yahrzeit: donor.yahrzeit,
+            anniversary: donor.anniversary,
+            preferred_contact: donor.preferred_contact,
+            source_notes: donor.source_notes,
+            notes: donor.notes,
+            do_not_contact: donor.do_not_contact,
+          }}
+          onClose={() => setShowDonorEdit(false)}
+          onSaved={() => {
+            setShowDonorEdit(false);
+            load();
+          }}
+        />
+      )}
+
+      {editingCall && (
+        <CallEditModal
+          donorId={String(params.id)}
+          call={editingCall}
+          onClose={() => setEditingCall(null)}
+          onSaved={() => {
+            setEditingCall(null);
+            load();
+          }}
+        />
+      )}
+
+      {editingPayment && (
+        <PaymentEditModal
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => {
+            setEditingPayment(null);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1228,7 +1340,7 @@ function PledgeModal({
   const [pledgeDate, setPledgeDate] = useState(new Date().toISOString().slice(0, 10));
   const [installments, setInstallments] = useState("1");
   const [plan, setPlan] = useState<"lump_sum" | "monthly" | "quarterly" | "annual">("lump_sum");
-  const [defaultMethod, setDefaultMethod] = useState("credit_card");
+  const [defaultMethod, setDefaultMethod] = useState("pending");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1294,6 +1406,7 @@ function PledgeModal({
           </Lbl>
           <Lbl label="Default method">
             <select value={defaultMethod} onChange={(e) => setDefaultMethod(e.target.value)} style={inputCss}>
+              <option value="pending">Decide later (Collections)</option>
               <option value="credit_card">Credit card</option>
               <option value="check">Check</option>
               <option value="wire">Wire</option>

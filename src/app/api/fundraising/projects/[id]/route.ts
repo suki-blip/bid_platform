@@ -3,7 +3,7 @@ import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { PROJECT_STATUSES, inEnum, isIsoDate } from '@/lib/fundraising-types';
 
-const FIELDS = ['name', 'description', 'goal_amount', 'currency', 'status', 'start_date', 'end_date', 'color'] as const;
+const FIELDS = ['name', 'description', 'goal_amount', 'currency', 'status', 'start_date', 'end_date', 'color', 'parent_id'] as const;
 
 async function loadProject(id: string, ownerId: string) {
   const r = await db().execute({

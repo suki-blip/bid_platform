@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { OCCUPATION_CATEGORIES, COUNTRIES } from "@/lib/fundraising-options";
 
 interface PhoneRow {
   label: string;
@@ -65,6 +66,7 @@ function NewDonorPage() {
   const [spouseName, setSpouseName] = useState("");
   const [email, setEmail] = useState("");
   const [organization, setOrganization] = useState("");
+  const [occupationCategory, setOccupationCategory] = useState("");
   const [occupation, setOccupation] = useState("");
   const [birthday, setBirthday] = useState("");
   const [yahrzeit, setYahrzeit] = useState("");
@@ -167,7 +169,12 @@ function NewDonorPage() {
           spouse_name: spouseName || null,
           email: email || null,
           organization: organization || null,
-          occupation: occupation || null,
+          occupation: [
+            occupationCategory && OCCUPATION_CATEGORIES.find((c) => c.value === occupationCategory)?.label,
+            occupation,
+          ]
+            .filter(Boolean)
+            .join(" — ") || null,
           birthday: birthday || null,
           yahrzeit: yahrzeit || null,
           anniversary: anniversary || null,
@@ -199,10 +206,10 @@ function NewDonorPage() {
     <form onSubmit={handleSubmit} style={{ maxWidth: 880, margin: "0 auto" }}>
       <div style={{ marginBottom: 22 }}>
         <Link href={status === "prospect" ? "/fundraising/prospects" : "/fundraising/donors"} style={{ fontSize: 12, color: "var(--blueprint)", textDecoration: "none" }}>
-          ← Back to {status === "prospect" ? "prospects" : "donors"}
+          ← Back to {status === "prospect" ? "leads" : "donors"}
         </Link>
         <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", margin: "8px 0 4px" }}>
-          New {status === "prospect" ? "prospect" : "donor"}
+          New {status === "prospect" ? "lead" : "donor"}
         </h1>
         <div style={{ fontSize: 13, opacity: 0.6 }}>Capture the details that will power your reports later.</div>
       </div>
@@ -227,7 +234,7 @@ function NewDonorPage() {
                 textTransform: "capitalize",
               }}
             >
-              {s}
+              {s === "prospect" ? "Lead" : "Donor"}
             </button>
           ))}
         </div>
@@ -260,8 +267,26 @@ function NewDonorPage() {
           <Field label="Spouse name">
             <input style={fieldStyle} value={spouseName} onChange={(e) => setSpouseName(e.target.value)} />
           </Field>
-          <Field label="Occupation">
-            <input style={fieldStyle} value={occupation} onChange={(e) => setOccupation(e.target.value)} />
+          <Field label="Occupation category">
+            <select
+              value={occupationCategory}
+              onChange={(e) => setOccupationCategory(e.target.value)}
+              style={fieldStyle}
+            >
+              {OCCUPATION_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Occupation (specific)">
+            <input
+              style={fieldStyle}
+              value={occupation}
+              onChange={(e) => setOccupation(e.target.value)}
+              placeholder="e.g. Diamond dealer, ER physician"
+            />
           </Field>
           <Field label="Email">
             <input type="email" style={fieldStyle} value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -373,7 +398,18 @@ function NewDonorPage() {
                 <input style={fieldStyle} value={a.zip} onChange={(e) => setAddressField(i, "zip", e.target.value)} />
               </Field>
               <Field label="Country">
-                <input style={fieldStyle} value={a.country} onChange={(e) => setAddressField(i, "country", e.target.value)} />
+                <select
+                  style={fieldStyle}
+                  value={a.country}
+                  onChange={(e) => setAddressField(i, "country", e.target.value)}
+                >
+                  <option value="">— Select country —</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </Grid>
           </div>
@@ -557,7 +593,7 @@ function NewDonorPage() {
             opacity: submitting ? 0.5 : 1,
           }}
         >
-          {submitting ? "Saving…" : `Save ${status}`}
+          {submitting ? "Saving…" : `Save ${status === "prospect" ? "lead" : "donor"}`}
         </button>
       </div>
     </form>

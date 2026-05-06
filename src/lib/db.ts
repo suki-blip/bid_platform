@@ -481,6 +481,10 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN financial_rating INTEGER'); } catch {}
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN giving_rating INTEGER'); } catch {}
 
+  // Sub-projects: parent_id allows nesting (e.g. "Dinner" parent → "Dinner 2024", "Dinner 2025").
+  try { await client.execute('ALTER TABLE fr_projects ADD COLUMN parent_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_projects_parent ON fr_projects(parent_id)'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

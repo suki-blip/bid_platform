@@ -27,11 +27,14 @@ function LoginContent() {
   const resetToken = searchParams.get('reset');
 
   // Brand the login page based on which domain the user arrived from.
-  // easyfundraisings.com → YeshivaRaise; everywhere else → BidMaster.
+  // easyfundraisings.com → easyfundraisings; everywhere else → BidMaster.
   const [isFundraisingBrand, setIsFundraisingBrand] = useState(false);
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hostname.includes('easyfundraisings')) {
       setIsFundraisingBrand(true);
+      document.title = 'easyfundraisings — sign in';
+    } else if (typeof document !== 'undefined') {
+      document.title = 'BidMaster — sign in';
     }
   }, []);
 
@@ -197,7 +200,7 @@ function LoginContent() {
             <>
               <Link href="/" className="login-logo-link">
                 <div className="login-logo-icon" style={{ background: '#0a1019', color: '#f7f3e9', fontFamily: 'var(--font-bricolage), sans-serif', display: 'grid', placeItems: 'center' }}>₪</div>
-                <span className="login-logo-text" style={{ color: '#0a1019' }}>YeshivaRaise</span>
+                <span className="login-logo-text" style={{ color: '#0a1019' }}>easyfundraisings</span>
               </Link>
 
               <div className="login-eyebrow">FOR FUNDRAISING TEAMS</div>
@@ -253,7 +256,7 @@ function LoginContent() {
                 <span className="stamp revise">OVERDUE</span>
                 <span className="stamp draft">PROSPECT</span>
               </div>
-              <div className="login-credit">YESHIVARAISE · EASYFUNDRAISINGS.COM · 5786</div>
+              <div className="login-credit">EASYFUNDRAISINGS.COM · 5786</div>
             </>
           ) : (
             <>

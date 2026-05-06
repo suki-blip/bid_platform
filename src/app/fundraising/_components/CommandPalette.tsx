@@ -31,7 +31,7 @@ interface CommandItem {
 const NAV_ITEMS: { label: string; href: string; managerOnly?: boolean }[] = [
   { label: "Dashboard", href: "/fundraising" },
   { label: "Today", href: "/fundraising/today" },
-  { label: "Prospects", href: "/fundraising/prospects" },
+  { label: "Leads", href: "/fundraising/prospects" },
   { label: "Donors", href: "/fundraising/donors" },
   { label: "Projects", href: "/fundraising/projects" },
   { label: "Collections", href: "/fundraising/collections" },
@@ -122,7 +122,7 @@ export default function CommandPalette() {
 
   // Quick actions (always show but filterable)
   const actions: CommandItem[] = [
-    { id: "act-new-prospect", group: "Quick actions", label: "New prospect", hint: "Create a new prospect", action: () => go("/fundraising/donors/new?status=prospect") },
+    { id: "act-new-prospect", group: "Quick actions", label: "New lead", hint: "Create a new lead", action: () => go("/fundraising/donors/new?status=prospect") },
     { id: "act-new-donor", group: "Quick actions", label: "New donor", hint: "Create a new donor", action: () => go("/fundraising/donors/new?status=donor") },
     { id: "act-new-project", group: "Quick actions", label: "New project", hint: "Create a fundraising project", action: () => go("/fundraising/projects") },
     ...(isManager
@@ -154,8 +154,8 @@ export default function CommandPalette() {
       label: `${d.first_name}${d.last_name ? ` ${d.last_name}` : ""}`,
       hebrewSubtitle: d.hebrew_name || undefined,
       hint: d.organization
-        ? `${d.organization} · ${d.status}${d.total_paid ? ` · ${fmtMoney(d.total_paid)} lifetime` : ""}`
-        : `${d.status}${d.total_paid ? ` · ${fmtMoney(d.total_paid)} lifetime` : ""}`,
+        ? `${d.organization} · ${(d.status === "prospect" ? "lead" : d.status)}${d.total_paid ? ` · ${fmtMoney(d.total_paid)} lifetime` : ""}`
+        : `${(d.status === "prospect" ? "lead" : d.status)}${d.total_paid ? ` · ${fmtMoney(d.total_paid)} lifetime` : ""}`,
       action: () => go(`/fundraising/donors/${d.id}`),
     });
   }

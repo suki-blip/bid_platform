@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { buildMonthGrid } from "@/lib/hebrew-date";
+import { buildMonthGrid, fromGregorian, toIso } from "@/lib/hebrew-date";
 import { fmtMoney } from "@/lib/fundraising-format";
+
+type ViewMode = "month" | "week" | "day";
 
 interface CalendarEvent {
   id: string;
@@ -37,6 +39,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [selectedIso, setSelectedIso] = useState<string | null>(today.toISOString().slice(0, 10));
   const [showCreate, setShowCreate] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
 
   const todayIso = today.toISOString().slice(0, 10);
   const grid = useMemo(() => buildMonthGrid(year, monthIdx, todayIso), [year, monthIdx, todayIso]);
@@ -80,6 +83,19 @@ export default function CalendarPage() {
     }
     return map;
   }, [events]);
+
+  // Derive the days to render in the grid based on viewMode.
+  const displayDays = useMemo(() => {
+    if (viewMode === "month") return grid;
+    if (viewMode === "week") {
+      const target = selectedIso || todayIso;
+      const idx = grid.findIndex((d) => d.iso === target);
+      if (idx < 0) return grid.slice(0, 7);
+      const rowStart = Math.floor(idx / 7) * 7;
+      return grid.slice(rowStart, rowStart + 7);
+    }
+    return [];
+  }, [grid, viewMode, selectedIso, todayIso]);
 
   function prevMonth() {
     if (monthIdx === 0) {
@@ -158,21 +174,51 @@ export default function CalendarPage() {
             Calendar
           </h1>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            padding: "9px 16px",
-            background: "var(--cast-iron)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: "pointer",
-          }}
-        >
-          New follow-up
-        </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              border: "1px solid rgba(10,16,25,0.12)",
+              borderRadius: 6,
+              overflow: "hidden",
+            }}
+          >
+            {(["day", "week", "month"] as ViewMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setViewMode(m)}
+                style={{
+                  padding: "8px 14px",
+                  background: viewMode === m ? "var(--cast-iron)" : "transparent",
+                  color: viewMode === m ? "#fff" : "var(--cast-iron)",
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textTransform: "capitalize",
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            style={{
+              padding: "9px 16px",
+              background: "var(--cast-iron)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            New follow-up
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "flex-start" }}>
@@ -213,8 +259,9 @@ export default function CalendarPage() {
           </div>
 
           {/* Grid */}
+          {viewMode !== "day" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
-            {grid.map((day) => {
+            {displayDays.map((day) => {
               const dayEvents = eventsByDate[day.iso] || [];
               const isSelected = selectedIso === day.iso;
               return (
@@ -294,6 +341,96 @@ export default function CalendarPage() {
               );
             })}
           </div>
+          )}
+          {viewMode === "day" && (
+            <div style={{ padding: "12px 4px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+                {selectedIso && fromGregorian(new Date(selectedIso)).dayOfWeek}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, fontFamily: "var(--font-bricolage), sans-serif", letterSpacing: "-0.01em" }}>
+                {selectedIso && fromGregorian(new Date(selectedIso)).gregorian}
+              </div>
+              <div style={{ fontSize: 16, color: "rgba(10,16,25,0.7)", direction: "rtl", textAlign: "left", marginTop: 2, fontFamily: "'Frank Ruhl Libre', 'David', serif", fontWeight: 600 }}>
+                {selectedIso && fromGregorian(new Date(selectedIso)).hebrew}
+              </div>
+              {selectedIso && (
+                <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      const d = new Date(selectedIso);
+                      d.setDate(d.getDate() - 1);
+                      setSelectedIso(toIso(d));
+                    }}
+                    style={navBtn}
+                  >
+                    ‹ Previous day
+                  </button>
+                  <button
+                    onClick={() => setSelectedIso(toIso(new Date()))}
+                    style={{ ...navBtn, padding: "8px 12px" }}
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={() => {
+                      const d = new Date(selectedIso);
+                      d.setDate(d.getDate() + 1);
+                      setSelectedIso(toIso(d));
+                    }}
+                    style={navBtn}
+                  >
+                    Next day ›
+                  </button>
+                </div>
+              )}
+              {selectedIso && (eventsByDate[selectedIso] || []).length === 0 && (
+                <div style={{ marginTop: 24, padding: 24, textAlign: "center", fontSize: 13, opacity: 0.55, background: "#fbf7ec", borderRadius: 8 }}>
+                  No events on this day.
+                </div>
+              )}
+              {selectedIso && (eventsByDate[selectedIso] || []).length > 0 && (
+                <ul style={{ listStyle: "none", padding: 0, margin: "20px 0 0", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {(eventsByDate[selectedIso] || []).map((e) => {
+                    const colors = TYPE_COLORS[e.type] || TYPE_COLORS.followup;
+                    return (
+                      <li
+                        key={e.id}
+                        style={{
+                          padding: "12px 14px",
+                          background: colors.bg,
+                          borderLeft: `3px solid ${colors.dot}`,
+                          borderRadius: 6,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: colors.fg }}>
+                              {e.type === "payment_due" && fmtMoney(e.amount ?? 0) + " · "}
+                              {e.title}
+                            </div>
+                            {e.donor_name && e.donor_id && (
+                              <Link
+                                href={`/fundraising/donors/${e.donor_id}`}
+                                style={{ fontSize: 12, color: "var(--cast-iron)", textDecoration: "underline", textDecorationColor: "rgba(10,16,25,0.25)", textUnderlineOffset: 3 }}
+                              >
+                                → {e.donor_name}
+                              </Link>
+                            )}
+                            {e.project_name && (
+                              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>{e.project_name}</div>
+                            )}
+                          </div>
+                          {e.time && (
+                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--font-bricolage), sans-serif" }}>{e.time}</span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
           {loading && <div style={{ marginTop: 12, fontSize: 12, opacity: 0.5 }}>Loading events…</div>}
         </div>
 

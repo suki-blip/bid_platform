@@ -190,7 +190,7 @@ export default function FundraisingDashboard() {
           overflow: "hidden",
         }}
       >
-        <StatCell label="Prospects" value={String(stats.prospects)} href="/fundraising/prospects" />
+        <StatCell label="Leads" value={String(stats.prospects)} href="/fundraising/prospects" />
         <StatCell label="Active donors" value={String(stats.donors)} href="/fundraising/donors" />
         <StatCell label="Active projects" value={String(stats.activeProjects)} href="/fundraising/projects" />
         <StatCell

@@ -178,7 +178,7 @@ export default function ImportPage() {
               <div>
                 <Label>Default status (when not in file)</Label>
                 <select value={defaultStatus} onChange={(e) => setDefaultStatus(e.target.value as "prospect" | "donor")} style={inputStyle}>
-                  <option value="prospect">Prospect</option>
+                  <option value="prospect">Lead</option>
                   <option value="donor">Donor</option>
                 </select>
               </div>
@@ -338,7 +338,7 @@ export default function ImportPage() {
                 fontSize: 14,
               }}
             >
-              View prospects
+              View leads
             </Link>
             <button onClick={reset} style={ghostBtn}>Import another file</button>
           </div>

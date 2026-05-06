@@ -14,7 +14,7 @@ interface SessionInfo {
 const NAV: { href: string; label: string; managerOnly?: boolean }[] = [
   { href: "/fundraising", label: "Dashboard" },
   { href: "/fundraising/today", label: "Today" },
-  { href: "/fundraising/prospects", label: "Prospects" },
+  { href: "/fundraising/prospects", label: "Leads" },
   { href: "/fundraising/donors", label: "Donors" },
   { href: "/fundraising/projects", label: "Projects" },
   { href: "/fundraising/collections", label: "Collections" },
@@ -31,6 +31,14 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Tab title — host-aware. easyfundraisings on the fundraising domain.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const isFundraising =
+      typeof window !== "undefined" && window.location.hostname.includes("easyfundraisings");
+    document.title = isFundraising ? "easyfundraisings" : "BidMaster — Fundraising";
+  }, [pathname]);
 
   useEffect(() => {
     fetch("/api/fundraising/me")

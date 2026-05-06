@@ -36,6 +36,13 @@ export function daysSince(iso: string | null): number | null {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
 }
 
+export function fmtMethod(m: string | null | undefined): string {
+  if (!m) return '—';
+  if (m === 'pending') return 'TBD';
+  if (m === 'credit_card') return 'credit card';
+  return m.replace(/_/g, ' ');
+}
+
 export function daysOverdue(iso: string | null): number {
   if (!iso) return 0;
   const d = new Date(iso);

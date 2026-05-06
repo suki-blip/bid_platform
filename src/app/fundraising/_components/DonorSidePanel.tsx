@@ -179,7 +179,7 @@ export default function DonorSidePanel({
                   marginBottom: 4,
                 }}
               >
-                {data.donor.status}
+                {data.donor.status === "prospect" ? "lead" : data.donor.status}
                 {data.donor.do_not_contact && (
                   <span style={{ color: "var(--cone-orange)", marginLeft: 8 }}>· Do not contact</span>
                 )}

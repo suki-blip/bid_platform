@@ -41,6 +41,42 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
   const [sourceFilter, setSourceFilter] = useState("");
   const [total, setTotal] = useState(0);
   const [previewDonorId, setPreviewDonorId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  function toggleSelect(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === donors.length) setSelected(new Set());
+    else setSelected(new Set(donors.map((d) => d.id)));
+  }
+
+  async function bulkDelete() {
+    const count = selected.size;
+    if (count === 0) return;
+    const noun = isProspect ? (count === 1 ? "lead" : "leads") : count === 1 ? "donor" : "donors";
+    if (!confirm(`Delete ${count} ${noun}? This is irreversible.`)) return;
+    setBulkBusy(true);
+    const r = await fetch("/api/fundraising/donors/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: Array.from(selected) }),
+    });
+    setBulkBusy(false);
+    if (r.ok) {
+      setSelected(new Set());
+      setReloadKey((k) => k + 1);
+    } else {
+      const e = await r.json().catch(() => ({}));
+      alert(e.error || "Delete failed");
+    }
+  }
 
   useEffect(() => {
     fetch("/api/fundraising/sources")
@@ -68,10 +104,10 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
       cancelled = true;
       clearTimeout(t);
     };
-  }, [status, search, sourceFilter]);
+  }, [status, search, sourceFilter, reloadKey]);
 
   const isProspect = status === "prospect";
-  const title = isProspect ? "Prospects" : "Donors";
+  const title = isProspect ? "Leads" : "Donors";
   const subtitle = isProspect
     ? "People you're cultivating. Convert to donor when they give."
     : "Active givers. Track pledges, payments, and history.";
@@ -107,7 +143,7 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
               marginBottom: 4,
             }}
           >
-            {loading ? "…" : `${total} ${isProspect ? "prospects" : "donors"}`}
+            {loading ? "…" : `${total} ${isProspect ? "leads" : "donors"}`}
             {!isProspect && total > 0 && ` · ${fmtMoney(summaryStats.totalPaid)} lifetime`}
           </div>
           <h1
@@ -138,7 +174,7 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
             alignItems: "center",
           }}
         >
-          New {isProspect ? "prospect" : "donor"}
+          New {isProspect ? "lead" : "donor"}
         </Link>
       </div>
 
@@ -197,12 +233,12 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
           }}
         >
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
-            No {isProspect ? "prospects" : "donors"} yet
+            No {isProspect ? "leads" : "donors"} yet
           </div>
           <div style={{ fontSize: 13, opacity: 0.55, marginBottom: 18 }}>
             {isProspect
-              ? "Add a prospect to start tracking outreach."
-              : "Add a donor or convert a prospect after their first gift."}
+              ? "Add a lead to start tracking outreach."
+              : "Add a donor or convert a lead after their first gift."}
           </div>
           <Link
             href={`/fundraising/donors/new?status=${status}`}
@@ -216,14 +252,80 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
               textDecoration: "none",
             }}
           >
-            New {isProspect ? "prospect" : "donor"}
+            New {isProspect ? "lead" : "donor"}
           </Link>
         </div>
       ) : (
         <div style={{ background: "#fff", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 8, overflow: "hidden" }}>
+          {selected.size > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "10px 16px",
+                background: "rgba(28,93,142,0.08)",
+                borderBottom: "1px solid rgba(10,16,25,0.08)",
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                {selected.size} selected
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => setSelected(new Set())}
+                  style={{
+                    padding: "5px 12px",
+                    background: "transparent",
+                    border: "1px solid rgba(10,16,25,0.12)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={bulkDelete}
+                  disabled={bulkBusy}
+                  style={{
+                    padding: "5px 14px",
+                    background: "var(--cone-orange)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: bulkBusy ? "not-allowed" : "pointer",
+                    opacity: bulkBusy ? 0.5 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  {bulkBusy ? "Deleting…" : `Delete ${selected.size}`}
+                </button>
+              </div>
+            </div>
+          )}
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "transparent", textAlign: "left", borderBottom: "1px solid rgba(10,16,25,0.08)" }}>
+                <th style={{ padding: "10px 14px", width: 36 }}>
+                  <input
+                    type="checkbox"
+                    checked={selected.size > 0 && selected.size === donors.length}
+                    onChange={toggleSelectAll}
+                    aria-label="Select all"
+                    style={{ cursor: "pointer" }}
+                  />
+                </th>
                 <Th>Name</Th>
                 <Th>Rating</Th>
                 <Th>Contact</Th>
@@ -240,10 +342,27 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
                 <tr
                   key={d.id}
                   onClick={() => setPreviewDonorId(d.id)}
-                  style={{ borderTop: "1px solid rgba(10,16,25,0.05)", cursor: "pointer" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(247,243,233,0.7)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  style={{
+                    borderTop: "1px solid rgba(10,16,25,0.05)",
+                    cursor: "pointer",
+                    background: selected.has(d.id) ? "rgba(28,93,142,0.06)" : "transparent",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!selected.has(d.id)) e.currentTarget.style.background = "rgba(247,243,233,0.7)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = selected.has(d.id) ? "rgba(28,93,142,0.06)" : "transparent";
+                  }}
                 >
+                  <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(d.id)}
+                      onChange={() => toggleSelect(d.id)}
+                      aria-label={`Select ${d.first_name}`}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </td>
                   <td style={{ padding: "11px 16px" }}>
                     <span style={{ color: "var(--cast-iron)", fontWeight: 600 }}>
                       {d.first_name} {d.last_name || ""}
