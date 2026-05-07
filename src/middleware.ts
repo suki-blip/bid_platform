@@ -10,8 +10,19 @@ const FUNDRAISING_HOSTS = new Set([
   'www.easyfundraisings.com',
 ]);
 
-// Paths that stay as-is even on the fundraising-domain (auth, system, assets)
-const PASSTHROUGH_PREFIXES = ['/api', '/_next', '/fundraising', '/login', '/register', '/forgot-password', '/reset-password', '/favicon'];
+// Paths that stay as-is even on the fundraising-domain (auth, system, assets, admin)
+const PASSTHROUGH_PREFIXES = [
+  '/api',
+  '/_next',
+  '/fundraising',
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/favicon',
+  '/admin-login',
+  '/admin-panel',
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
