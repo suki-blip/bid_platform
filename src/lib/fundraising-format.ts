@@ -36,11 +36,10 @@ export function daysSince(iso: string | null): number | null {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
 }
 
+// Re-export the canonical label resolver so older call sites keep working.
+import { paymentMethodLabel } from './fundraising-types';
 export function fmtMethod(m: string | null | undefined): string {
-  if (!m) return '—';
-  if (m === 'pending') return 'TBD';
-  if (m === 'credit_card') return 'credit card';
-  return m.replace(/_/g, ' ');
+  return paymentMethodLabel(m);
 }
 
 export function daysOverdue(iso: string | null): number {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PAYMENT_METHODS, paymentMethodLabel } from "@/lib/fundraising-types";
 
 interface EditablePayment {
   id: string;
@@ -89,12 +90,11 @@ export default function PaymentEditModal({
           </L>
           <L label="Method">
             <select value={method} onChange={(e) => setMethod(e.target.value)} style={input}>
-              <option value="pending">Decide later</option>
-              <option value="credit_card">Credit card</option>
-              <option value="check">Check</option>
-              <option value="wire">Wire</option>
-              <option value="ach">ACH</option>
-              <option value="cash">Cash</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m === "pending" ? "Decide later" : paymentMethodLabel(m)}
+                </option>
+              ))}
             </select>
           </L>
           <L label="Status">

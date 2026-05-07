@@ -4,8 +4,60 @@ export type DonorStatus = (typeof DONOR_STATUSES)[number];
 export const PAYMENT_PLANS = ['lump_sum', 'monthly', 'quarterly', 'annual', 'custom'] as const;
 export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
 
-export const PAYMENT_METHODS = ['credit_card', 'check', 'cash', 'wire', 'ach', 'pending'] as const;
+export const PAYMENT_METHODS = [
+  'credit_card',
+  'check',
+  'check_cash',
+  'cash',
+  'wire',
+  'ach',
+  'ojc_check',
+  'ojc_online',
+  'pledger',
+  'matbia',
+  'quick_pay',
+  'donors_fund',
+  'pending',
+] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/**
+ * Pretty label for a payment method. Used in UI selectors, transaction tables, receipts.
+ * Centralized so adding a new method only requires changes in one place.
+ */
+export function paymentMethodLabel(m: string | null | undefined): string {
+  switch (m) {
+    case 'credit_card': return 'Credit card';
+    case 'check': return 'Check';
+    case 'check_cash': return 'Check Cash';
+    case 'cash': return 'Cash';
+    case 'wire': return 'Wire';
+    case 'ach': return 'ACH';
+    case 'ojc_check': return 'OJC Check';
+    case 'ojc_online': return 'OJC Online';
+    case 'pledger': return 'Pledger';
+    case 'matbia': return 'Matbia';
+    case 'quick_pay': return 'Quick Pay';
+    case 'donors_fund': return 'Donors Fund';
+    case 'pending': return 'TBD';
+    default: return m || '—';
+  }
+}
+
+/**
+ * Methods that route to the external credit-card gateway. Everything else
+ * is recorded manually (check-style: paid immediately, no redirect).
+ */
+export function methodUsesGateway(m: string): boolean {
+  return m === 'credit_card';
+}
+
+/**
+ * Methods that look like a "check" (have check number, bank, etc.) — share the same UI fields.
+ */
+export function methodIsCheckLike(m: string): boolean {
+  return m === 'check' || m === 'check_cash' || m === 'ojc_check';
+}
 
 export const PAYMENT_STATUSES = ['scheduled', 'paid', 'bounced', 'failed', 'cancelled', 'pending_processor'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];

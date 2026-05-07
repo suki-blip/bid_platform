@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
-import { isPositiveAmount, PAYMENT_METHODS, inEnum } from '@/lib/fundraising-types';
+import { isPositiveAmount, PAYMENT_METHODS, inEnum, methodIsCheckLike } from '@/lib/fundraising-types';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 
 interface PaymentSessionBody {
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
         updateArgs.push(paidDate);
       }
       // Method-specific fields
-      if (method === 'check') {
+      if (methodIsCheckLike(method)) {
         updates.push('check_number = ?', 'check_date = ?', 'bank_name = ?');
         updateArgs.push(body.check_number || null, body.check_date || paidDate || null, body.bank_name || null);
       } else if (method === 'credit_card') {
@@ -164,9 +164,9 @@ export async function POST(request: Request) {
         args: [
           paymentId, pledgeId, body.donor_id, projectId, pledgeId,
           method, body.amount, initialStatus, paidDate,
-          method === 'check' ? body.check_number || null : null,
-          method === 'check' ? body.check_date || paidDate || null : null,
-          method === 'check' ? body.bank_name || null : null,
+          methodIsCheckLike(method) ? body.check_number || null : null,
+          methodIsCheckLike(method) ? body.check_date || paidDate || null : null,
+          methodIsCheckLike(method) ? body.bank_name || null : null,
           method === 'credit_card' ? body.cc_last4 || null : null,
           method === 'credit_card' ? body.cc_holder || null : null,
           method === 'credit_card' ? body.cc_expiry || null : null,

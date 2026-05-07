@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
+import { paymentMethodLabel, methodIsCheckLike, PAYMENT_METHODS } from "@/lib/fundraising-types";
 
 interface DonorOption {
   id: string;
@@ -98,9 +99,14 @@ export default function PayPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // Payment method + method-specific fields
-  type Method = "credit_card" | "check" | "wire" | "ach" | "cash";
-  const [method, setMethod] = useState<Method>("credit_card");
+  // Payment method + method-specific fields. We use string here because PAYMENT_METHODS
+  // is the source of truth (adding a new method only requires editing fundraising-types.ts).
+  // 'pending' is excluded from the picker — it's only used internally by pledges as "decide later".
+  const PICKABLE_METHODS = useMemo(
+    () => PAYMENT_METHODS.filter((m) => m !== "pending"),
+    [],
+  );
+  const [method, setMethod] = useState<string>("credit_card");
   const [paidDate, setPaidDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [checkNumber, setCheckNumber] = useState("");
   const [bankName, setBankName] = useState("");
@@ -297,7 +303,7 @@ export default function PayPage() {
 
   // ---------- RENDER ----------
   if (manualSuccess) {
-    const methodLabel = methodLabelFor(manualSuccess.method);
+    const methodLabel = paymentMethodLabel(manualSuccess.method);
     return (
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         <h1 style={h1Style}>Payment recorded</h1>
@@ -672,7 +678,7 @@ export default function PayPage() {
         {selectedDonor && (mode === "new_donation" || pledgeId) && Number(amount) > 0 && (
           <Section number={5} title="Payment method">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
-              {(["credit_card", "check", "wire", "ach", "cash"] as const).map((m) => (
+              {PICKABLE_METHODS.map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -688,14 +694,14 @@ export default function PayPage() {
                     textAlign: "center",
                   }}
                 >
-                  {methodLabelFor(m)}
+                  {paymentMethodLabel(m)}
                 </button>
               ))}
             </div>
 
             {/* Method-specific fields */}
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Paid date — only for non-CC manual methods (CC paid_date is set when gateway succeeds) */}
+              {/* Paid date — for all manual methods (CC paid_date is set by gateway webhook) */}
               {method !== "credit_card" && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
@@ -710,7 +716,8 @@ export default function PayPage() {
                 </div>
               )}
 
-              {method === "check" && (
+              {/* Check-style methods: regular check, check cash, OJC check all share these fields */}
+              {methodIsCheckLike(method) && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <label style={inputLabel}>Check number</label>
@@ -726,7 +733,7 @@ export default function PayPage() {
                     <input
                       value={bankName}
                       onChange={(e) => setBankName(e.target.value)}
-                      placeholder="Chase, Bank of America…"
+                      placeholder="Chase, OJC, etc."
                       style={input}
                     />
                   </div>
@@ -755,13 +762,23 @@ export default function PayPage() {
                 </div>
               )}
 
-              {(method === "wire" || method === "ach" || method === "credit_card") && (
+              {/* Transaction-ref methods: wire, ACH, OJC online, Pledger, Matbia, Quick Pay,
+                  Donors Fund — and credit card (gateway txn id) all expose this field */}
+              {(["wire", "ach", "ojc_online", "pledger", "matbia", "quick_pay", "donors_fund", "credit_card"].includes(method)) && (
                 <div>
                   <label style={inputLabel}>Transaction reference (optional)</label>
                   <input
                     value={transactionRef}
                     onChange={(e) => setTransactionRef(e.target.value)}
-                    placeholder="e.g. wire ID, gateway txn ID"
+                    placeholder={
+                      method === "credit_card"
+                        ? "Gateway transaction ID"
+                        : method === "wire"
+                        ? "Wire confirmation ID"
+                        : method === "ach"
+                        ? "ACH reference"
+                        : `${paymentMethodLabel(method)} reference / confirmation`
+                    }
                     style={input}
                   />
                 </div>
@@ -821,7 +838,7 @@ export default function PayPage() {
             ) : (
               // Non-credit-card methods: single button — record immediately, no gateway
               <button type="submit" disabled={submitting} style={btnDark}>
-                {submitting ? "Saving…" : `Record ${methodLabelFor(method).toLowerCase()} — ${fmtMoney(Number(amount) || 0)}`}
+                {submitting ? "Saving…" : `Record ${paymentMethodLabel(method)} — ${fmtMoney(Number(amount) || 0)}`}
               </button>
             )}
           </div>
@@ -829,17 +846,6 @@ export default function PayPage() {
       </form>
     </div>
   );
-}
-
-function methodLabelFor(m: string): string {
-  switch (m) {
-    case "credit_card": return "Credit card";
-    case "check": return "Check";
-    case "wire": return "Wire";
-    case "ach": return "ACH";
-    case "cash": return "Cash";
-    default: return m;
-  }
 }
 
 function Section({ number, title, children }: { number: number; title: string; children: React.ReactNode }) {

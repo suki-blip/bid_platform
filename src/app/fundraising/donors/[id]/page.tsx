@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtMoney, fmtDate, fmtDateTime, fmtMethod } from "@/lib/fundraising-format";
+import { PAYMENT_METHODS, paymentMethodLabel } from "@/lib/fundraising-types";
 import StarRating from "../../_components/StarRating";
 import DonorEditModal from "../../_components/DonorEditModal";
 import CallEditModal from "../../_components/CallEditModal";
@@ -1406,12 +1407,11 @@ function PledgeModal({
           </Lbl>
           <Lbl label="Default method">
             <select value={defaultMethod} onChange={(e) => setDefaultMethod(e.target.value)} style={inputCss}>
-              <option value="pending">Decide later (Collections)</option>
-              <option value="credit_card">Credit card</option>
-              <option value="check">Check</option>
-              <option value="wire">Wire</option>
-              <option value="ach">ACH</option>
-              <option value="cash">Cash</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m === "pending" ? "Decide later (Collections)" : paymentMethodLabel(m)}
+                </option>
+              ))}
             </select>
           </Lbl>
         </FormRow>
@@ -1558,16 +1558,16 @@ function QuickDonationModal({
           </Lbl>
           <Lbl label="Method">
             <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputCss}>
-              <option value="credit_card">Credit card</option>
-              <option value="check">Check</option>
-              <option value="wire">Wire</option>
-              <option value="ach">ACH</option>
-              <option value="cash">Cash</option>
+              {PAYMENT_METHODS.filter((m) => m !== "pending").map((m) => (
+                <option key={m} value={m}>
+                  {paymentMethodLabel(m)}
+                </option>
+              ))}
             </select>
           </Lbl>
         </FormRow>
 
-        {method === "check" && (
+        {(method === "check" || method === "check_cash" || method === "ojc_check") && (
           <FormRow>
             <Lbl label="Check number">
               <input value={checkNumber} onChange={(e) => setCheckNumber(e.target.value)} style={inputCss} />
@@ -1592,8 +1592,8 @@ function QuickDonationModal({
             </Lbl>
           </FormRow>
         )}
-        {(method === "wire" || method === "ach") && (
-          <Lbl label="Transaction ref">
+        {(["wire", "ach", "ojc_online", "pledger", "matbia", "quick_pay", "donors_fund"].includes(method)) && (
+          <Lbl label={`${paymentMethodLabel(method)} reference`}>
             <input value={transactionRef} onChange={(e) => setTransactionRef(e.target.value)} style={inputCss} />
           </Lbl>
         )}
