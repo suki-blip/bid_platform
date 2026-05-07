@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { OCCUPATION_CATEGORIES, COUNTRIES } from "@/lib/fundraising-options";
+import { OCCUPATION_CATEGORIES, COUNTRIES, US_STATES } from "@/lib/fundraising-options";
 
 interface PhoneRow {
   label: string;
@@ -62,6 +62,9 @@ function NewDonorPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [hebrewName, setHebrewName] = useState("");
+  const [hebrewFirstName, setHebrewFirstName] = useState("");
+  const [hebrewLastName, setHebrewLastName] = useState("");
+  const [hebrewFatherName, setHebrewFatherName] = useState("");
   const [title, setTitle] = useState("");
   const [spouseName, setSpouseName] = useState("");
   const [email, setEmail] = useState("");
@@ -165,6 +168,9 @@ function NewDonorPage() {
           first_name: firstName,
           last_name: lastName || null,
           hebrew_name: hebrewName || null,
+          hebrew_first_name: hebrewFirstName || null,
+          hebrew_last_name: hebrewLastName || null,
+          hebrew_father_name: hebrewFatherName || null,
           title: title || null,
           spouse_name: spouseName || null,
           email: email || null,
@@ -248,14 +254,6 @@ function NewDonorPage() {
           <Field label="Last name">
             <input style={fieldStyle} value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </Field>
-          <Field label="Hebrew name">
-            <input
-              style={{ ...fieldStyle, direction: "rtl", textAlign: "right" }}
-              value={hebrewName}
-              onChange={(e) => setHebrewName(e.target.value)}
-              placeholder="שם בעברית"
-            />
-          </Field>
           <Field label="Title">
             <input
               style={fieldStyle}
@@ -266,6 +264,38 @@ function NewDonorPage() {
           </Field>
           <Field label="Spouse name">
             <input style={fieldStyle} value={spouseName} onChange={(e) => setSpouseName(e.target.value)} />
+          </Field>
+          <Field label="שם פרטי (Hebrew first name)">
+            <input
+              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+              value={hebrewFirstName}
+              onChange={(e) => setHebrewFirstName(e.target.value)}
+              placeholder="יוסף"
+            />
+          </Field>
+          <Field label="שם משפחה (Hebrew last name)">
+            <input
+              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+              value={hebrewLastName}
+              onChange={(e) => setHebrewLastName(e.target.value)}
+              placeholder="כהן"
+            />
+          </Field>
+          <Field label="שם האב (Father's Hebrew name)">
+            <input
+              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+              value={hebrewFatherName}
+              onChange={(e) => setHebrewFatherName(e.target.value)}
+              placeholder="דוד"
+            />
+          </Field>
+          <Field label="Hebrew name (full / legacy)">
+            <input
+              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+              value={hebrewName}
+              onChange={(e) => setHebrewName(e.target.value)}
+              placeholder="יוסף בן דוד הכהן"
+            />
           </Field>
           <Field label="Occupation category">
             <select
@@ -303,11 +333,14 @@ function NewDonorPage() {
             <select
               value={p.label}
               onChange={(e) => setPhoneField(i, "label", e.target.value)}
-              style={{ ...fieldStyle, width: 130 }}
+              style={{ ...fieldStyle, width: 150 }}
             >
               <option value="mobile">Mobile</option>
               <option value="home">Home</option>
               <option value="office">Office</option>
+              <option value="mother">Mother (אמא)</option>
+              <option value="father">Father (אבא)</option>
+              <option value="spouse">Spouse</option>
               <option value="other">Other</option>
             </select>
             <input
@@ -392,7 +425,27 @@ function NewDonorPage() {
                 <input style={fieldStyle} value={a.city} onChange={(e) => setAddressField(i, "city", e.target.value)} />
               </Field>
               <Field label="State / region">
-                <input style={fieldStyle} value={a.state} onChange={(e) => setAddressField(i, "state", e.target.value)} />
+                {a.country === "United States" || a.country === "" || a.country === "US" ? (
+                  <select
+                    style={fieldStyle}
+                    value={a.state}
+                    onChange={(e) => setAddressField(i, "state", e.target.value)}
+                  >
+                    <option value="">— Select state —</option>
+                    {US_STATES.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.name} ({s.code})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    style={fieldStyle}
+                    value={a.state}
+                    onChange={(e) => setAddressField(i, "state", e.target.value)}
+                    placeholder="State / region / province"
+                  />
+                )}
               </Field>
               <Field label="Zip / postal code">
                 <input style={fieldStyle} value={a.zip} onChange={(e) => setAddressField(i, "zip", e.target.value)} />

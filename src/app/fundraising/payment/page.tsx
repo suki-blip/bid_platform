@@ -9,6 +9,7 @@ interface DonorOption {
   id: string;
   first_name: string;
   last_name: string | null;
+  hebrew_name?: string | null;
   email: string | null;
   organization: string | null;
   total_pledged: number;
@@ -74,11 +75,13 @@ interface SessionStatus {
 type Mode = "existing_pledge" | "new_donation";
 
 export default function PayPage() {
-  // Step 1: select donor
+  // Step 1: select donor.
+  // We load the full donor list once on mount and filter client-side as the manager types.
+  // The list scrolls and is always visible — picking a donor just selects from this list.
   const [donorQuery, setDonorQuery] = useState("");
   const [donors, setDonors] = useState<DonorOption[]>([]);
   const [donorId, setDonorId] = useState<string>("");
-  const [donorBusy, setDonorBusy] = useState(false);
+  const [donorsLoading, setDonorsLoading] = useState(true);
 
   // Step 2: choose mode
   const [mode, setMode] = useState<Mode>("new_donation");
@@ -126,23 +129,29 @@ export default function PayPage() {
     [installments, installmentId],
   );
 
-  // Donor search — debounced lookup against /api/fundraising/donors which returns { total, donors: [...] }
+  // Load all donors once on mount — we filter client-side so the search is instant
+  // and the full list stays visible underneath the search box.
   useEffect(() => {
-    // Once a donor is selected we don't keep searching — the selectedDonor row is held in `donors` state.
-    if (donorId) return;
-    if (donorQuery.length < 2) {
-      setDonors([]);
-      return;
-    }
-    setDonorBusy(true);
-    const t = setTimeout(() => {
-      fetch(`/api/fundraising/donors?search=${encodeURIComponent(donorQuery)}&limit=20`)
-        .then((r) => (r.ok ? r.json() : { donors: [] }))
-        .then((d) => setDonors(Array.isArray(d) ? d : d.donors || []))
-        .finally(() => setDonorBusy(false));
-    }, 200);
-    return () => clearTimeout(t);
-  }, [donorQuery, donorId]);
+    setDonorsLoading(true);
+    fetch(`/api/fundraising/donors?limit=500`)
+      .then((r) => (r.ok ? r.json() : { donors: [] }))
+      .then((d) => setDonors(Array.isArray(d) ? d : d.donors || []))
+      .finally(() => setDonorsLoading(false));
+  }, []);
+
+  // Filtered list — searches across English name, Hebrew name, email, organization.
+  // Hebrew lowercase is a no-op so this works for both alphabets.
+  const filteredDonors = useMemo(() => {
+    const q = donorQuery.trim().toLowerCase();
+    if (!q) return donors;
+    return donors.filter((d) => {
+      const haystack = [d.first_name, d.last_name, d.hebrew_name, d.email, d.organization]
+        .filter(Boolean)
+        .map((s) => String(s).toLowerCase())
+        .join(" ");
+      return haystack.includes(q);
+    });
+  }, [donors, donorQuery]);
 
   // Load active projects
   useEffect(() => {
@@ -466,7 +475,7 @@ export default function PayPage() {
         onSubmit={(e) => submit(e, method !== "credit_card" /* non-CC always manual */)}
         style={{ display: "flex", flexDirection: "column", gap: 18 }}
       >
-        {/* Step 1: Donor */}
+        {/* Step 1: Donor — search box + always-visible scrollable list */}
         <Section number={1} title="Choose donor">
           {selectedDonor ? (
             <div
@@ -484,6 +493,11 @@ export default function PayPage() {
                 <div style={{ fontWeight: 700, fontSize: 15 }}>
                   {selectedDonor.first_name} {selectedDonor.last_name || ""}
                 </div>
+                {selectedDonor.hebrew_name && (
+                  <div style={{ fontSize: 13, opacity: 0.7, fontFamily: "'Frank Ruhl Libre', serif", direction: "rtl" }}>
+                    {selectedDonor.hebrew_name}
+                  </div>
+                )}
                 <div style={{ fontSize: 12, opacity: 0.7 }}>
                   {[selectedDonor.organization, selectedDonor.email].filter(Boolean).join(" · ") || "—"}
                 </div>
@@ -504,59 +518,112 @@ export default function PayPage() {
               <input
                 value={donorQuery}
                 onChange={(e) => setDonorQuery(e.target.value)}
-                placeholder="Search donor by name, email, organization…"
+                placeholder="Search donor — name, Hebrew name, email, organization…"
                 style={input}
                 autoFocus
               />
-              {donors.length > 0 && (
+
+              {donorsLoading ? (
+                <div style={{ fontSize: 12, opacity: 0.55, marginTop: 12, padding: 12 }}>Loading donors…</div>
+              ) : donors.length === 0 ? (
                 <div
                   style={{
-                    marginTop: 8,
-                    border: "1px solid rgba(10,16,25,0.08)",
+                    marginTop: 12,
+                    padding: 18,
+                    border: "1px dashed rgba(10,16,25,0.12)",
                     borderRadius: 10,
-                    overflow: "hidden",
-                    maxHeight: 280,
-                    overflowY: "auto",
+                    textAlign: "center",
+                    fontSize: 13,
+                    opacity: 0.6,
                   }}
                 >
-                  {donors.map((d) => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => {
-                        setDonorId(d.id);
-                        setDonorQuery("");
-                      }}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "10px 14px",
-                        background: "transparent",
-                        border: "none",
-                        borderBottom: "1px solid rgba(10,16,25,0.06)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>
-                          {d.first_name} {d.last_name || ""}
-                        </div>
-                        <div style={{ fontSize: 11, opacity: 0.6 }}>
-                          {[d.organization, d.email].filter(Boolean).join(" · ") || "—"}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 11, opacity: 0.55 }}>
-                        Lifetime: <strong>{fmtMoney(d.total_paid)}</strong>
-                      </div>
-                    </button>
-                  ))}
+                  No donors yet. <Link href="/fundraising/donors/new" style={{ color: "var(--blueprint)" }}>Add a donor →</Link>
                 </div>
-              )}
-              {donorQuery.length >= 2 && donors.length === 0 && !donorBusy && (
-                <div style={{ fontSize: 12, opacity: 0.55, marginTop: 8 }}>No donors match.</div>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      opacity: 0.55,
+                      marginTop: 10,
+                      marginBottom: 6,
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>
+                      Showing {filteredDonors.length} of {donors.length}
+                      {donorQuery && ` (filtered by "${donorQuery}")`}
+                    </span>
+                    {donorQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setDonorQuery("")}
+                        style={{ background: "none", border: "none", color: "var(--blueprint)", cursor: "pointer", padding: 0, fontSize: 11 }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      border: "1px solid rgba(10,16,25,0.08)",
+                      borderRadius: 10,
+                      overflow: "hidden",
+                      maxHeight: 360,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {filteredDonors.length === 0 ? (
+                      <div style={{ padding: 18, textAlign: "center", fontSize: 13, opacity: 0.55 }}>
+                        No donors match &quot;{donorQuery}&quot;
+                      </div>
+                    ) : (
+                      filteredDonors.map((d) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => {
+                            setDonorId(d.id);
+                            setDonorQuery("");
+                          }}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "10px 14px",
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: "1px solid rgba(10,16,25,0.06)",
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(10,16,25,0.04)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>
+                              {d.first_name} {d.last_name || ""}
+                            </div>
+                            {d.hebrew_name && (
+                              <div style={{ fontSize: 12, opacity: 0.7, fontFamily: "'Frank Ruhl Libre', serif", direction: "rtl" }}>
+                                {d.hebrew_name}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 11, opacity: 0.55 }}>
+                              {[d.organization, d.email].filter(Boolean).join(" · ") || "—"}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, opacity: 0.55, textAlign: "right", marginLeft: 12 }}>
+                            <div>Lifetime</div>
+                            <div style={{ fontWeight: 700, color: "var(--cast-iron)" }}>{fmtMoney(d.total_paid)}</div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
               )}
             </>
           )}

@@ -515,6 +515,12 @@ async function initializeDatabase() {
   // Per-owner payment gateway URL (template). Stored alongside owner record.
   try { await client.execute('ALTER TABLE saas_users ADD COLUMN payment_gateway_url TEXT'); } catch {}
 
+  // Hebrew name parts (split out from the combined hebrew_name). Common in yeshiva/Jewish-community
+  // workflows: separate first name, last name, father's name (used in religious documents).
+  try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_first_name TEXT'); } catch {}
+  try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_last_name TEXT'); } catch {}
+  try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_father_name TEXT'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

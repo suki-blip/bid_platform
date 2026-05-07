@@ -16,6 +16,9 @@ interface Donor {
   first_name: string;
   last_name: string | null;
   hebrew_name: string | null;
+  hebrew_first_name: string | null;
+  hebrew_last_name: string | null;
+  hebrew_father_name: string | null;
   title: string | null;
   spouse_name: string | null;
   email: string | null;
@@ -1278,6 +1281,9 @@ export default function DonorProfilePage() {
             first_name: donor.first_name,
             last_name: donor.last_name,
             hebrew_name: donor.hebrew_name,
+            hebrew_first_name: donor.hebrew_first_name,
+            hebrew_last_name: donor.hebrew_last_name,
+            hebrew_father_name: donor.hebrew_father_name,
             title: donor.title,
             spouse_name: donor.spouse_name,
             email: donor.email,

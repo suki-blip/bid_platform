@@ -23,7 +23,7 @@ import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-t
  *
  * On failure → marks payment 'failed', session 'failed' with failure_reason.
  *
- * After processing, redirects (302) to /fundraising/pay/result?status=... so the user's
+ * After processing, redirects (302) to /fundraising/payment/result?status=... so the user's
  * browser lands on a friendly page if the gateway redirected them here.
  */
 
@@ -157,7 +157,7 @@ function redirectToResult(req: NextRequest, result: string, token: string): Next
     return NextResponse.json({ ok: true, result });
   }
   const url = new URL(req.url);
-  return NextResponse.redirect(new URL(`/fundraising/pay/result?status=${result}&token=${token}`, url.origin));
+  return NextResponse.redirect(new URL(`/fundraising/payment/result?status=${result}&token=${token}`, url.origin));
 }
 
 export async function GET(req: NextRequest) { return handle(req); }

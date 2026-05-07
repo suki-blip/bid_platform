@@ -49,7 +49,7 @@ function ResultContent() {
 
         <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
           <Link
-            href="/fundraising/pay"
+            href="/fundraising/payment"
             style={{
               padding: "10px 18px",
               background: "var(--cast-iron)",

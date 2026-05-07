@@ -8,6 +8,9 @@ interface EditableDonor {
   first_name: string;
   last_name: string | null;
   hebrew_name: string | null;
+  hebrew_first_name: string | null;
+  hebrew_last_name: string | null;
+  hebrew_father_name: string | null;
   title: string | null;
   spouse_name: string | null;
   email: string | null;
@@ -36,6 +39,9 @@ export default function DonorEditModal({
   const [firstName, setFirstName] = useState(donor.first_name || "");
   const [lastName, setLastName] = useState(donor.last_name || "");
   const [hebrewName, setHebrewName] = useState(donor.hebrew_name || "");
+  const [hebrewFirstName, setHebrewFirstName] = useState(donor.hebrew_first_name || "");
+  const [hebrewLastName, setHebrewLastName] = useState(donor.hebrew_last_name || "");
+  const [hebrewFatherName, setHebrewFatherName] = useState(donor.hebrew_father_name || "");
   const [title, setTitle] = useState(donor.title || "");
   const [spouseName, setSpouseName] = useState(donor.spouse_name || "");
   const [email, setEmail] = useState(donor.email || "");
@@ -67,6 +73,9 @@ export default function DonorEditModal({
         first_name: firstName.trim(),
         last_name: lastName.trim() || null,
         hebrew_name: hebrewName.trim() || null,
+        hebrew_first_name: hebrewFirstName.trim() || null,
+        hebrew_last_name: hebrewLastName.trim() || null,
+        hebrew_father_name: hebrewFatherName.trim() || null,
         title: title.trim() || null,
         spouse_name: spouseName.trim() || null,
         email: email.trim() || null,
@@ -111,16 +120,50 @@ export default function DonorEditModal({
         </Row>
 
         <Row>
-          <L label="Hebrew name">
+          <L label="שם פרטי (Hebrew first name)">
             <input
-              value={hebrewName}
-              onChange={(e) => setHebrewName(e.target.value)}
+              value={hebrewFirstName}
+              onChange={(e) => setHebrewFirstName(e.target.value)}
               dir="rtl"
-              style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif" }}
+              style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
+              placeholder="יוסף"
+            />
+          </L>
+          <L label="שם משפחה (Hebrew last name)">
+            <input
+              value={hebrewLastName}
+              onChange={(e) => setHebrewLastName(e.target.value)}
+              dir="rtl"
+              style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
+              placeholder="כהן"
+            />
+          </L>
+        </Row>
+
+        <Row>
+          <L label="שם האב (Father's Hebrew name)">
+            <input
+              value={hebrewFatherName}
+              onChange={(e) => setHebrewFatherName(e.target.value)}
+              dir="rtl"
+              style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
+              placeholder="דוד"
             />
           </L>
           <L label="Spouse">
             <input value={spouseName} onChange={(e) => setSpouseName(e.target.value)} style={input} />
+          </L>
+        </Row>
+
+        <Row>
+          <L label="Hebrew name (full / legacy)">
+            <input
+              value={hebrewName}
+              onChange={(e) => setHebrewName(e.target.value)}
+              dir="rtl"
+              style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
+              placeholder="יוסף בן דוד הכהן"
+            />
           </L>
         </Row>
 
