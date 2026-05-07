@@ -484,6 +484,37 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE fr_projects ADD COLUMN parent_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL'); } catch {}
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_projects_parent ON fr_projects(parent_id)'); } catch {}
 
+  // Payment sessions: track outbound redirects to the manager's external credit-card gateway.
+  // Each session is a single attempt to charge a donor — links to the pre-created fr_pledge_payments row.
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_payment_sessions (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      payment_id TEXT REFERENCES fr_pledge_payments(id) ON DELETE SET NULL,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      pledge_id TEXT REFERENCES fr_pledges(id) ON DELETE SET NULL,
+      project_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      token TEXT NOT NULL UNIQUE,
+      webhook_secret TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      gateway_url TEXT,
+      gateway_ref TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT,
+      failed_at TEXT,
+      failure_reason TEXT
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_pay_sessions_token ON fr_payment_sessions(token)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_pay_sessions_owner ON fr_payment_sessions(owner_id, created_at DESC)'); } catch {}
+
+  // Per-owner payment gateway URL (template). Stored alongside owner record.
+  try { await client.execute('ALTER TABLE saas_users ADD COLUMN payment_gateway_url TEXT'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

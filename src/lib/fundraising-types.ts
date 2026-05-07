@@ -7,7 +7,7 @@ export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
 export const PAYMENT_METHODS = ['credit_card', 'check', 'cash', 'wire', 'ach', 'pending'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-export const PAYMENT_STATUSES = ['scheduled', 'paid', 'bounced', 'failed', 'cancelled'] as const;
+export const PAYMENT_STATUSES = ['scheduled', 'paid', 'bounced', 'failed', 'cancelled', 'pending_processor'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const PLEDGE_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;

@@ -162,7 +162,12 @@ export function middleware(request: NextRequest) {
   }
 
   // Protect fundraising API routes: /api/fundraising/*
-  if (pathname.startsWith('/api/fundraising/')) {
+  // Exception: /api/fundraising/payment-webhook is public (gateway calls it). It self-authenticates
+  // via the per-session token + secret pair in query params.
+  if (
+    pathname.startsWith('/api/fundraising/') &&
+    !pathname.startsWith('/api/fundraising/payment-webhook')
+  ) {
     const cookie = request.cookies.get('contractor-auth')?.value;
     const teamCookie = request.cookies.get('team-auth')?.value;
     if (!cookie && !teamCookie) {

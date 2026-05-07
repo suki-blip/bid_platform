@@ -1,12 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function SettingsPage() {
   const [leadDays, setLeadDays] = useState(7);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ queued: number; skipped: number } | null>(null);
   const [error, setError] = useState("");
+
+  // Payment gateway URL config
+  const [gatewayUrl, setGatewayUrl] = useState("");
+  const [gatewayLoaded, setGatewayLoaded] = useState(false);
+  const [gatewaySaving, setGatewaySaving] = useState(false);
+  const [gatewaySaved, setGatewaySaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/fundraising/settings/gateway")
+      .then((r) => (r.ok ? r.json() : { gateway_url: "" }))
+      .then((d) => {
+        setGatewayUrl(d.gateway_url || "");
+        setGatewayLoaded(true);
+      });
+  }, []);
+
+  async function saveGateway() {
+    setGatewaySaving(true);
+    setGatewaySaved(false);
+    const r = await fetch("/api/fundraising/settings/gateway", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gateway_url: gatewayUrl.trim() || null }),
+    });
+    setGatewaySaving(false);
+    if (r.ok) {
+      setGatewaySaved(true);
+      setTimeout(() => setGatewaySaved(false), 2500);
+    }
+  }
 
   async function runReminders() {
     setRunning(true);
@@ -42,6 +72,64 @@ export default function SettingsPage() {
       >
         Settings
       </h1>
+
+      <Section
+        title="Payment gateway"
+        subtitle="Where the system sends donors when they click 'Continue to payment' on the Pay page."
+      >
+        <p style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.75, marginBottom: 12 }}>
+          Paste the URL of your credit-card gateway. Use these placeholders — the system will substitute them when
+          opening the page:
+        </p>
+        <div
+          style={{
+            background: "#fbf7ec",
+            padding: 12,
+            borderRadius: 8,
+            fontSize: 12,
+            fontFamily: "var(--font-mono, monospace)",
+            marginBottom: 14,
+            lineHeight: 1.7,
+          }}
+        >
+          <div><code>{"{amount}"}</code> — amount in dollars (e.g. 100.00)</div>
+          <div><code>{"{ref}"}</code> — unique reference for this transaction (token)</div>
+          <div><code>{"{donor_name}"}</code>, <code>{"{donor_email}"}</code></div>
+          <div><code>{"{description}"}</code> — optional notes</div>
+          <div><code>{"{return_url}"}</code> — webhook URL the gateway should call when done</div>
+        </div>
+
+        <label style={labelCss}>Gateway URL template</label>
+        <input
+          type="url"
+          value={gatewayUrl}
+          onChange={(e) => setGatewayUrl(e.target.value)}
+          placeholder="https://your-gateway.com/checkout?amount={amount}&ref={ref}&callback={return_url}"
+          style={{ ...inputCss, width: "100%", direction: "ltr" }}
+          dir="ltr"
+          disabled={!gatewayLoaded}
+        />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+          <button onClick={saveGateway} disabled={gatewaySaving || !gatewayLoaded} style={primaryBtn}>
+            {gatewaySaving ? "Saving…" : "Save gateway URL"}
+          </button>
+          {gatewaySaved && (
+            <span style={{ fontSize: 12, color: "var(--shed-green)", fontWeight: 700 }}>✓ Saved</span>
+          )}
+        </div>
+
+        <div style={{ marginTop: 16, padding: 12, background: "rgba(28,93,142,0.06)", borderRadius: 8, fontSize: 12, lineHeight: 1.6 }}>
+          <strong>Webhook (for the gateway to call when payment completes):</strong>
+          <pre style={{ margin: "6px 0 0", padding: 0, background: "transparent", fontFamily: "var(--font-mono, monospace)", fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+{`GET or POST  https://easyfundraisings.com/api/fundraising/payment-webhook
+?token=<ref from the URL>&secret=<embedded in {return_url}>&status=paid&transaction=<gateway txn id>`}
+          </pre>
+          <div style={{ marginTop: 6, opacity: 0.75 }}>
+            If your gateway only supports redirect-back (browser GET), use <code>{"{return_url}"}</code> as
+            the success URL — it carries the secret automatically.
+          </div>
+        </div>
+      </Section>
 
       <Section title="Pledge reminders" subtitle="Auto-queue thank-you / reminder emails for upcoming pledge installments.">
         <p style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.75, marginBottom: 12 }}>
