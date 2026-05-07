@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     try {
       await client.execute({
         sql: 'INSERT INTO saas_users (id, name, company, email, password_hash, status, payment, plan) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [id, name, company || null, email.toLowerCase().trim(), passwordHash, 'active', 'unpaid', 'Free'],
+        args: [id, name, company || null, email.toLowerCase().trim(), passwordHash, 'pending', 'unpaid', 'Free'],
       });
     } catch (e: any) {
       if (e.message?.includes('UNIQUE')) {
@@ -33,43 +33,18 @@ export async function POST(request: NextRequest) {
       throw e;
     }
 
-    // Log activity
+    // Log activity — admin will see this in the activity feed and can approve from /admin-panel/.../users
     await client.execute({
       sql: 'INSERT INTO activity_log (id, type, text) VALUES (?, ?, ?)',
-      args: [crypto.randomUUID(), 'signup', `${name} — new account registered`],
+      args: [crypto.randomUUID(), 'signup', `${name} (${email}) — awaiting approval`],
     });
 
-    // Auto-login: create session
-    const token = crypto.randomBytes(32).toString('hex');
-    const sessionData = JSON.stringify({
-      userId: id,
-      email: email.toLowerCase().trim(),
-      name,
-      company: company || null,
-      plan: 'Free',
-      token,
-    });
-    const encoded = Buffer.from(sessionData).toString('base64');
-
-    const response = NextResponse.json({
-      id,
-      name,
-      email: email.toLowerCase().trim(),
-      company: company || null,
-      plan: 'Free',
-      status: 'active',
-      payment: 'unpaid',
-    }, { status: 201 });
-
-    response.cookies.set('contractor-auth', encoded, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    return response;
+    // Do NOT issue a session cookie — account is pending admin approval.
+    // The UI shows a "pending" message and the user cannot enter the app until status flips to 'active' or 'trial'.
+    return NextResponse.json({
+      pending: true,
+      message: 'Your account has been created and is awaiting admin approval. You will be notified once it is approved.',
+    }, { status: 202 });
   } catch (error) {
     console.error('Register error:', error);
     return NextResponse.json({ error: 'Registration failed' }, { status: 500 });

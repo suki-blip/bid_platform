@@ -474,8 +474,7 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE fr_email_queue ADD COLUMN payment_id TEXT'); } catch {}
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_queue_payment ON fr_email_queue(payment_id)'); } catch {}
 
-  // Free tier: lift the paywall — promote any pending users to active.
-  try { await client.execute("UPDATE saas_users SET status = 'active' WHERE status = 'pending'"); } catch {}
+  // (Removed auto-promote of pending users — admin must approve each new signup manually.)
 
   // Donor ratings: 1-5 (financial capacity = how wealthy; giving = how generous in practice).
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN financial_rating INTEGER'); } catch {}

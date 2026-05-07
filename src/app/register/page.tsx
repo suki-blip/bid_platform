@@ -26,6 +26,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
+  const [pendingMessage, setPendingMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -44,6 +45,7 @@ export default function RegisterPage() {
 
   const handleGoogleResponse = useCallback(async (response: any) => {
     setError('');
+    setPendingMessage('');
     setGoogleLoading(true);
 
     try {
@@ -55,7 +57,12 @@ export default function RegisterPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || 'Google sign-up failed');
+        // 403 with pending: true means new account created but awaiting approval.
+        if (data.pending) {
+          setPendingMessage(data.error || 'Your account has been created and is awaiting admin approval.');
+        } else {
+          setError(data.error || 'Google sign-up failed');
+        }
         setGoogleLoading(false);
         return;
       }
@@ -120,6 +127,13 @@ export default function RegisterPage() {
 
       if (!res.ok) {
         setError(data.error || 'Registration failed');
+        setLoading(false);
+        return;
+      }
+
+      // 202 Accepted: account created but pending admin approval — no session cookie issued.
+      if (data.pending) {
+        setPendingMessage(data.message || 'Your account is awaiting admin approval. You will be notified once approved.');
         setLoading(false);
         return;
       }
@@ -195,8 +209,43 @@ export default function RegisterPage() {
           )}
         </div>
 
+        {pendingMessage && (
+          <div style={{
+            background: '#1c1f2e',
+            border: '1px solid rgba(245,166,35,0.4)',
+            borderRadius: 16,
+            padding: '36px 32px',
+            textAlign: 'center',
+            marginBottom: 20,
+          }}>
+            <div style={{ fontSize: 48, marginBottom: 14 }}>⏳</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: 12 }}>
+              Account created — awaiting approval
+            </div>
+            <p style={{ color: '#8a8fa8', fontSize: '0.95rem', lineHeight: 1.5, margin: 0 }}>
+              {pendingMessage}
+            </p>
+            <Link
+              href="/login"
+              style={{
+                display: 'inline-block',
+                marginTop: 20,
+                padding: '10px 20px',
+                background: 'rgba(245,166,35,0.15)',
+                color: '#f5a623',
+                borderRadius: 8,
+                textDecoration: 'none',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+              }}
+            >
+              Back to sign in
+            </Link>
+          </div>
+        )}
+
         {/* Google Sign Up */}
-        {googleClientId && (
+        {!pendingMessage && googleClientId && (
           <>
             <div style={{ position: 'relative', minHeight: 44, marginBottom: 20 }}>
               {googleLoading && (
@@ -214,6 +263,7 @@ export default function RegisterPage() {
           </>
         )}
 
+        {!pendingMessage && (
         <form onSubmit={handleSubmit} style={{
           background: '#1c1f2e',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -275,11 +325,14 @@ export default function RegisterPage() {
             {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
+        )}
 
-        <p style={{ textAlign: 'center', marginTop: 24, fontSize: '0.85rem', color: '#8a8fa8' }}>
-          Already have an account?{' '}
-          <Link href="/login" style={{ color: '#f5a623', textDecoration: 'none' }}>Sign In</Link>
-        </p>
+        {!pendingMessage && (
+          <p style={{ textAlign: 'center', marginTop: 24, fontSize: '0.85rem', color: '#8a8fa8' }}>
+            Already have an account?{' '}
+            <Link href="/login" style={{ color: '#f5a623', textDecoration: 'none' }}>Sign In</Link>
+          </p>
+        )}
       </div>
     </div>
   );

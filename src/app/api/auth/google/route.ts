@@ -69,25 +69,43 @@ export async function POST(request: NextRequest) {
     }
 
     // Create new user if not found
+    let isNewUser = false;
     if (!user) {
+      isNewUser = true;
       const id = crypto.randomUUID();
-      // Create user without password (Google-only)
+      // Create user without password (Google-only). New accounts start as 'pending' — admin must approve.
       const dummyHash = `google:${googleId}`;
       await client.execute({
         sql: 'INSERT INTO saas_users (id, name, email, password_hash, google_id, avatar_url, status, payment, plan) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        args: [id, name || email.split('@')[0], email.toLowerCase().trim(), dummyHash, googleId, picture || null, 'active', 'unpaid', 'Free'],
+        args: [id, name || email.split('@')[0], email.toLowerCase().trim(), dummyHash, googleId, picture || null, 'pending', 'unpaid', 'Free'],
       });
 
       await client.execute({
         sql: 'INSERT INTO activity_log (id, type, text) VALUES (?, ?, ?)',
-        args: [crypto.randomUUID(), 'signup', `${name || email} — new account via Google`],
+        args: [crypto.randomUUID(), 'signup', `${name || email} (${email}) — new Google account, awaiting approval`],
       });
 
-      user = { id, name: name || email.split('@')[0], email: email.toLowerCase().trim(), company: null, plan: 'Free', status: 'active', payment: 'unpaid' };
+      user = { id, name: name || email.split('@')[0], email: email.toLowerCase().trim(), company: null, plan: 'Free', status: 'pending', payment: 'unpaid' };
     }
 
+    // Block sign-in for non-active accounts. Status check applies to both new & existing users.
+    if (user.status === 'pending') {
+      return NextResponse.json({
+        error: isNewUser
+          ? 'Your account has been created and is awaiting admin approval.'
+          : 'Your account is awaiting admin approval.',
+        pending: true,
+      }, { status: 403 });
+    }
     if (user.status === 'suspended') {
-      return NextResponse.json({ error: 'Your account has been suspended.' }, { status: 403 });
+      return NextResponse.json({ error: 'Your account has been suspended. Please contact support.' }, { status: 403 });
+    }
+    // Trial expiration check
+    if (user.status === 'trial' && user.trial_end_date) {
+      const trialEnd = new Date(String(user.trial_end_date));
+      if (trialEnd.getTime() < Date.now()) {
+        return NextResponse.json({ error: 'Your free trial has ended. Please contact support to continue.' }, { status: 403 });
+      }
     }
 
     // Create session
