@@ -49,6 +49,14 @@ interface SessionResponse {
   needs_gateway_config: boolean;
 }
 
+interface ManualRecordedResponse {
+  recorded: true;
+  payment_id: string;
+  pledge_id: string;
+  method: string;
+  amount: number;
+}
+
 interface SessionStatus {
   id: string;
   status: string; // pending, completed, failed, expired
@@ -90,9 +98,20 @@ export default function PayPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // After submit — session tracking
+  // Payment method + method-specific fields
+  type Method = "credit_card" | "check" | "wire" | "ach" | "cash";
+  const [method, setMethod] = useState<Method>("credit_card");
+  const [paidDate, setPaidDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [checkNumber, setCheckNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [ccLast4, setCcLast4] = useState("");
+  const [ccHolder, setCcHolder] = useState("");
+  const [transactionRef, setTransactionRef] = useState("");
+
+  // After submit — session tracking (gateway path) or success card (manual path)
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
+  const [manualSuccess, setManualSuccess] = useState<ManualRecordedResponse | null>(null);
 
   const selectedDonor = useMemo(() => donors.find((d) => d.id === donorId) || null, [donors, donorId]);
   const selectedPledge = useMemo(() => pledges.find((p) => p.id === pledgeId) || null, [pledges, pledgeId]);
@@ -193,6 +212,7 @@ export default function PayPage() {
   function reset() {
     setSession(null);
     setSessionStatus(null);
+    setManualSuccess(null);
     setDonorQuery("");
     setDonorId("");
     setMode("new_donation");
@@ -202,10 +222,17 @@ export default function PayPage() {
     setAmount("");
     setNotes("");
     setError("");
+    setMethod("credit_card");
+    setPaidDate(new Date().toISOString().slice(0, 10));
+    setCheckNumber("");
+    setBankName("");
+    setCcLast4("");
+    setCcHolder("");
+    setTransactionRef("");
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(e: React.FormEvent | null, recordManually: boolean) {
+    if (e) e.preventDefault();
     setError("");
 
     if (!donorId) return setError("Please select a donor.");
@@ -222,6 +249,14 @@ export default function PayPage() {
       project_id: mode === "new_donation" && projectId ? projectId : null,
       amount: amt,
       notes: notes.trim() || null,
+      method,
+      record_manually: recordManually,
+      paid_date: recordManually ? paidDate || null : null,
+      check_number: method === "check" ? checkNumber.trim() || null : null,
+      bank_name: method === "check" ? bankName.trim() || null : null,
+      cc_last4: method === "credit_card" ? ccLast4.trim() || null : null,
+      cc_holder: method === "credit_card" ? ccHolder.trim() || null : null,
+      transaction_ref: transactionRef.trim() || null,
     };
 
     try {
@@ -232,16 +267,20 @@ export default function PayPage() {
       });
       const d = await r.json();
       if (!r.ok) {
-        setError(d.error || "Failed to create payment session.");
+        setError(d.error || "Failed to record payment.");
         setSubmitting(false);
         return;
       }
-      setSession(d);
       setSubmitting(false);
 
-      // If gateway URL is configured, open it in a new tab.
-      if (d.gateway_url) {
-        window.open(d.gateway_url, "_blank", "noopener,noreferrer");
+      // Branch: manual record vs gateway redirect.
+      if (d.recorded) {
+        setManualSuccess(d);
+      } else {
+        setSession(d);
+        if (d.gateway_url) {
+          window.open(d.gateway_url, "_blank", "noopener,noreferrer");
+        }
       }
     } catch {
       setError("Network error. Try again.");
@@ -257,6 +296,50 @@ export default function PayPage() {
   }
 
   // ---------- RENDER ----------
+  if (manualSuccess) {
+    const methodLabel = methodLabelFor(manualSuccess.method);
+    return (
+      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        <h1 style={h1Style}>Payment recorded</h1>
+        <div
+          style={{
+            background: "#fff",
+            border: "2px solid var(--shed-green)",
+            borderRadius: 14,
+            padding: 28,
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 56, marginBottom: 8 }}>✅</div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 8px", color: "var(--shed-green)" }}>
+            {fmtMoney(manualSuccess.amount)} marked as paid
+          </h2>
+          <p style={{ fontSize: 14, opacity: 0.7, margin: 0 }}>Method: {methodLabel}</p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
+            <button onClick={reset} style={btnDark}>
+              Record another payment
+            </button>
+            <Link
+              href="/fundraising/collections"
+              style={{
+                padding: "10px 18px",
+                background: "transparent",
+                color: "var(--cast-iron)",
+                border: "1px solid rgba(10,16,25,0.18)",
+                borderRadius: 8,
+                textDecoration: "none",
+                fontWeight: 600,
+                fontSize: 13,
+              }}
+            >
+              Open Collections
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (session) {
     const completed = sessionStatus?.status === "completed";
     const failed = sessionStatus?.status === "failed" || sessionStatus?.status === "expired";
@@ -373,7 +456,10 @@ export default function PayPage() {
         Pick a donor, choose how to apply the payment, and continue to your credit-card gateway.
       </p>
 
-      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <form
+        onSubmit={(e) => submit(e, method !== "credit_card" /* non-CC always manual */)}
+        style={{ display: "flex", flexDirection: "column", gap: 18 }}
+      >
         {/* Step 1: Donor */}
         <Section number={1} title="Choose donor">
           {selectedDonor ? (
@@ -582,6 +668,108 @@ export default function PayPage() {
           </Section>
         )}
 
+        {/* Step 5: Payment method */}
+        {selectedDonor && (mode === "new_donation" || pledgeId) && Number(amount) > 0 && (
+          <Section number={5} title="Payment method">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+              {(["credit_card", "check", "wire", "ach", "cash"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMethod(m)}
+                  style={{
+                    padding: "10px 8px",
+                    borderRadius: 10,
+                    border: method === m ? "2px solid var(--cast-iron)" : "1px solid rgba(10,16,25,0.12)",
+                    background: method === m ? "rgba(10,16,25,0.04)" : "#fff",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    textAlign: "center",
+                  }}
+                >
+                  {methodLabelFor(m)}
+                </button>
+              ))}
+            </div>
+
+            {/* Method-specific fields */}
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* Paid date — only for non-CC manual methods (CC paid_date is set when gateway succeeds) */}
+              {method !== "credit_card" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={inputLabel}>Date received</label>
+                    <input
+                      type="date"
+                      value={paidDate}
+                      onChange={(e) => setPaidDate(e.target.value)}
+                      style={input}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {method === "check" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={inputLabel}>Check number</label>
+                    <input
+                      value={checkNumber}
+                      onChange={(e) => setCheckNumber(e.target.value)}
+                      placeholder="e.g. 1042"
+                      style={input}
+                    />
+                  </div>
+                  <div>
+                    <label style={inputLabel}>Bank name</label>
+                    <input
+                      value={bankName}
+                      onChange={(e) => setBankName(e.target.value)}
+                      placeholder="Chase, Bank of America…"
+                      style={input}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {method === "credit_card" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={inputLabel}>Card last 4 (optional)</label>
+                    <input
+                      value={ccLast4}
+                      onChange={(e) => setCcLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="1234"
+                      style={input}
+                    />
+                  </div>
+                  <div>
+                    <label style={inputLabel}>Cardholder name (optional)</label>
+                    <input
+                      value={ccHolder}
+                      onChange={(e) => setCcHolder(e.target.value)}
+                      style={input}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {(method === "wire" || method === "ach" || method === "credit_card") && (
+                <div>
+                  <label style={inputLabel}>Transaction reference (optional)</label>
+                  <input
+                    value={transactionRef}
+                    onChange={(e) => setTransactionRef(e.target.value)}
+                    placeholder="e.g. wire ID, gateway txn ID"
+                    style={input}
+                  />
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
         {error && (
           <div
             style={{
@@ -596,23 +784,62 @@ export default function PayPage() {
           </div>
         )}
 
-        {/* Submit */}
+        {/* Submit row — branches by method */}
         {selectedDonor && (mode === "new_donation" || pledgeId) && Number(amount) > 0 && (
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
-            <Link
-              href="/fundraising/settings"
-              style={{ fontSize: 11, color: "rgba(10,16,25,0.45)", textDecoration: "none" }}
-            >
-              Configure gateway →
-            </Link>
-            <button type="submit" disabled={submitting} style={btnDark}>
-              {submitting ? "Preparing…" : `Continue to payment — ${fmtMoney(Number(amount) || 0)}`}
-            </button>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            {method === "credit_card" ? (
+              <>
+                <Link
+                  href="/fundraising/settings"
+                  style={{ fontSize: 11, color: "rgba(10,16,25,0.45)", textDecoration: "none", marginRight: "auto" }}
+                >
+                  Configure gateway →
+                </Link>
+                {/* Manual record (skip gateway) — secondary action */}
+                <button
+                  type="button"
+                  onClick={() => submit(null, true)}
+                  disabled={submitting}
+                  style={btnLight}
+                  title="Mark as paid without opening the gateway (e.g. you already charged the card elsewhere)"
+                >
+                  Record manually
+                </button>
+                {/* Primary action: gateway redirect */}
+                <button type="submit" disabled={submitting} style={btnDark}>
+                  {submitting ? "Preparing…" : `Continue to payment — ${fmtMoney(Number(amount) || 0)}`}
+                </button>
+              </>
+            ) : (
+              // Non-credit-card methods: single button — record immediately, no gateway
+              <button type="submit" disabled={submitting} style={btnDark}>
+                {submitting ? "Saving…" : `Record ${methodLabelFor(method).toLowerCase()} — ${fmtMoney(Number(amount) || 0)}`}
+              </button>
+            )}
           </div>
         )}
       </form>
     </div>
   );
+}
+
+function methodLabelFor(m: string): string {
+  switch (m) {
+    case "credit_card": return "Credit card";
+    case "check": return "Check";
+    case "wire": return "Wire";
+    case "ach": return "ACH";
+    case "cash": return "Cash";
+    default: return m;
+  }
 }
 
 function Section({ number, title, children }: { number: number; title: string; children: React.ReactNode }) {
