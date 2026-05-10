@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Master icon for easyfundraisings PWA. Renders to all PNG sizes via scripts/generate-icons.mjs.
+     Design: rounded square in brand shed-green with a bold white heart (giving symbol)
+     containing a small upward arrow (growth). Reads well from 48px to 512px. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3a9650"/>
+      <stop offset="100%" stop-color="#2d7a3d"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#bg)"/>
+
+  <!-- Heart (single clean path, centered) -->
+  <path
+    d="M 256 408
+       C 188 364, 96 304, 96 220
+       C 96 168, 138 130, 188 130
+       C 218 130, 244 146, 256 168
+       C 268 146, 294 130, 324 130
+       C 374 130, 416 168, 416 220
+       C 416 304, 324 364, 256 408
+       Z"
+    fill="#ffffff"
+  />
+
+  <!-- Upward arrow inside heart (growth) -->
+  <g fill="#2d7a3d">
+    <!-- Arrow shaft -->
+    <rect x="240" y="220" width="32" height="100" rx="8"/>
+    <!-- Arrow head (triangle) -->
+    <polygon points="256,180 296,232 216,232"/>
+  </g>
+</svg>

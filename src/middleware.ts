@@ -10,7 +10,7 @@ const FUNDRAISING_HOSTS = new Set([
   'www.easyfundraisings.com',
 ]);
 
-// Paths that stay as-is even on the fundraising-domain (auth, system, assets, admin)
+// Paths that stay as-is even on the fundraising-domain (auth, system, assets, admin, PWA)
 const PASSTHROUGH_PREFIXES = [
   '/api',
   '/_next',
@@ -22,6 +22,10 @@ const PASSTHROUGH_PREFIXES = [
   '/favicon',
   '/admin-login',
   '/admin-panel',
+  '/sw.js',
+  '/manifest.webmanifest',
+  '/icon-',
+  '/apple-touch-icon',
 ];
 
 export function middleware(request: NextRequest) {
@@ -30,7 +34,17 @@ export function middleware(request: NextRequest) {
 
   // Fundraising domain: gate auth before the rewrite, so unauthenticated visits go to /login.
   if (FUNDRAISING_HOSTS.has(host)) {
-    const isPassthrough = PASSTHROUGH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+    // Passthrough if: (a) exact prefix match, (b) prefix-with-slash, or (c) prefix used as a
+    // filename stem (e.g. '/icon-' matches '/icon-192.png'). The trailing-hyphen entries in
+    // PASSTHROUGH_PREFIXES rely on (c).
+    const isPassthrough = PASSTHROUGH_PREFIXES.some((p) =>
+      pathname === p ||
+      pathname.startsWith(p + '/') ||
+      (p.endsWith('-') && pathname.startsWith(p)) ||
+      pathname === '/sw.js' ||
+      pathname === '/manifest.webmanifest' ||
+      pathname === '/apple-touch-icon.png',
+    );
     if (!isPassthrough) {
       const cookie = request.cookies.get('contractor-auth')?.value;
       const teamCookie = request.cookies.get('team-auth')?.value;
