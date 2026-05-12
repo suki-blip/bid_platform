@@ -43,6 +43,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       args: [id],
     }),
     db().execute({
+      // Returns ALL pledges (including is_standalone synthetic wrappers). The frontend
+      // decides what to show in each context: the donor's Pledges panel filters out
+      // standalones (they're not real commitments), but PaymentEditModal keeps them so
+      // a payment currently attached to a standalone can still be re-attributed.
       sql: `SELECT pl.*, p.name AS project_name,
                    COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = pl.id AND status = 'paid'), 0) AS paid_amount
             FROM fr_pledges pl

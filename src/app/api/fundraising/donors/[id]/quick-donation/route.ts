@@ -94,10 +94,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await db().batch(
       [
         {
+          // Standalone (no-pledge) donation: is_standalone=1 hides this synthetic pledge
+          // from the donor's Pledges list. The user sees just the payment.
           sql: `INSERT INTO fr_pledges
                   (id, owner_id, donor_id, project_id, fundraiser_id, amount, currency, status,
-                   pledge_date, installments_total, payment_plan, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'fulfilled', ?, 1, 'lump_sum', ?)`,
+                   pledge_date, installments_total, payment_plan, notes, is_standalone)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'fulfilled', ?, 1, 'lump_sum', ?, 1)`,
           args: [
             pledgeId, session.ownerId, donorId, projectId,
             body.fundraiser_id || session.fundraiserId,

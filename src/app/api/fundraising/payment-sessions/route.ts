@@ -168,8 +168,10 @@ export async function POST(request: Request) {
     // mode === 'new_donation': create a new lump-sum pledge + a single payment row.
     pledgeId = crypto.randomUUID();
     await db().execute({
-      sql: `INSERT INTO fr_pledges (id, owner_id, donor_id, project_id, fundraiser_id, amount, status, pledge_date, installments_total, payment_plan, notes)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', date('now'), 1, 'lump_sum', ?)`,
+      // Synthetic pledge for a free donation — hidden from the donor's Pledges list (is_standalone=1).
+      // We still need the row because fr_pledge_payments.pledge_id is NOT NULL.
+      sql: `INSERT INTO fr_pledges (id, owner_id, donor_id, project_id, fundraiser_id, amount, status, pledge_date, installments_total, payment_plan, notes, is_standalone)
+            VALUES (?, ?, ?, ?, ?, ?, 'fulfilled', date('now'), 1, 'lump_sum', ?, 1)`,
       args: [pledgeId, session.ownerId, body.donor_id, projectId, session.fundraiserId, body.amount, body.notes || null],
     });
     paymentId = crypto.randomUUID();

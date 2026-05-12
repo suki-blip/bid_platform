@@ -1,8 +1,13 @@
 import { db } from './db';
 
 export async function recomputeDonorTotals(donorId: string): Promise<void> {
+  // total_pledged ignores synthetic "standalone" pledges (is_standalone=1) — those are
+  // wrappers around free donations, not real commitments. total_paid still counts every
+  // paid payment regardless of pledge type, because the money is real.
   const pledged = await db().execute({
-    sql: `SELECT COALESCE(SUM(amount), 0) AS amt FROM fr_pledges WHERE donor_id = ? AND status IN ('open','fulfilled')`,
+    sql: `SELECT COALESCE(SUM(amount), 0) AS amt
+          FROM fr_pledges
+          WHERE donor_id = ? AND status IN ('open','fulfilled') AND COALESCE(is_standalone, 0) = 0`,
     args: [donorId],
   });
   const paid = await db().execute({

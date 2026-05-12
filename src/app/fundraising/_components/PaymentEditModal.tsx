@@ -24,6 +24,11 @@ interface PledgeOption {
   status: string;
   pledge_date: string;
   project_name?: string | null;
+  // is_standalone = 1 means this is a synthetic wrapper around a free donation. The user
+  // never explicitly created a pledge — we use it just to satisfy the NOT NULL pledge_id
+  // constraint. We label these distinctly so the user understands a payment on it is
+  // really a "free donation, not pledge".
+  is_standalone?: number | null;
 }
 
 export default function PaymentEditModal({
@@ -59,13 +64,14 @@ export default function PaymentEditModal({
       .then((d) => {
         if (!d) return;
         const raw = Array.isArray(d.pledges) ? d.pledges : [];
-        const mapped: PledgeOption[] = raw.map((p: { id: string; amount: number; paid_amount: number; status: string; pledge_date: string; project_name?: string | null }) => ({
+        const mapped: PledgeOption[] = raw.map((p: { id: string; amount: number; paid_amount: number; status: string; pledge_date: string; project_name?: string | null; is_standalone?: number | null }) => ({
           id: p.id,
           amount: Number(p.amount),
           paid_amount: Number(p.paid_amount || 0),
           status: p.status,
           pledge_date: p.pledge_date,
           project_name: p.project_name || null,
+          is_standalone: p.is_standalone || 0,
         }));
         setPledges(mapped);
       })
@@ -179,6 +185,15 @@ export default function PaymentEditModal({
                 <select value={pledgeId} onChange={(e) => setPledgeId(e.target.value)} style={input}>
                   {pledges.map((p) => {
                     const remaining = Math.max(0, p.amount - p.paid_amount);
+                    // Standalone wrappers are NOT real pledges — flag them so the user
+                    // doesn't think this payment is on a commitment.
+                    if (p.is_standalone) {
+                      return (
+                        <option key={p.id} value={p.id}>
+                          Standalone donation · {fmtMoney(p.amount)} · {p.pledge_date}
+                        </option>
+                      );
+                    }
                     return (
                       <option key={p.id} value={p.id}>
                         {fmtMoney(p.amount)} pledged · {fmtMoney(remaining)} remaining

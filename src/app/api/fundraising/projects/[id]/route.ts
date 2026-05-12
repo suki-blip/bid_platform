@@ -27,11 +27,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const [pledges, payments, totals] = await Promise.all([
     db().execute({
+      // Hide synthetic standalone pledges from the project's Pledges list — they're not real
+      // commitments; their payments still appear under the Payments list below.
       sql: `SELECT pl.*, d.first_name, d.last_name, d.hebrew_name,
                    COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = pl.id AND status = 'paid'), 0) AS paid_amount
             FROM fr_pledges pl
             JOIN fr_donors d ON d.id = pl.donor_id
-            WHERE pl.project_id = ?${fundraiserFilter}
+            WHERE pl.project_id = ? AND COALESCE(pl.is_standalone, 0) = 0${fundraiserFilter}
             ORDER BY pl.pledge_date DESC`,
       args: [id, ...fundraiserArgs],
     }),
@@ -45,10 +47,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       args: [id, ...fundraiserArgs],
     }),
     db().execute({
+      // 'pledged' total excludes standalone pledges (the money is real, but it wasn't pledged —
+      // it was just donated). 'paid' counts every paid payment regardless.
+      // 'donor_count' counts only real pledgers so the project page doesn't double-count
+      // someone who just made a one-off donation.
       sql: `SELECT
-              COALESCE((SELECT SUM(amount) FROM fr_pledges WHERE project_id = ? AND status IN ('open','fulfilled')), 0) AS pledged,
+              COALESCE((SELECT SUM(amount) FROM fr_pledges WHERE project_id = ? AND status IN ('open','fulfilled') AND COALESCE(is_standalone, 0) = 0), 0) AS pledged,
               COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE project_id = ? AND status = 'paid'), 0) AS paid,
-              COALESCE((SELECT COUNT(DISTINCT donor_id) FROM fr_pledges WHERE project_id = ?), 0) AS donor_count`,
+              COALESCE((SELECT COUNT(DISTINCT donor_id) FROM fr_pledges WHERE project_id = ? AND COALESCE(is_standalone, 0) = 0), 0) AS donor_count`,
       args: [id, id, id],
     }),
   ]);

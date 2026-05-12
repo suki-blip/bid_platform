@@ -19,11 +19,13 @@ export async function GET(request: NextRequest) {
   }
 
   const result = await db().execute({
+    // pledged_amount excludes is_standalone (synthetic-pledge) rows. paid_amount includes
+    // every paid payment. donor_count is only real pledgers.
     sql: `SELECT
             p.*,
-            COALESCE((SELECT SUM(amount) FROM fr_pledges WHERE project_id = p.id AND status IN ('open','fulfilled')), 0) AS pledged_amount,
+            COALESCE((SELECT SUM(amount) FROM fr_pledges WHERE project_id = p.id AND status IN ('open','fulfilled') AND COALESCE(is_standalone, 0) = 0), 0) AS pledged_amount,
             COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE project_id = p.id AND status = 'paid'), 0) AS paid_amount,
-            COALESCE((SELECT COUNT(DISTINCT donor_id) FROM fr_pledges WHERE project_id = p.id), 0) AS donor_count
+            COALESCE((SELECT COUNT(DISTINCT donor_id) FROM fr_pledges WHERE project_id = p.id AND COALESCE(is_standalone, 0) = 0), 0) AS donor_count
           FROM fr_projects p
           WHERE ${where}
           ORDER BY p.status = 'active' DESC, p.created_at DESC`,

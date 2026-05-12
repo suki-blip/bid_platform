@@ -178,11 +178,13 @@ export async function POST(request: Request) {
         });
       }
     } else {
-      // new_donation — create a new lump-sum pledge for this allocation
+      // new_donation — wrap the payment in a synthetic lump-sum pledge (is_standalone=1).
+      // Required by the NOT NULL pledge_id constraint on fr_pledge_payments. The is_standalone
+      // flag tells the UI to hide this from the donor's Pledges list — they only see the payment.
       pledgeId = crypto.randomUUID();
       await db().execute({
-        sql: `INSERT INTO fr_pledges (id, owner_id, donor_id, project_id, fundraiser_id, amount, status, pledge_date, installments_total, payment_plan, notes)
-              VALUES (?, ?, ?, ?, ?, ?, 'open', date('now'), 1, 'lump_sum', ?)`,
+        sql: `INSERT INTO fr_pledges (id, owner_id, donor_id, project_id, fundraiser_id, amount, status, pledge_date, installments_total, payment_plan, notes, is_standalone)
+              VALUES (?, ?, ?, ?, ?, ?, 'fulfilled', date('now'), 1, 'lump_sum', ?, 1)`,
         args: [pledgeId, session.ownerId, body.donor_id, projectId, session.fundraiserId, a.amount, body.notes || null],
       });
       paymentId = crypto.randomUUID();

@@ -210,7 +210,12 @@ export default function PayPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d) return setPledges([]);
-        const open = (d.pledges || []).filter((p: PledgeOption) => p.status === "open");
+        // Open + not-standalone (synthetic pledges shouldn't appear in the pledge selector
+        // since they're just wrappers around one-off donations, not real commitments).
+        const open = (d.pledges || []).filter(
+          (p: PledgeOption & { is_standalone?: number }) =>
+            p.status === "open" && !p.is_standalone,
+        );
         setPledges(open);
       });
   }, [donorId, mode]);

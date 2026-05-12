@@ -525,6 +525,13 @@ async function initializeDatabase() {
   // Hebrew suffix title — shown after the name (שליט"א, זצ"ל, ע"ה, הי"ו, הכהן, הלוי, נ"י, etc.)
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_suffix_title TEXT'); } catch {}
 
+  // is_standalone: when a user records a "free donation" (no pledge), we still need a pledge row
+  // to satisfy fr_pledge_payments.pledge_id NOT NULL — but we tag it as standalone so the UI
+  // hides it from pledge lists. From the user's perspective: "this payment isn't on a pledge."
+  // The payment still shows under the donor's Payments and counts in totals — it just doesn't
+  // pollute the Pledges list with a fake 1-installment "pledge" they never agreed to.
+  try { await client.execute('ALTER TABLE fr_pledges ADD COLUMN is_standalone INTEGER NOT NULL DEFAULT 0'); } catch {}
+
   // Sola / Cardknox credentials (per owner). Keys are sensitive — only the SETTINGS API
   // returns them, and only masked. Server-side endpoints read them directly to call x1.cardknox.com.
   //   sola_xkey         — Cardknox API key (xKey). Server-only. Used for cc:sale + Report:Transactions.

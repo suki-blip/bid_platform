@@ -96,6 +96,7 @@ interface Pledge {
   notes: string | null;
   project_name: string | null;
   project_id: string | null;
+  is_standalone?: number | null;
 }
 interface Payment {
   id: string;
@@ -956,11 +957,16 @@ export default function DonorProfilePage() {
           </div>
 
           <Panel title="Pledges">
-            {pledges.length === 0 ? (
-              <Empty>No pledges yet. Add a pledge to start tracking giving.</Empty>
-            ) : (
-              <ul style={listStyle}>
-                {pledges.map((p) => (
+            {(() => {
+              // Hide synthetic standalone-donation wrappers. The user never created these;
+              // they exist only to satisfy the NOT NULL pledge_id constraint on payments.
+              const realPledges = pledges.filter((p) => !p.is_standalone);
+              if (realPledges.length === 0) {
+                return <Empty>No pledges yet. Add a pledge to start tracking giving.</Empty>;
+              }
+              return (
+                <ul style={listStyle}>
+                  {realPledges.map((p) => (
                   <li
                     key={p.id}
                     style={{ ...rowStyle, padding: "10px 0", borderBottom: "1px solid rgba(10,16,25,0.06)" }}
@@ -998,7 +1004,8 @@ export default function DonorProfilePage() {
                   </li>
                 ))}
               </ul>
-            )}
+              );
+            })()}
           </Panel>
 
           <div style={{ height: 14 }} />
@@ -1322,6 +1329,7 @@ export default function DonorProfilePage() {
             status: p.status,
             project_name: p.project_name,
             pledge_date: p.pledge_date,
+            is_standalone: p.is_standalone || 0,
           }))}
           onClose={() => setShowQuickModal(false)}
           onCreated={() => {
@@ -1583,7 +1591,7 @@ function QuickDonationModal({
   // Existing pledges for this donor. The user can pick one and apply the payment to it
   // instead of creating a new lump-sum pledge — works even when the paid_date is older
   // than the pledge_date (no date constraint).
-  pledges: { id: string; amount: number; paid_amount: number; status: string; project_name: string | null; pledge_date: string }[];
+  pledges: { id: string; amount: number; paid_amount: number; status: string; project_name: string | null; pledge_date: string; is_standalone?: number | null }[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -1602,7 +1610,11 @@ function QuickDonationModal({
   const [error, setError] = useState("");
 
   // Only open pledges make sense as a target. Closed/cancelled ones we hide.
-  const openPledges = pledges.filter((p) => p.status === "open");
+  // Hide synthetic standalone wrappers from this picker — they're just one-off donations
+  // wearing a pledge mask. Showing them would let the user pick a "pledge" they never created.
+  const openPledges = pledges.filter(
+    (p) => p.status === "open" && !(p as typeof p & { is_standalone?: number }).is_standalone,
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
