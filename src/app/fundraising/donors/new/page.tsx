@@ -66,6 +66,7 @@ function NewDonorPage() {
   const [hebrewLastName, setHebrewLastName] = useState("");
   const [hebrewFatherName, setHebrewFatherName] = useState("");
   const [hebrewTitle, setHebrewTitle] = useState("");
+  const [hebrewSuffixTitle, setHebrewSuffixTitle] = useState("");
   const [title, setTitle] = useState("");
   const [spouseName, setSpouseName] = useState("");
   const [email, setEmail] = useState("");
@@ -173,6 +174,7 @@ function NewDonorPage() {
           hebrew_last_name: hebrewLastName || null,
           hebrew_father_name: hebrewFatherName || null,
           hebrew_title: hebrewTitle || null,
+          hebrew_suffix_title: hebrewSuffixTitle || null,
           title: title || null,
           spouse_name: spouseName || null,
           email: email || null,
@@ -264,12 +266,20 @@ function NewDonorPage() {
               placeholder="Rabbi, Mr., Dr., etc."
             />
           </Field>
-          <Field label="תואר בעברית (Hebrew title)">
+          <Field label="תואר בעברית — לפני השם (Hebrew title — prefix)">
             <input
               style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
               value={hebrewTitle}
               onChange={(e) => setHebrewTitle(e.target.value)}
               placeholder="הרב, מרן, הגאון, הר״ר, מרת, ר׳"
+            />
+          </Field>
+          <Field label="תואר אחרי השם (Hebrew title — suffix)">
+            <input
+              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+              value={hebrewSuffixTitle}
+              onChange={(e) => setHebrewSuffixTitle(e.target.value)}
+              placeholder="שליט״א, זצ״ל, ע״ה, הי״ו, הכהן, הלוי, נ״י"
             />
           </Field>
           <Field label="Spouse name">

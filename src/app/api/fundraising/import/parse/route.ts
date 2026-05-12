@@ -41,8 +41,23 @@ const KNOWN_FIELDS = [
   },
   {
     key: 'hebrew_title',
-    label: 'תואר בעברית (Hebrew title / honorific)',
-    synonyms: ['hebrew title', 'honorific', 'hebrew honorific', 'תואר בעברית', 'תואר עברי', 'כבוד הרב'],
+    label: 'תואר בעברית — לפני השם (Hebrew title — prefix)',
+    synonyms: [
+      'hebrew title', 'hebrew prefix', 'honorific', 'hebrew honorific',
+      'תואר בעברית', 'תואר עברי', 'תואר לפני השם', 'תואר לפני', 'כבוד הרב',
+    ],
+  },
+  {
+    key: 'hebrew_suffix_title',
+    label: 'תואר בעברית — אחרי השם (Hebrew title — suffix)',
+    synonyms: [
+      'hebrew suffix', 'hebrew suffix title', 'suffix title', 'post-nominal',
+      'תואר אחרי השם', 'תואר אחרי', 'סיומת תואר', 'תואר סיום',
+      'shlita', "shlit\"a", 'zatzal', "zatza\"l", 'aleha hashalom',
+      // Common suffixes themselves — if someone names their column with one of these,
+      // we still want to capture it into the suffix field rather than skip.
+      'שליט"א', 'שליט״א', 'זצ"ל', 'זצ״ל', 'ע"ה', 'ע״ה', 'הי"ו', 'הי״ו', 'נ"י', 'נ״י',
+    ],
   },
 
   { key: 'title', label: 'Title (English)', synonyms: ['title', 'salutation', 'mr/mrs', 'english title', 'תואר באנגלית'] },

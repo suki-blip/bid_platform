@@ -12,6 +12,7 @@ interface EditableDonor {
   hebrew_last_name: string | null;
   hebrew_father_name: string | null;
   hebrew_title: string | null;
+  hebrew_suffix_title: string | null;
   title: string | null;
   spouse_name: string | null;
   email: string | null;
@@ -44,6 +45,7 @@ export default function DonorEditModal({
   const [hebrewLastName, setHebrewLastName] = useState(donor.hebrew_last_name || "");
   const [hebrewFatherName, setHebrewFatherName] = useState(donor.hebrew_father_name || "");
   const [hebrewTitle, setHebrewTitle] = useState(donor.hebrew_title || "");
+  const [hebrewSuffixTitle, setHebrewSuffixTitle] = useState(donor.hebrew_suffix_title || "");
   const [title, setTitle] = useState(donor.title || "");
   const [spouseName, setSpouseName] = useState(donor.spouse_name || "");
   const [email, setEmail] = useState(donor.email || "");
@@ -79,6 +81,7 @@ export default function DonorEditModal({
         hebrew_last_name: hebrewLastName.trim() || null,
         hebrew_father_name: hebrewFatherName.trim() || null,
         hebrew_title: hebrewTitle.trim() || null,
+        hebrew_suffix_title: hebrewSuffixTitle.trim() || null,
         title: title.trim() || null,
         spouse_name: spouseName.trim() || null,
         email: email.trim() || null,
@@ -114,13 +117,22 @@ export default function DonorEditModal({
           <L label="Title">
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mr., Rabbi, Dr." style={input} />
           </L>
-          <L label="תואר בעברית (Hebrew title)">
+          <L label="תואר עברי לפני השם (prefix)">
             <input
               value={hebrewTitle}
               onChange={(e) => setHebrewTitle(e.target.value)}
               dir="rtl"
               style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
               placeholder="הרב, מרן, הגאון, הר״ר"
+            />
+          </L>
+          <L label="תואר עברי אחרי השם (suffix)">
+            <input
+              value={hebrewSuffixTitle}
+              onChange={(e) => setHebrewSuffixTitle(e.target.value)}
+              dir="rtl"
+              style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
+              placeholder="שליט״א, זצ״ל, ע״ה, הי״ו, הכהן"
             />
           </L>
           <L label="First name *">

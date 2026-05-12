@@ -522,6 +522,8 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_father_name TEXT'); } catch {}
   // Hebrew honorific/title shown before the name (הרב, מרן, הגאון, הר"ר, מרת, ר', etc.)
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_title TEXT'); } catch {}
+  // Hebrew suffix title — shown after the name (שליט"א, זצ"ל, ע"ה, הי"ו, הכהן, הלוי, נ"י, etc.)
+  try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_suffix_title TEXT'); } catch {}
 
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}

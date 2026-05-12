@@ -20,6 +20,7 @@ interface Donor {
   hebrew_last_name: string | null;
   hebrew_father_name: string | null;
   hebrew_title: string | null;
+  hebrew_suffix_title: string | null;
   title: string | null;
   spouse_name: string | null;
   email: string | null;
@@ -408,20 +409,25 @@ export default function DonorProfilePage() {
           </h1>
           {(() => {
             // Build the Hebrew display name. Preference order:
-            //  1. If structured fields exist → "[title] [first] בן [father] [last]"
-            //  2. Else fall back to the legacy combined hebrew_name, prefixed with the title if set
-            //  3. Else if only the title is set, show that alone
-            const parts = [
-              donor.hebrew_title,
-              donor.hebrew_first_name,
-              donor.hebrew_father_name ? `בן ${donor.hebrew_father_name}` : null,
-              donor.hebrew_last_name,
-            ].filter(Boolean);
+            //  1. If structured fields exist → "[prefix] [first] בן [father] [last] [suffix]"
+            //  2. Else fall back to the legacy combined hebrew_name, sandwiched by prefix/suffix
+            //  3. Else if only a title is set, show that alone
+            const hasStructured =
+              donor.hebrew_first_name || donor.hebrew_last_name || donor.hebrew_father_name;
 
-            const display =
-              donor.hebrew_first_name || donor.hebrew_last_name || donor.hebrew_father_name
-                ? parts.join(" ")
-                : [donor.hebrew_title, donor.hebrew_name].filter(Boolean).join(" ");
+            const namePart = hasStructured
+              ? [
+                  donor.hebrew_first_name,
+                  donor.hebrew_father_name ? `בן ${donor.hebrew_father_name}` : null,
+                  donor.hebrew_last_name,
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+              : donor.hebrew_name || "";
+
+            const display = [donor.hebrew_title, namePart, donor.hebrew_suffix_title]
+              .filter((s) => s && s.trim())
+              .join(" ");
 
             if (!display) return null;
             return (
@@ -1305,6 +1311,7 @@ export default function DonorProfilePage() {
             hebrew_last_name: donor.hebrew_last_name,
             hebrew_father_name: donor.hebrew_father_name,
             hebrew_title: donor.hebrew_title,
+            hebrew_suffix_title: donor.hebrew_suffix_title,
             title: donor.title,
             spouse_name: donor.spouse_name,
             email: donor.email,
