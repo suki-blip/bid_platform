@@ -17,7 +17,8 @@ const NAV: { href: string; label: string; managerOnly?: boolean }[] = [
   { href: "/fundraising/prospects", label: "Leads" },
   { href: "/fundraising/donors", label: "Donors" },
   { href: "/fundraising/projects", label: "Projects" },
-  { href: "/fundraising/payment", label: "Payment" },
+  { href: "/fundraising/payment", label: "New payment" },
+  { href: "/fundraising/payments", label: "Payments" },
   { href: "/fundraising/collections", label: "Collections" },
   { href: "/fundraising/calendar", label: "Calendar" },
   { href: "/fundraising/reports", label: "Reports" },
@@ -128,8 +129,12 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
           }}
         >
           {visibleNav.map((item) => {
+            // Exact match, or a sub-path with a trailing slash. Using the slash boundary
+            // prevents '/fundraising/payment' from matching '/fundraising/payments'.
             const active =
-              item.href === "/fundraising" ? pathname === "/fundraising" : pathname.startsWith(item.href);
+              item.href === "/fundraising"
+                ? pathname === "/fundraising"
+                : pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
