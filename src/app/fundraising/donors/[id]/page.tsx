@@ -9,6 +9,7 @@ import StarRating from "../../_components/StarRating";
 import DonorEditModal from "../../_components/DonorEditModal";
 import CallEditModal from "../../_components/CallEditModal";
 import PaymentEditModal from "../../_components/PaymentEditModal";
+import SharedPledgeModal from "../../_components/PledgeModal";
 
 interface Donor {
   id: string;
@@ -1278,7 +1279,7 @@ export default function DonorProfilePage() {
       )}
 
       {showPledgeModal && (
-        <PledgeModal
+        <SharedPledgeModal
           donorId={String(params.id)}
           projects={projects}
           onClose={() => setShowPledgeModal(false)}

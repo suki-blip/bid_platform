@@ -8,36 +8,43 @@ import { loadSolaCredentials, solaSale, solaApproved, ccLast4, SolaError } from 
 
 // POST /api/fundraising/sola/charge
 //
-// In-system credit-card charge via Sola/Cardknox cc:sale. The browser collected the
-// card via iFields and gave us SUTs (single-use tokens) instead of the real card
-// number. We never see the PAN.
+// Two input shapes are accepted:
 //
-// Body:
-//   donor_id        — required
-//   mode            — 'existing_pledge' | 'new_donation'
-//   pledge_id?      — required when mode=existing_pledge
-//   payment_id?     — optional installment to charge against
-//   project_id?     — optional
-//   amount          — required, positive number (dollars)
-//   notes?          — free text saved to the payment row
-//   sut_card        — required, iFields SUT for card number
-//   sut_cvv?        — optional, iFields SUT for CVV
-//   exp             — required, MMYY (e.g. "1228")
-//   zip?            — optional, for AVS
-//   street?         — optional, for AVS
-//   bill_first_name?, bill_last_name? — optional
+//   A) Legacy single-allocation (still used by older payment-flow code paths):
+//      { donor_id, mode, pledge_id?, payment_id?, project_id?, amount, notes?,
+//        sut_card, sut_cvv?, exp, zip?, ... }
 //
-// Returns:
-//   { ok: true, status: 'paid', payment_id, pledge_id, transaction_ref, cc_last4 } on approve
-//   { ok: false, status: 'failed', reason } on decline (a row is still recorded as 'failed')
+//   B) Multi-allocation (new — supports splitting one charge across pledges + donations):
+//      { donor_id, allocations: [
+//          { type: 'existing_pledge', pledge_id, payment_id?, amount },
+//          { type: 'new_donation',    project_id?,  amount },
+//          ...
+//        ],
+//        notes?, sut_card, sut_cvv?, exp, zip?, ... }
+//
+// In shape B, the total card-charge amount = sum(allocations[].amount). We make ONE
+// cc:sale call to Cardknox for that total and then write N fr_pledge_payments rows
+// (one per allocation), each tagged with the same xRefNum so they're traceable.
 
-interface ChargeBody {
-  donor_id: string;
-  mode: 'existing_pledge' | 'new_donation';
+interface Allocation {
+  type: 'existing_pledge' | 'new_donation';
   pledge_id?: string | null;
   payment_id?: string | null;
   project_id?: string | null;
   amount: number;
+}
+
+interface ChargeBody {
+  donor_id: string;
+  // Legacy single-allocation
+  mode?: 'existing_pledge' | 'new_donation';
+  pledge_id?: string | null;
+  payment_id?: string | null;
+  project_id?: string | null;
+  amount?: number;
+  // New multi-allocation
+  allocations?: Allocation[];
+  // Common
   notes?: string | null;
   sut_card: string;
   sut_cvv?: string | null;
@@ -46,6 +53,43 @@ interface ChargeBody {
   street?: string | null;
   bill_first_name?: string | null;
   bill_last_name?: string | null;
+}
+
+// Normalise the request body into a single shape: a list of allocations.
+function normaliseAllocations(body: ChargeBody): Allocation[] | { error: string } {
+  if (Array.isArray(body.allocations) && body.allocations.length > 0) {
+    for (const a of body.allocations) {
+      if (a.type !== 'existing_pledge' && a.type !== 'new_donation') {
+        return { error: `allocation.type must be existing_pledge or new_donation` };
+      }
+      if (!isPositiveAmount(a.amount)) {
+        return { error: `each allocation amount must be positive` };
+      }
+      if (a.type === 'existing_pledge' && !a.pledge_id) {
+        return { error: `existing_pledge allocation requires pledge_id` };
+      }
+    }
+    return body.allocations;
+  }
+  // Legacy single-target
+  if (!body.mode || (body.mode !== 'existing_pledge' && body.mode !== 'new_donation')) {
+    return { error: 'mode (or allocations[]) is required' };
+  }
+  if (!isPositiveAmount(body.amount)) {
+    return { error: 'amount must be positive' };
+  }
+  if (body.mode === 'existing_pledge' && !body.pledge_id) {
+    return { error: 'pledge_id required for existing_pledge mode' };
+  }
+  return [
+    {
+      type: body.mode,
+      pledge_id: body.pledge_id || null,
+      payment_id: body.payment_id || null,
+      project_id: body.project_id || null,
+      amount: body.amount!,
+    },
+  ];
 }
 
 export async function POST(request: Request) {
@@ -62,14 +106,14 @@ export async function POST(request: Request) {
 
   // ----- Validation -----
   if (!body.donor_id) return NextResponse.json({ error: 'donor_id required' }, { status: 400 });
-  if (body.mode !== 'existing_pledge' && body.mode !== 'new_donation') {
-    return NextResponse.json({ error: 'mode must be existing_pledge or new_donation' }, { status: 400 });
-  }
-  if (!isPositiveAmount(body.amount)) return NextResponse.json({ error: 'amount must be positive' }, { status: 400 });
   if (!body.sut_card) return NextResponse.json({ error: 'sut_card (iFields card token) required' }, { status: 400 });
   if (!body.exp || !/^\d{4}$/.test(body.exp)) {
     return NextResponse.json({ error: 'exp must be MMYY (4 digits)' }, { status: 400 });
   }
+  const normResult = normaliseAllocations(body);
+  if (!Array.isArray(normResult)) return NextResponse.json({ error: normResult.error }, { status: 400 });
+  const allocations = normResult;
+  const totalAmount = allocations.reduce((s, a) => s + a.amount, 0);
 
   // ----- Verify donor scope -----
   const donorRow = await db().execute({
@@ -90,72 +134,91 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
 
-  // ----- Reserve / locate pledge + payment rows BEFORE charging -----
-  // We pre-create rows as 'pending_processor' so we can attach the gateway response to them
-  // even if the charge half-completes. After Cardknox responds, we flip to 'paid' or 'failed'.
-  let pledgeId: string;
-  let paymentId: string;
-  let projectId: string | null = body.project_id || null;
-  const ourToken = crypto.randomBytes(12).toString('hex');
+  // ----- Reserve pledge + payment rows for each allocation BEFORE charging -----
+  // Pre-create as 'pending_processor'. After Cardknox responds we flip them all together.
+  interface Reserved {
+    paymentId: string;
+    pledgeId: string;
+    affectedPledgeId: string; // for recompute after success
+    affectedDonorId: string;
+  }
+  const reserved: Reserved[] = [];
 
-  if (body.mode === 'existing_pledge') {
-    if (!body.pledge_id) return NextResponse.json({ error: 'pledge_id required' }, { status: 400 });
-    const pl = await db().execute({
-      sql: 'SELECT id, project_id FROM fr_pledges WHERE id = ? AND donor_id = ? AND owner_id = ?',
-      args: [body.pledge_id, body.donor_id, session.ownerId],
-    });
-    if (pl.rows.length === 0) return NextResponse.json({ error: 'Pledge not found' }, { status: 404 });
-    pledgeId = String(pl.rows[0].id);
-    projectId = projectId || (pl.rows[0].project_id ? String(pl.rows[0].project_id) : null);
+  for (const a of allocations) {
+    let pledgeId: string;
+    let paymentId: string;
+    const projectId: string | null = a.project_id || null;
 
-    if (body.payment_id) {
-      paymentId = body.payment_id;
-      await db().execute({
-        sql: `UPDATE fr_pledge_payments SET status = 'pending_processor', method = 'credit_card', amount = ? WHERE id = ?`,
-        args: [body.amount, paymentId],
+    if (a.type === 'existing_pledge') {
+      // pledge_id is guaranteed non-null here — normaliseAllocations validates it.
+      const aPledgeId = a.pledge_id as string;
+      const pl = await db().execute({
+        sql: 'SELECT id, project_id FROM fr_pledges WHERE id = ? AND donor_id = ? AND owner_id = ?',
+        args: [aPledgeId, body.donor_id, session.ownerId],
       });
+      if (pl.rows.length === 0) return NextResponse.json({ error: `Pledge ${a.pledge_id} not found` }, { status: 404 });
+      pledgeId = String(pl.rows[0].id);
+      const pledgeProject = pl.rows[0].project_id ? String(pl.rows[0].project_id) : null;
+
+      if (a.payment_id) {
+        paymentId = a.payment_id;
+        await db().execute({
+          sql: `UPDATE fr_pledge_payments SET status = 'pending_processor', method = 'credit_card', amount = ? WHERE id = ?`,
+          args: [a.amount, paymentId],
+        });
+      } else {
+        paymentId = crypto.randomUUID();
+        await db().execute({
+          sql: `INSERT INTO fr_pledge_payments
+                  (id, pledge_id, donor_id, project_id, installment_number, method, amount, status, due_date)
+                VALUES (?, ?, ?, ?,
+                        (SELECT COALESCE(MAX(installment_number), 0) + 1 FROM fr_pledge_payments WHERE pledge_id = ?),
+                        'credit_card', ?, 'pending_processor', date('now'))`,
+          args: [paymentId, pledgeId, body.donor_id, projectId || pledgeProject, pledgeId, a.amount],
+        });
+      }
     } else {
+      // new_donation — create a new lump-sum pledge for this allocation
+      pledgeId = crypto.randomUUID();
+      await db().execute({
+        sql: `INSERT INTO fr_pledges (id, owner_id, donor_id, project_id, fundraiser_id, amount, status, pledge_date, installments_total, payment_plan, notes)
+              VALUES (?, ?, ?, ?, ?, ?, 'open', date('now'), 1, 'lump_sum', ?)`,
+        args: [pledgeId, session.ownerId, body.donor_id, projectId, session.fundraiserId, a.amount, body.notes || null],
+      });
       paymentId = crypto.randomUUID();
       await db().execute({
-        sql: `INSERT INTO fr_pledge_payments
-                (id, pledge_id, donor_id, project_id, installment_number, method, amount, status, due_date)
-              VALUES (?, ?, ?, ?,
-                      (SELECT COALESCE(MAX(installment_number), 0) + 1 FROM fr_pledge_payments WHERE pledge_id = ?),
-                      'credit_card', ?, 'pending_processor', date('now'))`,
-        args: [paymentId, pledgeId, body.donor_id, projectId, pledgeId, body.amount],
+        sql: `INSERT INTO fr_pledge_payments (id, pledge_id, donor_id, project_id, installment_number, method, amount, status, due_date)
+              VALUES (?, ?, ?, ?, 1, 'credit_card', ?, 'pending_processor', date('now'))`,
+        args: [paymentId, pledgeId, body.donor_id, projectId, a.amount],
+      });
+
+      // Auto-convert lead → donor on first donation
+      await db().execute({
+        sql: "UPDATE fr_donors SET status = 'donor', converted_at = COALESCE(converted_at, datetime('now')) WHERE id = ? AND status = 'prospect'",
+        args: [body.donor_id],
       });
     }
-  } else {
-    pledgeId = crypto.randomUUID();
-    await db().execute({
-      sql: `INSERT INTO fr_pledges (id, owner_id, donor_id, project_id, fundraiser_id, amount, status, pledge_date, installments_total, payment_plan, notes)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', date('now'), 1, 'lump_sum', ?)`,
-      args: [pledgeId, session.ownerId, body.donor_id, projectId, session.fundraiserId, body.amount, body.notes || null],
-    });
-    paymentId = crypto.randomUUID();
-    await db().execute({
-      sql: `INSERT INTO fr_pledge_payments (id, pledge_id, donor_id, project_id, installment_number, method, amount, status, due_date)
-            VALUES (?, ?, ?, ?, 1, 'credit_card', ?, 'pending_processor', date('now'))`,
-      args: [paymentId, pledgeId, body.donor_id, projectId, body.amount],
-    });
 
-    // Auto-convert lead → donor on first donation
-    await db().execute({
-      sql: "UPDATE fr_donors SET status = 'donor', converted_at = COALESCE(converted_at, datetime('now')) WHERE id = ? AND status = 'prospect'",
-      args: [body.donor_id],
-    });
+    reserved.push({ paymentId, pledgeId, affectedPledgeId: pledgeId, affectedDonorId: body.donor_id });
   }
 
-  // ----- Call Cardknox cc:sale -----
+  // ----- Call Cardknox cc:sale ONCE for the total amount -----
+  const ourToken = crypto.randomBytes(12).toString('hex');
   let saleRes;
   try {
     saleRes = await solaSale(creds, {
-      amount: body.amount,
+      amount: totalAmount,
       cardNumToken: body.sut_card,
       cvvToken: body.sut_cvv || null,
       exp: body.exp,
       invoice: ourToken,
-      description: body.notes || (body.mode === 'new_donation' ? 'Donation' : 'Pledge payment'),
+      description:
+        body.notes ||
+        (allocations.length > 1
+          ? `Split donation (${allocations.length} allocations)`
+          : allocations[0].type === 'new_donation'
+          ? 'Donation'
+          : 'Pledge payment'),
       street: body.street || null,
       zip: body.zip || null,
       billFirstName: body.bill_first_name || donorFirst,
@@ -163,58 +226,66 @@ export async function POST(request: Request) {
       email: donorEmail,
     });
   } catch (e) {
-    // Network / Cardknox-side error — mark payment as failed, surface error
     const msg = e instanceof SolaError ? e.message : (e as Error).message || 'Sola request failed';
-    await db().execute({
-      sql: `UPDATE fr_pledge_payments SET status = 'failed', notes = COALESCE(notes, '') || ? WHERE id = ?`,
-      args: [` [Sola error: ${msg}]`, paymentId],
-    });
+    // Mark all reserved rows as failed
+    for (const r of reserved) {
+      await db().execute({
+        sql: `UPDATE fr_pledge_payments SET status = 'failed', notes = COALESCE(notes, '') || ? WHERE id = ?`,
+        args: [` [Sola error: ${msg}]`, r.paymentId],
+      });
+    }
     return NextResponse.json({ ok: false, status: 'failed', reason: msg }, { status: 502 });
   }
 
-  // ----- Parse result -----
+  // ----- Parse result and update ALL rows together -----
   if (solaApproved(saleRes)) {
     const last4 = ccLast4(saleRes.xMaskedCardNumber);
     const holder =
       [saleRes.xBillFirstName, saleRes.xBillLastName].filter(Boolean).join(' ').trim() ||
       `${donorFirst} ${donorLast}`.trim() ||
       null;
-    await db().execute({
-      sql: `UPDATE fr_pledge_payments
-            SET status = 'paid', paid_date = date('now'),
-                transaction_ref = ?, cc_last4 = ?, cc_holder = ?
-            WHERE id = ?`,
-      args: [saleRes.xRefNum, last4, holder, paymentId],
-    });
-    await recomputePledgeStatus(pledgeId);
+
+    for (const r of reserved) {
+      await db().execute({
+        sql: `UPDATE fr_pledge_payments
+              SET status = 'paid', paid_date = date('now'),
+                  transaction_ref = ?, cc_last4 = ?, cc_holder = ?
+              WHERE id = ?`,
+        args: [saleRes.xRefNum, last4, holder, r.paymentId],
+      });
+    }
+    // Recompute the unique set of affected pledges + the donor once
+    const uniquePledges = Array.from(new Set(reserved.map((r) => r.affectedPledgeId)));
+    for (const pid of uniquePledges) await recomputePledgeStatus(pid);
     await recomputeDonorTotals(body.donor_id);
 
     return NextResponse.json({
       ok: true,
       status: 'paid',
-      payment_id: paymentId,
-      pledge_id: pledgeId,
+      total_amount: totalAmount,
       transaction_ref: saleRes.xRefNum,
       cc_last4: last4,
       auth_code: saleRes.xAuthCode,
+      payments: reserved.map((r) => ({ payment_id: r.paymentId, pledge_id: r.pledgeId })),
     });
   } else {
-    // Decline / error
+    // Decline / error — mark all rows as failed
     const reason = saleRes.xError || saleRes.xStatus || 'Declined';
-    await db().execute({
-      sql: `UPDATE fr_pledge_payments
-            SET status = 'failed', transaction_ref = ?,
-                notes = COALESCE(notes, '') || ?
-            WHERE id = ?`,
-      args: [saleRes.xRefNum || null, ` [Declined: ${reason}]`, paymentId],
-    });
-    await recomputePledgeStatus(pledgeId);
+    for (const r of reserved) {
+      await db().execute({
+        sql: `UPDATE fr_pledge_payments
+              SET status = 'failed', transaction_ref = ?,
+                  notes = COALESCE(notes, '') || ?
+              WHERE id = ?`,
+        args: [saleRes.xRefNum || null, ` [Declined: ${reason}]`, r.paymentId],
+      });
+    }
+    const uniquePledges = Array.from(new Set(reserved.map((r) => r.affectedPledgeId)));
+    for (const pid of uniquePledges) await recomputePledgeStatus(pid);
 
     return NextResponse.json({
       ok: false,
       status: 'failed',
-      payment_id: paymentId,
-      pledge_id: pledgeId,
       reason,
       sola_result: saleRes.xResult,
       sola_status: saleRes.xStatus,

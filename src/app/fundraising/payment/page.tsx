@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
 import { paymentMethodLabel, methodIsCheckLike, PAYMENT_METHODS } from "@/lib/fundraising-types";
 import SolaCardForm, { type SolaCardFormHandle } from "../_components/SolaCardForm";
+import PledgeModal from "../_components/PledgeModal";
 
 interface DonorOption {
   id: string;
@@ -73,7 +74,19 @@ interface SessionStatus {
   paid_date: string | null;
 }
 
-type Mode = "existing_pledge" | "new_donation";
+type Mode = "existing_pledge" | "new_donation" | "split";
+
+// One row in the split-allocation builder. `id` is just a stable React key.
+interface AllocationRow {
+  id: string;
+  type: "existing_pledge" | "new_donation";
+  pledge_id?: string;
+  project_id?: string;
+  amount: string; // string so the input behaves naturally; parsed at submit
+}
+function newAllocationRow(type: "existing_pledge" | "new_donation" = "new_donation"): AllocationRow {
+  return { id: Math.random().toString(36).slice(2), type, amount: "" };
+}
 
 export default function PayPage() {
   // Step 1: select donor.
@@ -86,6 +99,14 @@ export default function PayPage() {
 
   // Step 2: choose mode
   const [mode, setMode] = useState<Mode>("new_donation");
+
+  // Split mode — multi-row allocation builder. Each row attributes part of the total
+  // to either an existing pledge or a new donation to a project (or general).
+  const [allocations, setAllocations] = useState<AllocationRow[]>([newAllocationRow()]);
+  const allocationsTotal = useMemo(
+    () => allocations.reduce((s, a) => s + (Number(a.amount) || 0), 0),
+    [allocations],
+  );
 
   // For new_donation
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -122,6 +143,10 @@ export default function PayPage() {
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [manualSuccess, setManualSuccess] = useState<ManualRecordedResponse | null>(null);
+
+  // New-pledge-only modal state
+  const [showNewPledge, setShowNewPledge] = useState(false);
+  const [pledgeCreatedFlash, setPledgeCreatedFlash] = useState(false);
 
   // Sola / Cardknox in-system charge state
   const [solaConfig, setSolaConfig] = useState<{ can_charge: boolean; ifields_key: string; software_name: string } | null>(null);
@@ -324,15 +349,56 @@ export default function PayPage() {
       setChargeError("Please select a donor first.");
       return;
     }
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      setChargeError("Please enter a valid amount.");
-      return;
+
+    // Validate based on mode, compute the dollar total + the body shape we'll POST.
+    let body: Record<string, unknown> = {};
+    let displayTotal = 0;
+
+    if (mode === "split") {
+      const cleaned = allocations.filter((r) => Number(r.amount) > 0);
+      if (cleaned.length === 0) {
+        setChargeError("Add at least one allocation with an amount.");
+        return;
+      }
+      for (const r of cleaned) {
+        if (r.type === "existing_pledge" && !r.pledge_id) {
+          setChargeError("Each pledge allocation needs a pledge selected.");
+          return;
+        }
+      }
+      displayTotal = cleaned.reduce((s, r) => s + Number(r.amount), 0);
+      body = {
+        donor_id: donorId,
+        allocations: cleaned.map((r) => ({
+          type: r.type,
+          pledge_id: r.type === "existing_pledge" ? r.pledge_id : null,
+          project_id: r.type === "new_donation" ? r.project_id || null : null,
+          amount: Number(r.amount),
+        })),
+        notes: notes.trim() || null,
+      };
+    } else {
+      const amt = Number(amount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        setChargeError("Please enter a valid amount.");
+        return;
+      }
+      if (mode === "existing_pledge" && !pledgeId) {
+        setChargeError("Please select a pledge.");
+        return;
+      }
+      displayTotal = amt;
+      body = {
+        donor_id: donorId,
+        mode,
+        pledge_id: mode === "existing_pledge" ? pledgeId : null,
+        payment_id: mode === "existing_pledge" && installmentId ? installmentId : null,
+        project_id: mode === "new_donation" && projectId ? projectId : null,
+        amount: amt,
+        notes: notes.trim() || null,
+      };
     }
-    if (mode === "existing_pledge" && !pledgeId) {
-      setChargeError("Please select a pledge.");
-      return;
-    }
+
     if (!solaFormRef.current) {
       setChargeError("Card form is not ready yet.");
       return;
@@ -349,23 +415,19 @@ export default function PayPage() {
     }
 
     try {
+      // Merge card token fields into the body.
+      Object.assign(body, {
+        sut_card: tokens.sut_card,
+        sut_cvv: tokens.sut_cvv,
+        exp: tokens.exp,
+        zip: tokens.zip,
+        street: tokens.street,
+      });
+
       const r = await fetch("/api/fundraising/sola/charge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          donor_id: donorId,
-          mode,
-          pledge_id: mode === "existing_pledge" ? pledgeId : null,
-          payment_id: mode === "existing_pledge" && installmentId ? installmentId : null,
-          project_id: mode === "new_donation" && projectId ? projectId : null,
-          amount: amt,
-          notes: notes.trim() || null,
-          sut_card: tokens.sut_card,
-          sut_cvv: tokens.sut_cvv,
-          exp: tokens.exp,
-          zip: tokens.zip,
-          street: tokens.street,
-        }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       if (!r.ok || !d.ok) {
@@ -374,7 +436,7 @@ export default function PayPage() {
         return;
       }
       setChargeSuccess({
-        amount: amt,
+        amount: displayTotal,
         transaction_ref: d.transaction_ref,
         cc_last4: d.cc_last4,
         auth_code: d.auth_code,
@@ -384,7 +446,7 @@ export default function PayPage() {
     } finally {
       setChargeBusy(false);
     }
-  }, [donorId, amount, mode, pledgeId, installmentId, projectId, notes]);
+  }, [donorId, amount, mode, pledgeId, installmentId, projectId, notes, allocations]);
 
   async function cancelSession() {
     if (!session) return;
@@ -638,16 +700,36 @@ export default function PayPage() {
                   {[selectedDonor.organization, selectedDonor.email].filter(Boolean).join(" · ") || "—"}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setDonorId("");
-                  setDonorQuery("");
-                }}
-                style={btnTiny}
-              >
-                Change
-              </button>
+              <div style={{ display: "flex", gap: 6, flexDirection: "column", alignItems: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDonorId("");
+                    setDonorQuery("");
+                  }}
+                  style={btnTiny}
+                >
+                  Change
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowNewPledge(true)}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: "transparent",
+                    color: "var(--blueprint)",
+                    border: "1px solid rgba(28,93,142,0.3)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                  title="Record a pledge promise without taking a payment now"
+                >
+                  + Pledge only
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -768,7 +850,7 @@ export default function PayPage() {
         {/* Step 2: Mode */}
         {selectedDonor && (
           <Section number={2} title="How to apply">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
               <ModeCard
                 active={mode === "new_donation"}
                 title="New donation"
@@ -780,6 +862,12 @@ export default function PayPage() {
                 title="Apply to pledge"
                 desc="Pay an existing open pledge"
                 onClick={() => setMode("existing_pledge")}
+              />
+              <ModeCard
+                active={mode === "split"}
+                title="Split"
+                desc="Divide across pledges + donations"
+                onClick={() => setMode("split")}
               />
             </div>
           </Section>
@@ -896,8 +984,152 @@ export default function PayPage() {
           </Section>
         )}
 
-        {/* Step 4: Amount + notes */}
-        {selectedDonor && (mode === "new_donation" || pledgeId) && (
+        {/* Step 3c: Split — allocation builder */}
+        {selectedDonor && mode === "split" && (
+          <Section number={3} title="Split allocations">
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10, lineHeight: 1.5 }}>
+              Add one line per pledge or new donation this payment should cover. The sum of
+              the lines is what gets charged to the card / recorded.
+            </div>
+
+            {allocations.map((row, idx) => (
+              <div
+                key={row.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "140px 1fr 120px 32px",
+                  gap: 8,
+                  marginBottom: 8,
+                  alignItems: "center",
+                }}
+              >
+                <select
+                  value={row.type}
+                  onChange={(e) => {
+                    const type = e.target.value as "existing_pledge" | "new_donation";
+                    setAllocations((prev) =>
+                      prev.map((r, i) =>
+                        i === idx ? { ...r, type, pledge_id: undefined, project_id: undefined } : r,
+                      ),
+                    );
+                  }}
+                  style={input}
+                >
+                  <option value="existing_pledge">Existing pledge</option>
+                  <option value="new_donation">New donation</option>
+                </select>
+
+                {row.type === "existing_pledge" ? (
+                  pledges.length === 0 ? (
+                    <div style={{ fontSize: 12, opacity: 0.55, padding: "8px 12px" }}>
+                      No open pledges for this donor.
+                    </div>
+                  ) : (
+                    <select
+                      value={row.pledge_id || ""}
+                      onChange={(e) =>
+                        setAllocations((prev) =>
+                          prev.map((r, i) => (i === idx ? { ...r, pledge_id: e.target.value } : r)),
+                        )
+                      }
+                      style={input}
+                    >
+                      <option value="">— Select pledge —</option>
+                      {pledges.map((p) => {
+                        const rem = Math.max(0, p.amount - p.paid_amount);
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {fmtMoney(rem)} remaining of {fmtMoney(p.amount)}
+                            {p.project_name ? ` · ${p.project_name}` : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )
+                ) : (
+                  <select
+                    value={row.project_id || ""}
+                    onChange={(e) =>
+                      setAllocations((prev) =>
+                        prev.map((r, i) => (i === idx ? { ...r, project_id: e.target.value } : r)),
+                      )
+                    }
+                    style={input}
+                  >
+                    <option value="">— General —</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.parent_id ? "↳ " : ""}
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={row.amount}
+                  onChange={(e) =>
+                    setAllocations((prev) =>
+                      prev.map((r, i) => (i === idx ? { ...r, amount: e.target.value } : r)),
+                    )
+                  }
+                  style={{ ...input, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAllocations((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev))
+                  }
+                  disabled={allocations.length <= 1}
+                  title="Remove this line"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid rgba(232,93,31,0.3)",
+                    color: "var(--cone-orange)",
+                    borderRadius: 6,
+                    cursor: allocations.length > 1 ? "pointer" : "not-allowed",
+                    opacity: allocations.length > 1 ? 1 : 0.3,
+                    fontWeight: 700,
+                    fontSize: 14,
+                    height: 36,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setAllocations((prev) => [...prev, newAllocationRow()])}
+                style={{
+                  padding: "6px 12px",
+                  background: "transparent",
+                  border: "1px dashed rgba(10,16,25,0.2)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--blueprint)",
+                }}
+              >
+                + Add another allocation
+              </button>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>
+                Total: <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--cast-iron)" }}>{fmtMoney(allocationsTotal)}</span>
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {/* Step 4: Amount + notes (hidden in split mode — total is computed from allocations) */}
+        {selectedDonor && mode !== "split" && (mode === "new_donation" || pledgeId) && (
           <Section number={4} title="Amount">
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
@@ -940,7 +1172,9 @@ export default function PayPage() {
         )}
 
         {/* Step 5: Payment method */}
-        {selectedDonor && (mode === "new_donation" || pledgeId) && Number(amount) > 0 && (
+        {selectedDonor &&
+          ((mode === "split" && allocationsTotal > 0) ||
+            ((mode === "new_donation" || pledgeId) && Number(amount) > 0)) && (
           <Section number={5} title="Payment method">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
               {PICKABLE_METHODS.map((m) => (
@@ -1091,7 +1325,9 @@ export default function PayPage() {
         )}
 
         {/* Submit row — branches by method */}
-        {selectedDonor && (mode === "new_donation" || pledgeId) && Number(amount) > 0 && (
+        {selectedDonor &&
+          ((mode === "split" && allocationsTotal > 0) ||
+            ((mode === "new_donation" || pledgeId) && Number(amount) > 0)) && (
           <div
             style={{
               display: "flex",
@@ -1101,50 +1337,106 @@ export default function PayPage() {
               flexWrap: "wrap",
             }}
           >
-            {method === "credit_card" ? (
-              <>
-                <Link
-                  href="/fundraising/settings"
-                  style={{ fontSize: 11, color: "rgba(10,16,25,0.45)", textDecoration: "none", marginRight: "auto" }}
-                >
-                  Configure gateway →
-                </Link>
-                {/* Manual record (skip gateway) — secondary action */}
-                <button
-                  type="button"
-                  onClick={() => submit(null, true)}
-                  disabled={submitting || chargeBusy}
-                  style={btnLight}
-                  title="Mark as paid without opening the gateway (e.g. you already charged the card elsewhere)"
-                >
-                  Record manually
+            {(() => {
+              // Total displayed on the action button depends on mode
+              const displayTotal = mode === "split" ? allocationsTotal : Number(amount) || 0;
+              const moneyStr = fmtMoney(displayTotal);
+
+              if (method === "credit_card") {
+                return (
+                  <>
+                    <Link
+                      href="/fundraising/settings"
+                      style={{ fontSize: 11, color: "rgba(10,16,25,0.45)", textDecoration: "none", marginRight: "auto" }}
+                    >
+                      Configure gateway →
+                    </Link>
+                    {/* Manual record (only for non-split single-target) */}
+                    {mode !== "split" && (
+                      <button
+                        type="button"
+                        onClick={() => submit(null, true)}
+                        disabled={submitting || chargeBusy}
+                        style={btnLight}
+                        title="Mark as paid without opening the gateway"
+                      >
+                        Record manually
+                      </button>
+                    )}
+                    {solaConfig?.can_charge ? (
+                      <button type="button" onClick={chargeNow} disabled={chargeBusy || submitting} style={btnDark}>
+                        {chargeBusy ? "Charging…" : `Charge card now — ${moneyStr}`}
+                      </button>
+                    ) : mode === "split" ? (
+                      <div style={{ fontSize: 12, color: "var(--cone-orange)" }}>
+                        Split payments require Sola integration. Configure in Settings.
+                      </div>
+                    ) : (
+                      <button type="submit" disabled={submitting} style={btnDark}>
+                        {submitting ? "Preparing…" : `Continue to payment — ${moneyStr}`}
+                      </button>
+                    )}
+                  </>
+                );
+              }
+              // Non-credit-card methods
+              if (mode === "split") {
+                return (
+                  <div style={{ fontSize: 12, color: "var(--cone-orange)" }}>
+                    Split payments are supported only for credit-card via Sola right now. Switch to a
+                    single target, or change the method.
+                  </div>
+                );
+              }
+              return (
+                <button type="submit" disabled={submitting} style={btnDark}>
+                  {submitting ? "Saving…" : `Record ${paymentMethodLabel(method)} — ${moneyStr}`}
                 </button>
-                {solaConfig?.can_charge ? (
-                  // Primary action: in-system Sola charge (uses iFields tokens above)
-                  <button
-                    type="button"
-                    onClick={chargeNow}
-                    disabled={chargeBusy || submitting}
-                    style={btnDark}
-                  >
-                    {chargeBusy ? "Charging…" : `Charge card now — ${fmtMoney(Number(amount) || 0)}`}
-                  </button>
-                ) : (
-                  // Fallback: redirect to external gateway (the legacy flow)
-                  <button type="submit" disabled={submitting} style={btnDark}>
-                    {submitting ? "Preparing…" : `Continue to payment — ${fmtMoney(Number(amount) || 0)}`}
-                  </button>
-                )}
-              </>
-            ) : (
-              // Non-credit-card methods: single button — record immediately, no gateway
-              <button type="submit" disabled={submitting} style={btnDark}>
-                {submitting ? "Saving…" : `Record ${paymentMethodLabel(method)} — ${fmtMoney(Number(amount) || 0)}`}
-              </button>
-            )}
+              );
+            })()}
           </div>
         )}
       </form>
+
+      {/* New pledge (promise only) modal — opened from the donor card */}
+      {showNewPledge && selectedDonor && (
+        <PledgeModal
+          donorId={selectedDonor.id}
+          projects={projects}
+          onClose={() => setShowNewPledge(false)}
+          onCreated={() => {
+            setShowNewPledge(false);
+            setPledgeCreatedFlash(true);
+            // Reload pledges so the new one is immediately selectable in Step 3b.
+            if (selectedDonor) {
+              fetch(`/api/fundraising/donors/${selectedDonor.id}/pledges?status=open`)
+                .then((r) => (r.ok ? r.json() : []))
+                .then((d) => setPledges(Array.isArray(d) ? d : []));
+            }
+            setTimeout(() => setPledgeCreatedFlash(false), 4000);
+          }}
+        />
+      )}
+      {pledgeCreatedFlash && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "var(--shed-green)",
+            color: "#fff",
+            padding: "10px 18px",
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 700,
+            boxShadow: "0 8px 24px rgba(10,16,25,0.18)",
+            zIndex: 300,
+          }}
+        >
+          ✓ Pledge recorded
+        </div>
+      )}
     </div>
   );
 }
