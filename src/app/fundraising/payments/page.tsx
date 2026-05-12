@@ -69,6 +69,7 @@ export default function PaymentsPage() {
     due_date: string | null;
     project_id: string | null;
     notes: string | null;
+    collection_mode: string | null;
     donor_id: string;
     donor_label?: string;
   } | null>(null);
@@ -107,6 +108,7 @@ export default function PaymentsPage() {
           due_date: p.due_date || null,
           project_id: p.project_id || null,
           notes: p.notes || null,
+          collection_mode: p.collection_mode || null,
           donor_id: row ? row.donor_id : "",
           donor_label: donorLabel,
         });

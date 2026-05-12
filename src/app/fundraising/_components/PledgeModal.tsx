@@ -29,6 +29,10 @@ export default function PledgeModal({
   const [installments, setInstallments] = useState("1");
   const [plan, setPlan] = useState<"lump_sum" | "monthly" | "quarterly" | "annual">("lump_sum");
   const [defaultMethod, setDefaultMethod] = useState("pending");
+  // collection_mode:
+  //   manual    → Collections shows each installment as its own row (we chase each month)
+  //   automatic → Collections shows the pledge as ONE total (auto-debit handles it)
+  const [collectionMode, setCollectionMode] = useState<"manual" | "automatic">("manual");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +51,7 @@ export default function PledgeModal({
         installments_total: Number(installments),
         payment_plan: plan,
         default_method: defaultMethod,
+        collection_mode: collectionMode,
         notes: notes || null,
       }),
     });
@@ -131,6 +136,47 @@ export default function PledgeModal({
           </L>
         </Row>
 
+        {/* Collection mode — only meaningful when there are multiple installments */}
+        {plan !== "lump_sum" && Number(installments) > 1 && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.65, display: "block", marginBottom: 6 }}>
+              How will it be collected?
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <label style={modeOption(collectionMode === "manual")}>
+                <input
+                  type="radio"
+                  name="collection-mode"
+                  checked={collectionMode === "manual"}
+                  onChange={() => setCollectionMode("manual")}
+                />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>Manual</div>
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2, lineHeight: 1.4 }}>
+                    Chase each installment monthly. Collections will show {installments} separate
+                    rows, one per month.
+                  </div>
+                </div>
+              </label>
+              <label style={modeOption(collectionMode === "automatic")}>
+                <input
+                  type="radio"
+                  name="collection-mode"
+                  checked={collectionMode === "automatic"}
+                  onChange={() => setCollectionMode("automatic")}
+                />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>Automatic</div>
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2, lineHeight: 1.4 }}>
+                    Donor has auto-debit set up. Collections shows ONE total row — no monthly
+                    chasing.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+        )}
+
         <L label="Notes">
           <textarea
             value={notes}
@@ -143,7 +189,11 @@ export default function PledgeModal({
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, gap: 12 }}>
           <div style={{ fontSize: 11, opacity: 0.55 }}>
-            Auto-generates {plan === "lump_sum" ? "1 payment" : `${installments} ${plan} payments`}.
+            {plan === "lump_sum" || Number(installments) <= 1
+              ? "Auto-generates 1 scheduled row."
+              : collectionMode === "automatic"
+              ? `Auto-generates 1 scheduled row for the full \$${Number(amount || 0).toLocaleString()}.`
+              : `Auto-generates ${installments} ${plan} scheduled rows.`}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" onClick={onClose} style={cancelBtn}>Cancel</button>
@@ -159,6 +209,19 @@ export default function PledgeModal({
 
 function Row({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>{children}</div>;
+}
+
+function modeOption(active: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    gap: 8,
+    alignItems: "flex-start",
+    padding: 10,
+    border: active ? "2px solid var(--cast-iron)" : "1px solid rgba(10,16,25,0.12)",
+    borderRadius: 8,
+    cursor: "pointer",
+    background: active ? "rgba(10,16,25,0.03)" : "#fff",
+  };
 }
 function L({ label, children }: { label: string; children: React.ReactNode }) {
   return (

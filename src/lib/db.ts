@@ -532,6 +532,16 @@ async function initializeDatabase() {
   // pollute the Pledges list with a fake 1-installment "pledge" they never agreed to.
   try { await client.execute('ALTER TABLE fr_pledges ADD COLUMN is_standalone INTEGER NOT NULL DEFAULT 0'); } catch {}
 
+  // collection_mode: how the user expects to collect a multi-installment pledge.
+  //   'manual' (default)  — we want to chase each installment separately. The pledge generates
+  //                         N scheduled payment rows, each appears in Collections in its month.
+  //   'automatic'         — the donor pays via auto-debit / external recurring billing. We
+  //                         track ONE scheduled row (the total) so Collections doesn't nag the
+  //                         user month after month. Money still gets logged as it arrives.
+  // For single-payment pledges (installments_total = 1) this column has no effect — there's
+  // only one row either way.
+  try { await client.execute("ALTER TABLE fr_pledges ADD COLUMN collection_mode TEXT NOT NULL DEFAULT 'manual'"); } catch {}
+
   // Sola / Cardknox credentials (per owner). Keys are sensitive — only the SETTINGS API
   // returns them, and only masked. Server-side endpoints read them directly to call x1.cardknox.com.
   //   sola_xkey         — Cardknox API key (xKey). Server-only. Used for cc:sale + Report:Transactions.

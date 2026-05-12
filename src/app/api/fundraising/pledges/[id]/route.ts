@@ -32,7 +32,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   });
 }
 
-const FIELDS = ['amount', 'project_id', 'pledge_date', 'due_date', 'notes', 'status'] as const;
+// Note on collection_mode: PATCHing this won't regenerate the scheduled-payment rows. If the
+// user wants the rows to look different (1 vs N), they should delete + recreate the pledge.
+// We allow editing only to fix a wrong initial choice on the metadata.
+const FIELDS = ['amount', 'project_id', 'pledge_date', 'due_date', 'notes', 'status', 'collection_mode'] as const;
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getFundraisingSession();

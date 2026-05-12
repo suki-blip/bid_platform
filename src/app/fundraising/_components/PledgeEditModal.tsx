@@ -20,6 +20,7 @@ interface EditablePledge {
   due_date?: string | null;
   project_id?: string | null;
   notes?: string | null;
+  collection_mode?: string | null;
   // Donor context — required so the Delete dialog can fetch the donor's OTHER pledges
   // (for the 'move' option) and so we know whose totals to recompute.
   donor_id: string;
@@ -58,6 +59,12 @@ export default function PledgeEditModal({
   const [dueDate, setDueDate] = useState(pledge.due_date || "");
   const [projectId, setProjectId] = useState(pledge.project_id || "");
   const [notes, setNotes] = useState(pledge.notes || "");
+  // collection_mode is a metadata flag. Editing it here updates the row but does NOT
+  // regenerate scheduled installment rows — that's a separate, riskier operation we leave
+  // to delete-and-recreate.
+  const [collectionMode, setCollectionMode] = useState<"manual" | "automatic">(
+    pledge.collection_mode === "automatic" ? "automatic" : "manual",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -114,6 +121,7 @@ export default function PledgeEditModal({
         due_date: dueDate || null,
         project_id: projectId || null,
         notes: notes.trim() || null,
+        collection_mode: collectionMode,
       }),
     });
     if (!res.ok) {
@@ -234,6 +242,21 @@ export default function PledgeEditModal({
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+        </L>
+
+        <L label="Collection mode">
+          <select
+            value={collectionMode}
+            onChange={(e) => setCollectionMode(e.target.value as "manual" | "automatic")}
+            style={input}
+          >
+            <option value="manual">Manual — chase each installment monthly</option>
+            <option value="automatic">Automatic — donor pays via auto-debit</option>
+          </select>
+          <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+            ⓘ Changing this updates the metadata only. The existing scheduled rows stay as-is.
+            To re-generate the schedule, delete + recreate the pledge.
+          </div>
         </L>
 
         <L label="Notes">

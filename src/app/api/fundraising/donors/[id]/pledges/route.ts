@@ -37,12 +37,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!amount || amount <= 0) return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 });
 
   const plan: Plan = VALID_PLANS.includes(body.payment_plan) ? body.payment_plan : 'lump_sum';
-  const installmentsTotal = Math.max(1, Number(body.installments_total) || 1);
+  const installmentsTotalRequested = Math.max(1, Number(body.installments_total) || 1);
   const pledgeDate = body.pledge_date || new Date().toISOString().slice(0, 10);
   // 'pending' means the donor pledged but the payment method will be decided later
   // (the Collections team will fill it in when the payment is actually made).
   const defaultMethod = body.default_method || 'pending';
   const projectId = body.project_id || null;
+
+  // collection_mode controls how many scheduled rows we generate:
+  //   'manual'    → one row per installment (Collections will show each month's row)
+  //   'automatic' → one row for the WHOLE pledge (donor pays via auto-debit, no chasing)
+  const collectionMode: 'manual' | 'automatic' =
+    body.collection_mode === 'automatic' ? 'automatic' : 'manual';
+  const installmentsTotal = collectionMode === 'automatic' ? 1 : installmentsTotalRequested;
 
   const pledgeId = crypto.randomUUID();
 
@@ -50,8 +57,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     {
       sql: `INSERT INTO fr_pledges
               (id, owner_id, donor_id, project_id, fundraiser_id, amount, currency, status,
-               pledge_date, due_date, installments_total, payment_plan, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)`,
+               pledge_date, due_date, installments_total, payment_plan, notes, collection_mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`,
       args: [
         pledgeId,
         session.ownerId,
@@ -65,6 +72,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         installmentsTotal,
         plan,
         body.notes || null,
+        collectionMode,
       ],
     },
   ];
@@ -73,6 +81,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   let payments: PaymentInput[];
   if (Array.isArray(body.payments) && body.payments.length > 0) {
     payments = body.payments;
+  } else if (collectionMode === 'automatic') {
+    // Single row holding the FULL amount — Collections won't fragment it.
+    payments = [
+      {
+        amount,
+        due_date: pledgeDate,
+        method: defaultMethod,
+        installment_number: 1,
+      },
+    ];
   } else {
     const dates = generateInstallmentDates(pledgeDate, installmentsTotal, plan);
     const baseAmt = Math.floor((amount * 100) / installmentsTotal) / 100;

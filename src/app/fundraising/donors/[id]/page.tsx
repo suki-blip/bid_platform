@@ -97,6 +97,7 @@ interface Pledge {
   project_name: string | null;
   project_id: string | null;
   is_standalone?: number | null;
+  collection_mode?: string | null;
 }
 interface Payment {
   id: string;
@@ -951,8 +952,9 @@ export default function DonorProfilePage() {
                 fontSize: 13,
                 cursor: "pointer",
               }}
+              title="Record a one-shot payment (defaults to a free donation, no pledge)"
             >
-              ⚡ Quick donation
+              + Record payment
             </button>
           </div>
 
@@ -1011,6 +1013,26 @@ export default function DonorProfilePage() {
           <div style={{ height: 14 }} />
 
           <Panel title="Payments">
+            {/* Quick access to the Record-payment modal from inside the Payments panel itself,
+                so users don't have to scroll up to the action buttons. */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowQuickModal(true)}
+                style={{
+                  padding: "6px 12px",
+                  background: "transparent",
+                  border: "1px dashed rgba(10,16,25,0.2)",
+                  color: "var(--blueprint)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                + Add payment
+              </button>
+            </div>
             {payments.length === 0 ? (
               <Empty>No payments recorded.</Empty>
             ) : (
@@ -1417,6 +1439,7 @@ export default function DonorProfilePage() {
             due_date: editingPledge.due_date,
             project_id: editingPledge.project_id,
             notes: editingPledge.notes,
+            collection_mode: editingPledge.collection_mode,
             donor_id: String(params.id),
             donor_label: `${donor.first_name} ${donor.last_name || ""}`.trim(),
           }}
@@ -1651,10 +1674,10 @@ function QuickDonationModal({
   return (
     <div style={modalOverlay} onClick={onClose}>
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={modalCard}>
-        <h2 style={modalTitle}>Quick donation</h2>
+        <h2 style={modalTitle}>Record payment</h2>
         <p style={{ fontSize: 12, opacity: 0.6, margin: "0 0 14px" }}>
-          Records a one-shot, already-paid donation. Either apply it to an existing pledge,
-          or record it as a free donation with no pledge attached.
+          One-shot, already-paid. Default = free donation (no pledge). You can also apply it
+          to an existing pledge to reduce its balance.
         </p>
 
         {/* Apply-to selector — first thing the user sees so they pick the target upfront.
