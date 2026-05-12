@@ -11,6 +11,7 @@ import CallEditModal from "../../_components/CallEditModal";
 import PaymentEditModal from "../../_components/PaymentEditModal";
 import SharedPledgeModal from "../../_components/PledgeModal";
 import PledgeEditModal from "../../_components/PledgeEditModal";
+import CardChargeModal from "../../_components/CardChargeModal";
 
 interface Donor {
   id: string;
@@ -1628,6 +1629,9 @@ function QuickDonationModal({
   const [checkNumber, setCheckNumber] = useState("");
   const [bankName, setBankName] = useState("");
   const [ccLast4, setCcLast4] = useState("");
+  // Charge-card dialog state — when the user clicks "Charge card now" we open the
+  // shared CardChargeModal with the form's current amount + apply-to selection.
+  const [showCharge, setShowCharge] = useState(false);
   const [transactionRef, setTransactionRef] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1789,15 +1793,51 @@ function QuickDonationModal({
 
         {error && <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 8 }}>{error}</div>}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
           <button type="button" onClick={onClose} style={cancelBtnCss}>
             Cancel
           </button>
+          {/* Charge card now — only when method is credit_card. Opens the iFields dialog
+              pre-filled with this form's amount / pledge selection. */}
+          {method === "credit_card" && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!amount || Number(amount) <= 0) {
+                  setError("Please enter a positive amount before charging.");
+                  return;
+                }
+                setError("");
+                setShowCharge(true);
+              }}
+              disabled={busy}
+              style={{
+                ...submitBtnCss,
+                background: "var(--blueprint)",
+              }}
+            >
+              💳 Charge card now
+            </button>
+          )}
           <button type="submit" disabled={busy} style={{ ...submitBtnCss, background: "var(--shed-green)" }}>
-            {busy ? "Saving…" : "Record donation"}
+            {busy ? "Saving…" : "Record manually"}
           </button>
         </div>
       </form>
+
+      {showCharge && (
+        <CardChargeModal
+          donorId={donorId}
+          amount={Number(amount) || 0}
+          pledgeId={applyToPledgeId || null}
+          description={notes || undefined}
+          onClose={() => setShowCharge(false)}
+          onCharged={() => {
+            setShowCharge(false);
+            onCreated();
+          }}
+        />
+      )}
     </div>
   );
 }

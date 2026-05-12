@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import DonorSidePanel from "../_components/DonorSidePanel";
+import CardChargeModal from "../_components/CardChargeModal";
 import { fmtMoney, fmtDate, daysOverdue, fmtMethod } from "@/lib/fundraising-format";
 
 interface CollectionItem {
@@ -40,6 +41,8 @@ export default function CollectionsPage() {
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [previewDonorId, setPreviewDonorId] = useState<string | null>(null);
+  // Charge dialog — when set, the in-system iFields card form opens for this row.
+  const [chargingItem, setChargingItem] = useState<CollectionItem | null>(null);
 
   // Client-side filters — applied over whatever the API returned for the chosen view
   const [filterDonor, setFilterDonor] = useState("");
@@ -331,6 +334,26 @@ export default function CollectionsPage() {
                       </span>
                     </td>
                     <td style={{ padding: "10px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      {/* In-system credit card charge — opens iFields dialog, no redirect.
+                          Visible for every open row; if Sola isn't configured the dialog
+                          itself shows a friendly hint pointing to Settings. */}
+                      <button
+                        onClick={() => setChargingItem(item)}
+                        style={{
+                          padding: "5px 10px",
+                          background: "var(--blueprint)",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          marginRight: 4,
+                        }}
+                        title="Charge a card now via Sola — applies the payment to this installment"
+                      >
+                        💳 Charge
+                      </button>
                       <button onClick={() => markPaid(item.id)} style={actionBtn} title="Mark paid">
                         ✓ Paid
                       </button>{" "}
@@ -357,6 +380,23 @@ export default function CollectionsPage() {
       )}
 
       <DonorSidePanel donorId={previewDonorId} onClose={() => setPreviewDonorId(null)} />
+
+      {chargingItem && (
+        <CardChargeModal
+          donorId={chargingItem.donor_id}
+          amount={chargingItem.amount}
+          pledgeId={chargingItem.pledge_id}
+          paymentId={chargingItem.id}
+          description={`${chargingItem.project_name || "General"} · installment #${chargingItem.installment_number}`}
+          donorLabel={chargingItem.donor_name}
+          pledgeLabel={`${fmtMoney(chargingItem.amount)} due ${fmtDate(chargingItem.due_date)} · ${chargingItem.project_name || "General"}`}
+          onClose={() => setChargingItem(null)}
+          onCharged={() => {
+            setChargingItem(null);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
     </div>
   );
 }
