@@ -142,11 +142,11 @@ export async function POST(request: Request) {
       {
         sql: `INSERT INTO fr_donors
                 (id, owner_id, status, first_name, last_name,
-                 hebrew_name, hebrew_first_name, hebrew_last_name, hebrew_father_name,
+                 hebrew_name, hebrew_first_name, hebrew_last_name, hebrew_father_name, hebrew_title,
                  title, spouse_name,
                  email, organization, occupation, birthday, anniversary, yahrzeit,
                  tags, source_id, source_notes, notes, preferred_contact, do_not_contact)
-              VALUES (?, ?, ?, ?, ?,  ?, ?, ?, ?,  ?, ?,  ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?,  ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?)`,
         args: [
           donorId,
           session.ownerId,
@@ -157,6 +157,7 @@ export async function POST(request: Request) {
           fieldsObj.hebrew_first_name || null,
           fieldsObj.hebrew_last_name || null,
           fieldsObj.hebrew_father_name || null,
+          fieldsObj.hebrew_title || null,
           fieldsObj.title || null,
           fieldsObj.spouse_name || null,
           fieldsObj.email || null,

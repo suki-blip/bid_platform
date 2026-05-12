@@ -100,6 +100,7 @@ const EDITABLE_FIELDS = [
   'hebrew_first_name',
   'hebrew_last_name',
   'hebrew_father_name',
+  'hebrew_title',
   'title',
   'spouse_name',
   'email',

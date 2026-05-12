@@ -11,6 +11,7 @@ interface EditableDonor {
   hebrew_first_name: string | null;
   hebrew_last_name: string | null;
   hebrew_father_name: string | null;
+  hebrew_title: string | null;
   title: string | null;
   spouse_name: string | null;
   email: string | null;
@@ -42,6 +43,7 @@ export default function DonorEditModal({
   const [hebrewFirstName, setHebrewFirstName] = useState(donor.hebrew_first_name || "");
   const [hebrewLastName, setHebrewLastName] = useState(donor.hebrew_last_name || "");
   const [hebrewFatherName, setHebrewFatherName] = useState(donor.hebrew_father_name || "");
+  const [hebrewTitle, setHebrewTitle] = useState(donor.hebrew_title || "");
   const [title, setTitle] = useState(donor.title || "");
   const [spouseName, setSpouseName] = useState(donor.spouse_name || "");
   const [email, setEmail] = useState(donor.email || "");
@@ -76,6 +78,7 @@ export default function DonorEditModal({
         hebrew_first_name: hebrewFirstName.trim() || null,
         hebrew_last_name: hebrewLastName.trim() || null,
         hebrew_father_name: hebrewFatherName.trim() || null,
+        hebrew_title: hebrewTitle.trim() || null,
         title: title.trim() || null,
         spouse_name: spouseName.trim() || null,
         email: email.trim() || null,
@@ -110,6 +113,15 @@ export default function DonorEditModal({
         <Row>
           <L label="Title">
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mr., Rabbi, Dr." style={input} />
+          </L>
+          <L label="תואר בעברית (Hebrew title)">
+            <input
+              value={hebrewTitle}
+              onChange={(e) => setHebrewTitle(e.target.value)}
+              dir="rtl"
+              style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
+              placeholder="הרב, מרן, הגאון, הר״ר"
+            />
           </L>
           <L label="First name *">
             <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} style={input} />

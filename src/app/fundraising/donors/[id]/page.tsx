@@ -19,6 +19,7 @@ interface Donor {
   hebrew_first_name: string | null;
   hebrew_last_name: string | null;
   hebrew_father_name: string | null;
+  hebrew_title: string | null;
   title: string | null;
   spouse_name: string | null;
   email: string | null;
@@ -405,21 +406,40 @@ export default function DonorProfilePage() {
           >
             {fullName}
           </h1>
-          {donor.hebrew_name && (
-            <div
-              style={{
-                fontSize: 20,
-                fontFamily: "'Frank Ruhl Libre', 'David', serif",
-                direction: "rtl",
-                textAlign: "left",
-                marginTop: 2,
-                color: "rgba(10,16,25,0.7)",
-                fontWeight: 600,
-              }}
-            >
-              {donor.hebrew_name}
-            </div>
-          )}
+          {(() => {
+            // Build the Hebrew display name. Preference order:
+            //  1. If structured fields exist → "[title] [first] בן [father] [last]"
+            //  2. Else fall back to the legacy combined hebrew_name, prefixed with the title if set
+            //  3. Else if only the title is set, show that alone
+            const parts = [
+              donor.hebrew_title,
+              donor.hebrew_first_name,
+              donor.hebrew_father_name ? `בן ${donor.hebrew_father_name}` : null,
+              donor.hebrew_last_name,
+            ].filter(Boolean);
+
+            const display =
+              donor.hebrew_first_name || donor.hebrew_last_name || donor.hebrew_father_name
+                ? parts.join(" ")
+                : [donor.hebrew_title, donor.hebrew_name].filter(Boolean).join(" ");
+
+            if (!display) return null;
+            return (
+              <div
+                style={{
+                  fontSize: 20,
+                  fontFamily: "'Frank Ruhl Libre', 'David', serif",
+                  direction: "rtl",
+                  textAlign: "left",
+                  marginTop: 2,
+                  color: "rgba(10,16,25,0.7)",
+                  fontWeight: 600,
+                }}
+              >
+                {display}
+              </div>
+            );
+          })()}
           {(donor.organization || donor.occupation) && (
             <div style={{ fontSize: 13, opacity: 0.65, marginTop: 6 }}>
               {[donor.organization, donor.occupation].filter(Boolean).join(" · ")}
@@ -1284,6 +1304,7 @@ export default function DonorProfilePage() {
             hebrew_first_name: donor.hebrew_first_name,
             hebrew_last_name: donor.hebrew_last_name,
             hebrew_father_name: donor.hebrew_father_name,
+            hebrew_title: donor.hebrew_title,
             title: donor.title,
             spouse_name: donor.spouse_name,
             email: donor.email,

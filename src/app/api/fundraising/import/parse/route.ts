@@ -39,8 +39,13 @@ const KNOWN_FIELDS = [
     label: 'Hebrew name (full / legacy)',
     synonyms: ['hebrew', 'hebrew name', 'jewish name', 'shem', 'שם בעברית', 'שם עברי', 'שם מלא בעברית', 'שם עברי מלא'],
   },
+  {
+    key: 'hebrew_title',
+    label: 'תואר בעברית (Hebrew title / honorific)',
+    synonyms: ['hebrew title', 'honorific', 'hebrew honorific', 'תואר בעברית', 'תואר עברי', 'כבוד הרב'],
+  },
 
-  { key: 'title', label: 'Title', synonyms: ['title', 'salutation', 'mr/mrs', 'תואר', 'כבוד'] },
+  { key: 'title', label: 'Title (English)', synonyms: ['title', 'salutation', 'mr/mrs', 'english title', 'תואר באנגלית'] },
   { key: 'spouse_name', label: 'Spouse', synonyms: ['spouse', 'wife', 'husband', 'spouse name', 'בן זוג', 'בת זוג', 'אישה', 'בעל'] },
 
   { key: 'email', label: 'Email', synonyms: ['email', 'e-mail', 'email address', 'mail', 'מייל', 'אימייל', 'דואל', 'דואר אלקטרוני'] },
