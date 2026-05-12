@@ -27,45 +27,123 @@ import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-t
  * browser lands on a friendly page if the gateway redirected them here.
  */
 
+// Pick the first non-empty string from a list of possible sources for a single value.
+function pick(...vals: (string | null | undefined)[]): string | null {
+  for (const v of vals) {
+    if (v != null && String(v).trim() !== '') return String(v);
+  }
+  return null;
+}
+
+// Sola / Cardknox returns xResult: 'A' = Approved, 'D' = Declined, 'E' = Error.
+// Map to our generic status vocabulary.
+function normalizeSolaStatus(xResult: string | null, xStatus: string | null): string | null {
+  const r = (xResult || '').trim().toUpperCase();
+  if (r === 'A') return 'paid';
+  if (r === 'D') return 'failed';
+  if (r === 'E') return 'failed';
+  const s = (xStatus || '').trim().toLowerCase();
+  if (s === 'approved') return 'paid';
+  if (s === 'declined' || s === 'error' || s === 'voided') return 'failed';
+  return null;
+}
+
+// "1XXXXXXXXXXX4242" → "4242". Returns null if we can't get 4 trailing digits.
+function maskedToLast4(masked: string | null): string | null {
+  if (!masked) return null;
+  const m = String(masked).match(/(\d{4})\s*$/);
+  return m ? m[1] : null;
+}
+
 async function handle(req: NextRequest): Promise<NextResponse> {
   await dbReady();
 
-  // Parse params from URL or POST body. URL takes priority.
+  // Parse params from URL or POST body. URL takes priority for token+secret because
+  // those live in xRedirectURL — gateways generally don't rewrite our query params.
   const url = new URL(req.url);
-  let token = url.searchParams.get('token');
-  let secret = url.searchParams.get('secret');
-  let status = url.searchParams.get('status') || 'paid';
-  let transaction = url.searchParams.get('transaction') || url.searchParams.get('transaction_id') || null;
-  let reason = url.searchParams.get('reason') || null;
-  let ccLast4 = url.searchParams.get('cc_last4') || null;
-  let ccHolder = url.searchParams.get('cc_holder') || null;
+  const qp = (k: string) => url.searchParams.get(k);
+
+  let token = qp('token');
+  let secret = qp('secret');
+
+  // Generic params (custom-template gateways)
+  let status = qp('status');
+  let transaction = pick(qp('transaction'), qp('transaction_id'));
+  let reason = qp('reason');
+  let ccLast4 = qp('cc_last4');
+  let ccHolder = qp('cc_holder');
+
+  // Sola / Cardknox specific
+  let xResult = qp('xResult');
+  let xStatus = qp('xStatus');
+  let xRefNum = qp('xRefNum');
+  let xMaskedCardNumber = pick(qp('xMaskedCardNumber'), qp('xCardNum'));
+  let xCardType = qp('xCardType');
+  let xBillFirstName = qp('xBillFirstName');
+  let xBillLastName = qp('xBillLastName');
+  let xErrorCode = qp('xErrorCode');
+  let xError = qp('xError');
 
   if (req.method === 'POST') {
     try {
       const ct = req.headers.get('content-type') || '';
+      const readField = (body: Record<string, unknown>, k: string): string | null => {
+        const v = body[k];
+        return v == null ? null : String(v);
+      };
+      let body: Record<string, unknown> = {};
       if (ct.includes('application/json')) {
-        const body = await req.json();
-        token = token || body.token || body.ref;
-        secret = secret || body.secret;
-        status = body.status || status;
-        transaction = transaction || body.transaction || body.transaction_id || null;
-        reason = reason || body.reason || null;
-        ccLast4 = ccLast4 || body.cc_last4 || null;
-        ccHolder = ccHolder || body.cc_holder || null;
-      } else if (ct.includes('application/x-www-form-urlencoded')) {
+        body = await req.json();
+      } else if (ct.includes('application/x-www-form-urlencoded') || ct.includes('multipart/form-data')) {
         const form = await req.formData();
-        token = token || (form.get('token') as string | null) || (form.get('ref') as string | null);
-        secret = secret || (form.get('secret') as string | null);
-        status = (form.get('status') as string | null) || status;
-        transaction = transaction || (form.get('transaction') as string | null) || (form.get('transaction_id') as string | null);
-        reason = reason || (form.get('reason') as string | null);
-        ccLast4 = ccLast4 || (form.get('cc_last4') as string | null);
-        ccHolder = ccHolder || (form.get('cc_holder') as string | null);
+        for (const [k, v] of form.entries()) body[k] = typeof v === 'string' ? v : '';
       }
+      token = token || pick(readField(body, 'token'), readField(body, 'ref'), readField(body, 'xinvoice'), readField(body, 'xCustom01'));
+      secret = secret || readField(body, 'secret');
+      status = status || readField(body, 'status');
+      transaction = transaction || pick(readField(body, 'transaction'), readField(body, 'transaction_id'));
+      reason = reason || readField(body, 'reason');
+      ccLast4 = ccLast4 || readField(body, 'cc_last4');
+      ccHolder = ccHolder || readField(body, 'cc_holder');
+
+      // Sola fields on POST body
+      xResult = xResult || readField(body, 'xResult');
+      xStatus = xStatus || readField(body, 'xStatus') || readField(body, 'xResponseResult');
+      xRefNum = xRefNum || readField(body, 'xRefNum');
+      xMaskedCardNumber = xMaskedCardNumber || pick(readField(body, 'xMaskedCardNumber'), readField(body, 'xCardNum'));
+      xCardType = xCardType || readField(body, 'xCardType');
+      xBillFirstName = xBillFirstName || readField(body, 'xBillFirstName');
+      xBillLastName = xBillLastName || readField(body, 'xBillLastName');
+      xErrorCode = xErrorCode || readField(body, 'xErrorCode');
+      xError = xError || readField(body, 'xError');
     } catch {
       // ignore body parse errors — query params may still be valid
     }
   }
+
+  // Token may also have arrived as xinvoice/xCustom01 in the redirect query string.
+  token = token || pick(qp('xinvoice'), qp('xCustom01'));
+
+  // Merge Sola fields into the generic shape:
+  //   xResult/xStatus → status
+  //   xRefNum         → transaction
+  //   xMaskedCardNumber → ccLast4
+  //   xBillFirstName + xBillLastName → ccHolder
+  //   xError(Code)    → reason (on failure)
+  const solaStatus = normalizeSolaStatus(xResult, xStatus);
+  if (solaStatus && !status) status = solaStatus;
+  if (xRefNum && !transaction) transaction = xRefNum;
+  if (xMaskedCardNumber && !ccLast4) ccLast4 = maskedToLast4(xMaskedCardNumber);
+  if (!ccHolder && (xBillFirstName || xBillLastName)) {
+    ccHolder = [xBillFirstName, xBillLastName].filter(Boolean).join(' ').trim();
+  }
+  if (!reason && solaStatus === 'failed') {
+    reason = pick(xError, xErrorCode, xStatus) || 'declined';
+  }
+
+  // Default status to 'paid' if still unknown — keeps the original API contract for
+  // simple custom gateways that just hit the URL with no params.
+  if (!status) status = 'paid';
 
   if (!token || !secret) {
     return NextResponse.json({ error: 'Missing token or secret' }, { status: 400 });

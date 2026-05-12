@@ -75,11 +75,36 @@ export default function SettingsPage() {
 
       <Section
         title="Payment gateway"
-        subtitle="Where the system sends donors when they click 'Continue to payment' on the Pay page."
+        subtitle="Where the system sends donors when they click 'Continue to payment' on the Payment page."
       >
+        {/* Sola / Cardknox preset — the most common case */}
+        <div
+          style={{
+            background: "rgba(45,122,61,0.06)",
+            border: "1px solid rgba(45,122,61,0.25)",
+            borderRadius: 10,
+            padding: 14,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+            Sola Payments / Cardknox PaymentSITE
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.6, opacity: 0.85, marginBottom: 6 }}>
+            If you use Sola (Cardknox-based), just paste your PaymentSITE base URL below — something like
+            <br />
+            <code style={{ direction: "ltr", display: "inline-block", marginTop: 4 }}>
+              https://secure.cardknox.com/<em>your-page-name</em>
+            </code>
+            <br />
+            The system auto-appends the right Sola parameters (xamount, xinvoice,
+            xRedirectURL, xBillFirstName, xEmail, etc.) and recognises Sola&apos;s response codes
+            (xResult, xRefNum, xMaskedCardNumber) when the customer is redirected back.
+          </div>
+        </div>
+
         <p style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.75, marginBottom: 12 }}>
-          Paste the URL of your credit-card gateway. Use these placeholders — the system will substitute them when
-          opening the page:
+          For any other gateway, paste the URL with these placeholders — the system substitutes them:
         </p>
         <div
           style={{
@@ -99,12 +124,12 @@ export default function SettingsPage() {
           <div><code>{"{return_url}"}</code> — webhook URL the gateway should call when done</div>
         </div>
 
-        <label style={labelCss}>Gateway URL template</label>
+        <label style={labelCss}>Gateway URL (Sola PaymentSITE base, or custom template)</label>
         <input
           type="url"
           value={gatewayUrl}
           onChange={(e) => setGatewayUrl(e.target.value)}
-          placeholder="https://your-gateway.com/checkout?amount={amount}&ref={ref}&callback={return_url}"
+          placeholder="https://secure.cardknox.com/your-page  —  OR  —  https://your-gateway.com/checkout?amount={amount}&ref={ref}&callback={return_url}"
           style={{ ...inputCss, width: "100%", direction: "ltr" }}
           dir="ltr"
           disabled={!gatewayLoaded}
@@ -119,14 +144,16 @@ export default function SettingsPage() {
         </div>
 
         <div style={{ marginTop: 16, padding: 12, background: "rgba(28,93,142,0.06)", borderRadius: 8, fontSize: 12, lineHeight: 1.6 }}>
-          <strong>Webhook (for the gateway to call when payment completes):</strong>
+          <strong>Webhook URL (for Sola support if they ask):</strong>
           <pre style={{ margin: "6px 0 0", padding: 0, background: "transparent", fontFamily: "var(--font-mono, monospace)", fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-{`GET or POST  https://easyfundraisings.com/api/fundraising/payment-webhook
-?token=<ref from the URL>&secret=<embedded in {return_url}>&status=paid&transaction=<gateway txn id>`}
+{`https://easyfundraisings.com/api/fundraising/payment-webhook`}
           </pre>
           <div style={{ marginTop: 6, opacity: 0.75 }}>
-            If your gateway only supports redirect-back (browser GET), use <code>{"{return_url}"}</code> as
-            the success URL — it carries the secret automatically.
+            With Sola, the token and secret travel inside the
+            <code style={{ margin: "0 4px" }}>xRedirectURL</code>
+            so when the customer is redirected back, the payment is auto-marked as paid. You do
+            not need to ask Sola to enable xPostUrl webhooks — the redirect-back is enough. If
+            you do enable webhooks at Sola, point them at the URL above.
           </div>
         </div>
       </Section>

@@ -4,6 +4,7 @@ import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount, PAYMENT_METHODS, inEnum, methodIsCheckLike } from '@/lib/fundraising-types';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
+import { buildGatewayUrl } from '@/lib/payment-gateway';
 
 interface PaymentSessionBody {
   donor_id: string;
@@ -40,18 +41,6 @@ interface PaymentSessionBody {
  *  1. saas_users.payment_gateway_url (per-owner, set in Settings)
  *  2. process.env.PAYMENT_GATEWAY_URL (global default)
  */
-function buildGatewayUrl(
-  template: string,
-  vars: { amount: number; ref: string; donor_name: string; donor_email: string; description: string; return_url: string },
-): string {
-  return template
-    .replace(/\{amount\}/g, vars.amount.toFixed(2))
-    .replace(/\{ref\}/g, encodeURIComponent(vars.ref))
-    .replace(/\{donor_name\}/g, encodeURIComponent(vars.donor_name))
-    .replace(/\{donor_email\}/g, encodeURIComponent(vars.donor_email))
-    .replace(/\{description\}/g, encodeURIComponent(vars.description))
-    .replace(/\{return_url\}/g, encodeURIComponent(vars.return_url));
-}
 
 export async function POST(request: Request) {
   const session = await getFundraisingSession();
@@ -247,10 +236,10 @@ export async function POST(request: Request) {
     gatewayUrl = buildGatewayUrl(gatewayTemplate, {
       amount: body.amount,
       ref: token,
-      donor_name: donorName,
-      donor_email: (donor.email as string | null) || '',
+      donorName,
+      donorEmail: (donor.email as string | null) || '',
       description,
-      return_url: returnUrl,
+      returnUrl,
     });
   }
 
