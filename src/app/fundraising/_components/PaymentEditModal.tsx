@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PAYMENT_METHODS, paymentMethodLabel } from "@/lib/fundraising-types";
+import { fmtMoney } from "@/lib/fundraising-format";
 
 interface EditablePayment {
   id: string;
@@ -11,6 +12,18 @@ interface EditablePayment {
   due_date: string | null;
   paid_date: string | null;
   notes: string | null;
+  // Donor + pledge context — used to show the "Apply to pledge" selector
+  donor_id?: string | null;
+  pledge_id?: string | null;
+}
+
+interface PledgeOption {
+  id: string;
+  amount: number;
+  paid_amount: number;
+  status: string;
+  pledge_date: string;
+  project_name?: string | null;
 }
 
 export default function PaymentEditModal({
@@ -28,25 +41,59 @@ export default function PaymentEditModal({
   const [dueDate, setDueDate] = useState(payment.due_date || "");
   const [paidDate, setPaidDate] = useState(payment.paid_date || "");
   const [notes, setNotes] = useState(payment.notes || "");
+  // pledge_id: current pledge the payment is attributed to. User can pick a different
+  // pledge from the same donor — re-attribution updates totals on both old and new.
+  const [pledgeId, setPledgeId] = useState<string>(payment.pledge_id || "");
+  const [pledges, setPledges] = useState<PledgeOption[]>([]);
+  const [pledgesLoading, setPledgesLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Load the donor's pledges so the selector shows real options. The donor endpoint
+  // already returns pledges with paid_amount, so we reuse that instead of a separate call.
+  useEffect(() => {
+    if (!payment.donor_id) return;
+    setPledgesLoading(true);
+    fetch(`/api/fundraising/donors/${payment.donor_id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        const raw = Array.isArray(d.pledges) ? d.pledges : [];
+        const mapped: PledgeOption[] = raw.map((p: { id: string; amount: number; paid_amount: number; status: string; pledge_date: string; project_name?: string | null }) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          paid_amount: Number(p.paid_amount || 0),
+          status: p.status,
+          pledge_date: p.pledge_date,
+          project_name: p.project_name || null,
+        }));
+        setPledges(mapped);
+      })
+      .finally(() => setPledgesLoading(false));
+  }, [payment.donor_id]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
 
+    const body: Record<string, unknown> = {
+      amount: amount ? Number(amount) : null,
+      method,
+      status,
+      due_date: dueDate || null,
+      paid_date: paidDate || null,
+      notes: notes.trim() || null,
+    };
+    // Only send pledge_id if it actually changed — keeps PATCH minimal.
+    if (pledgeId && pledgeId !== payment.pledge_id) {
+      body.pledge_id = pledgeId;
+    }
+
     const res = await fetch(`/api/fundraising/payments/${payment.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: amount ? Number(amount) : null,
-        method,
-        status,
-        due_date: dueDate || null,
-        paid_date: paidDate || null,
-        notes: notes.trim() || null,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -116,6 +163,39 @@ export default function PaymentEditModal({
             <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} style={input} />
           </L>
         </Row>
+
+        {/* Apply this payment to a pledge — re-attribution. Only shown when we know the donor. */}
+        {payment.donor_id && (
+          <L label="Apply to pledge">
+            {pledgesLoading ? (
+              <div style={{ fontSize: 12, opacity: 0.55, padding: "9px 12px" }}>Loading pledges…</div>
+            ) : pledges.length === 0 ? (
+              <div style={{ fontSize: 12, opacity: 0.55, padding: "9px 12px", border: "1px dashed rgba(10,16,25,0.12)", borderRadius: 8 }}>
+                This donor has no pledges. (Each payment lives under a pledge; you can create one from
+                the donor profile or the Payment page.)
+              </div>
+            ) : (
+              <>
+                <select value={pledgeId} onChange={(e) => setPledgeId(e.target.value)} style={input}>
+                  {pledges.map((p) => {
+                    const remaining = Math.max(0, p.amount - p.paid_amount);
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {fmtMoney(p.amount)} pledged · {fmtMoney(remaining)} remaining
+                        {p.project_name ? ` · ${p.project_name}` : ""} · {p.pledge_date} · {p.status}
+                      </option>
+                    );
+                  })}
+                </select>
+                {pledgeId && pledgeId !== payment.pledge_id && (
+                  <div style={{ fontSize: 11, color: "var(--blueprint)", marginTop: 4 }}>
+                    ⓘ Re-attributing — the old pledge&apos;s balance will be adjusted up, the new one&apos;s down.
+                  </div>
+                )}
+              </>
+            )}
+          </L>
+        )}
 
         <L label="Notes">
           <textarea

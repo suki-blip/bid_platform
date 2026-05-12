@@ -80,11 +80,47 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
+  // Optional pledge re-assignment. Lets the user re-attribute an existing payment to a
+  // different pledge of the SAME donor (e.g. moved from a generic donation to a specific
+  // campaign pledge). We validate the target pledge before touching anything.
+  const oldPledgeId = String(payment.pledge_id);
+  let newPledgeId: string | null = null;
+  if ('pledge_id' in body && body.pledge_id && body.pledge_id !== oldPledgeId) {
+    const targetPledgeId = String(body.pledge_id);
+    const v = await db().execute({
+      sql: `SELECT id, project_id FROM fr_pledges WHERE id = ? AND donor_id = ? AND owner_id = ?`,
+      args: [targetPledgeId, String(payment.donor_id), session.ownerId],
+    });
+    if (v.rows.length === 0) {
+      return NextResponse.json({ error: 'Target pledge not found or belongs to a different donor' }, { status: 400 });
+    }
+    newPledgeId = targetPledgeId;
+    sets.push('pledge_id = ?');
+    args.push(newPledgeId);
+    // Also flip project_id to follow the new pledge — keeps reports clean.
+    const newProjectId = v.rows[0].project_id ? String(v.rows[0].project_id) : null;
+    sets.push('project_id = ?');
+    args.push(newProjectId);
+    // Bump installment_number to the next free slot on the destination pledge
+    const ord = await db().execute({
+      sql: `SELECT COALESCE(MAX(installment_number), 0) + 1 AS n
+            FROM fr_pledge_payments WHERE pledge_id = ?`,
+      args: [newPledgeId],
+    });
+    sets.push('installment_number = ?');
+    args.push(Number(ord.rows[0].n || 1));
+  }
+
   if (sets.length === 0) return NextResponse.json({ ok: true });
   args.push(id);
   await db().execute({ sql: `UPDATE fr_pledge_payments SET ${sets.join(', ')} WHERE id = ?`, args });
 
-  await recomputePledgeStatus(String(payment.pledge_id));
+  // Recompute the OLD pledge (we may have just removed a payment from it)
+  await recomputePledgeStatus(oldPledgeId);
+  // Recompute the NEW pledge if we moved
+  if (newPledgeId && newPledgeId !== oldPledgeId) {
+    await recomputePledgeStatus(newPledgeId);
+  }
   await recomputeDonorTotals(String(payment.donor_id));
 
   return NextResponse.json({ ok: true });

@@ -105,6 +105,7 @@ interface Payment {
   installment_number: number;
   notes: string | null;
   project_name: string | null;
+  pledge_id: string | null;
 }
 
 interface ProfileData {
@@ -1349,7 +1350,17 @@ export default function DonorProfilePage() {
 
       {editingPayment && (
         <PaymentEditModal
-          payment={editingPayment}
+          payment={{
+            id: editingPayment.id,
+            amount: editingPayment.amount,
+            method: editingPayment.method,
+            status: editingPayment.status,
+            due_date: editingPayment.due_date,
+            paid_date: editingPayment.paid_date,
+            notes: editingPayment.notes,
+            donor_id: String(params.id),
+            pledge_id: editingPayment.pledge_id || null,
+          }}
           onClose={() => setEditingPayment(null)}
           onSaved={() => {
             setEditingPayment(null);

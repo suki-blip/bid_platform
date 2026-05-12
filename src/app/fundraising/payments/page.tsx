@@ -311,6 +311,8 @@ export default function PaymentsPage() {
             due_date: editing.due_date,
             paid_date: editing.paid_date,
             notes: editing.notes,
+            donor_id: editing.donor_id,
+            pledge_id: editing.pledge_id,
           }}
           onClose={() => setEditing(null)}
           onSaved={() => {
