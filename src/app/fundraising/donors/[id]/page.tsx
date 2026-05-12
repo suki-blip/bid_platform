@@ -10,6 +10,7 @@ import DonorEditModal from "../../_components/DonorEditModal";
 import CallEditModal from "../../_components/CallEditModal";
 import PaymentEditModal from "../../_components/PaymentEditModal";
 import SharedPledgeModal from "../../_components/PledgeModal";
+import PledgeEditModal from "../../_components/PledgeEditModal";
 
 interface Donor {
   id: string;
@@ -94,6 +95,7 @@ interface Pledge {
   payment_plan: string;
   notes: string | null;
   project_name: string | null;
+  project_id: string | null;
 }
 interface Payment {
   id: string;
@@ -161,6 +163,7 @@ export default function DonorProfilePage() {
   const [showDonorEdit, setShowDonorEdit] = useState(false);
   const [editingCall, setEditingCall] = useState<Call | null>(null);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [editingPledge, setEditingPledge] = useState<Pledge | null>(null);
 
   function loadSchedule() {
     if (!params?.id) return;
@@ -974,6 +977,24 @@ export default function DonorProfilePage() {
                       <div style={{ fontSize: 13, color: "var(--shed-green)", fontWeight: 700 }}>{fmtMoney(p.paid_amount)}</div>
                       <div style={{ fontSize: 11, opacity: 0.6 }}>paid</div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingPledge(p)}
+                      style={{
+                        padding: "4px 10px",
+                        background: "transparent",
+                        color: "var(--blueprint)",
+                        border: "1px solid rgba(28,93,142,0.3)",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        marginLeft: 10,
+                      }}
+                      title="Edit or delete this pledge"
+                    >
+                      Edit
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -1372,6 +1393,32 @@ export default function DonorProfilePage() {
           onClose={() => setEditingPayment(null)}
           onSaved={() => {
             setEditingPayment(null);
+            load();
+          }}
+        />
+      )}
+
+      {editingPledge && (
+        <PledgeEditModal
+          pledge={{
+            id: editingPledge.id,
+            amount: editingPledge.amount,
+            paid_amount: editingPledge.paid_amount,
+            status: editingPledge.status,
+            pledge_date: editingPledge.pledge_date,
+            due_date: editingPledge.due_date,
+            project_id: editingPledge.project_id,
+            notes: editingPledge.notes,
+            donor_label: `${donor.first_name} ${donor.last_name || ""}`.trim(),
+          }}
+          projects={projects}
+          onClose={() => setEditingPledge(null)}
+          onSaved={() => {
+            setEditingPledge(null);
+            load();
+          }}
+          onDeleted={() => {
+            setEditingPledge(null);
             load();
           }}
         />

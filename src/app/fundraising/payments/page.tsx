@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtMoney, fmtDate, fmtMethod } from "@/lib/fundraising-format";
 import PaymentEditModal from "../_components/PaymentEditModal";
+import PledgeEditModal from "../_components/PledgeEditModal";
 
 interface PaymentRow {
   id: string;
@@ -54,6 +55,61 @@ export default function PaymentsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [editing, setEditing] = useState<PaymentRow | null>(null);
+
+  // Pledge editor state — when user clicks "Pledge" on a payment row.
+  // We lazy-fetch the pledge details when opening so we have full pledge fields (notes, due_date,
+  // project_id) — the payment row only carries pledge_id.
+  const [editingPledgeId, setEditingPledgeId] = useState<string | null>(null);
+  const [pledgeDetails, setPledgeDetails] = useState<{
+    id: string;
+    amount: number;
+    paid_amount: number;
+    status: string;
+    pledge_date: string;
+    due_date: string | null;
+    project_id: string | null;
+    notes: string | null;
+    donor_label?: string;
+  } | null>(null);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    // Lazy-load projects (cheap, used by the pledge editor's project dropdown)
+    fetch("/api/fundraising/projects?status=active")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setProjects(Array.isArray(d) ? d : []));
+  }, []);
+
+  useEffect(() => {
+    if (!editingPledgeId) {
+      setPledgeDetails(null);
+      return;
+    }
+    fetch(`/api/fundraising/pledges/${editingPledgeId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.pledge) return;
+        const p = d.pledge;
+        // Compute paid_amount from the linked payments (status='paid')
+        const paid = (d.payments || [])
+          .filter((pp: { status: string }) => pp.status === "paid")
+          .reduce((s: number, pp: { amount: number }) => s + Number(pp.amount), 0);
+        // Pull donor name from the row in our list to label the modal
+        const row = rows.find((r) => r.pledge_id === editingPledgeId);
+        const donorLabel = row ? `${row.donor_first_name} ${row.donor_last_name || ""}`.trim() : undefined;
+        setPledgeDetails({
+          id: p.id,
+          amount: Number(p.amount),
+          paid_amount: paid,
+          status: p.status,
+          pledge_date: p.pledge_date,
+          due_date: p.due_date || null,
+          project_id: p.project_id || null,
+          notes: p.notes || null,
+          donor_label: donorLabel,
+        });
+      });
+  }, [editingPledgeId, rows]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -279,6 +335,22 @@ export default function PaymentsPage() {
                 </div>
                 <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                   <button
+                    onClick={() => setEditingPledgeId(p.pledge_id)}
+                    style={{
+                      padding: "5px 10px",
+                      background: "transparent",
+                      color: "var(--cast-iron)",
+                      border: "1px solid rgba(10,16,25,0.18)",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                    title="View / edit the pledge this payment is attached to"
+                  >
+                    Pledge
+                  </button>
+                  <button
                     onClick={() => setEditing(p)}
                     style={{
                       padding: "5px 12px",
@@ -317,6 +389,23 @@ export default function PaymentsPage() {
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
+            load();
+          }}
+        />
+      )}
+
+      {/* Pledge editor — opened from the Pledge column button */}
+      {editingPledgeId && pledgeDetails && (
+        <PledgeEditModal
+          pledge={pledgeDetails}
+          projects={projects}
+          onClose={() => setEditingPledgeId(null)}
+          onSaved={() => {
+            setEditingPledgeId(null);
+            load();
+          }}
+          onDeleted={() => {
+            setEditingPledgeId(null);
             load();
           }}
         />

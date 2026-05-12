@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DonorSidePanel from "../_components/DonorSidePanel";
 import { fmtMoney, fmtDate, daysOverdue, fmtMethod } from "@/lib/fundraising-format";
 
@@ -40,6 +40,36 @@ export default function CollectionsPage() {
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [previewDonorId, setPreviewDonorId] = useState<string | null>(null);
+
+  // Client-side filters — applied over whatever the API returned for the chosen view
+  const [filterDonor, setFilterDonor] = useState("");
+  const [filterProject, setFilterProject] = useState("");
+  const [filterMethod, setFilterMethod] = useState("");
+  const [filterMin, setFilterMin] = useState("");
+  const [filterMax, setFilterMax] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = filterDonor.trim().toLowerCase();
+    const min = Number(filterMin);
+    const max = Number(filterMax);
+    return items.filter((it) => {
+      if (q && !(it.donor_name.toLowerCase().includes(q) || (it.primary_phone || "").includes(q))) return false;
+      if (filterProject && it.project_name !== filterProject) return false;
+      if (filterMethod && it.method !== filterMethod) return false;
+      if (filterMin && it.amount < min) return false;
+      if (filterMax && max > 0 && it.amount > max) return false;
+      return true;
+    });
+  }, [items, filterDonor, filterProject, filterMethod, filterMin, filterMax]);
+
+  const anyFilter = !!(filterDonor || filterProject || filterMethod || filterMin || filterMax);
+  function clearFilters() {
+    setFilterDonor("");
+    setFilterProject("");
+    setFilterMethod("");
+    setFilterMin("");
+    setFilterMax("");
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -147,12 +177,73 @@ export default function CollectionsPage() {
         ))}
       </div>
 
+      {/* Filters — donor name/phone, project, method, amount range */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid rgba(10,16,25,0.08)",
+          borderRadius: 10,
+          padding: 12,
+          marginBottom: 12,
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr 1fr 90px 90px auto",
+          gap: 8,
+          alignItems: "end",
+        }}
+      >
+        <div>
+          <label style={fLabel}>Donor (name or phone)</label>
+          <input value={filterDonor} onChange={(e) => setFilterDonor(e.target.value)} placeholder="Search donor…" style={fInput} />
+        </div>
+        <div>
+          <label style={fLabel}>Project</label>
+          <select value={filterProject} onChange={(e) => setFilterProject(e.target.value)} style={fInput}>
+            <option value="">— Any —</option>
+            {Array.from(new Set(items.map((i) => i.project_name).filter((s): s is string => !!s))).sort().map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={fLabel}>Method</label>
+          <select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} style={fInput}>
+            <option value="">— Any —</option>
+            {Array.from(new Set(items.map((i) => i.method).filter(Boolean))).sort().map((m) => (
+              <option key={m} value={m}>{fmtMethod(m)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={fLabel}>Min $</label>
+          <input type="number" value={filterMin} onChange={(e) => setFilterMin(e.target.value)} placeholder="0" style={fInput} />
+        </div>
+        <div>
+          <label style={fLabel}>Max $</label>
+          <input type="number" value={filterMax} onChange={(e) => setFilterMax(e.target.value)} placeholder="∞" style={fInput} />
+        </div>
+        {anyFilter ? (
+          <button onClick={clearFilters} style={{ padding: "8px 12px", background: "transparent", border: "1px solid rgba(10,16,25,0.15)", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Clear</button>
+        ) : (
+          <div />
+        )}
+      </div>
+      {anyFilter && (
+        <div style={{ fontSize: 11, opacity: 0.55, marginBottom: 6 }}>
+          Showing {filtered.length} of {items.length}
+        </div>
+      )}
+
       {loading ? (
         <div style={{ padding: 30, opacity: 0.5 }}>Loading…</div>
       ) : items.length === 0 ? (
         <div style={{ padding: 50, textAlign: "center", background: "#fff", border: "1px dashed rgba(10,16,25,0.12)", borderRadius: 12 }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Nothing to collect 🙌</div>
           <div style={{ fontSize: 12, opacity: 0.6 }}>All payments in this view are squared away.</div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ padding: 30, textAlign: "center", background: "#fff", border: "1px dashed rgba(10,16,25,0.12)", borderRadius: 12, fontSize: 13, opacity: 0.6 }}>
+          No items match these filters.{" "}
+          <button onClick={clearFilters} style={{ background: "none", border: "none", color: "var(--blueprint)", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600 }}>Clear</button>
         </div>
       ) : (
         <div style={{ background: "#fff", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 12, overflow: "hidden" }}>
@@ -169,7 +260,7 @@ export default function CollectionsPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {filtered.map((item) => {
                 const overdue = daysOverdue(item.due_date);
                 return (
                   <tr key={item.id} style={{ borderTop: "1px solid rgba(10,16,25,0.05)" }}>
@@ -327,4 +418,23 @@ const actionBtnGhost: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 11,
   fontWeight: 600,
+};
+
+const fLabel: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  opacity: 0.55,
+  display: "block",
+  marginBottom: 3,
+};
+const fInput: React.CSSProperties = {
+  padding: "8px 10px",
+  border: "1px solid rgba(10,16,25,0.14)",
+  borderRadius: 8,
+  fontSize: 13,
+  width: "100%",
+  outline: "none",
+  background: "#fff",
 };
