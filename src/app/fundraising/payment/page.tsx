@@ -800,23 +800,82 @@ export default function PayPage() {
           </Section>
         )}
 
-        {/* Step 3b: Existing pledge — pick pledge */}
+        {/* Step 3b: Existing pledge — pick pledge + show balance prominently */}
         {selectedDonor && mode === "existing_pledge" && (
           <Section number={3} title="Pledge to apply to">
             {pledges.length === 0 ? (
-              <div style={{ fontSize: 12, opacity: 0.55 }}>
-                This donor has no open pledges. Switch to <em>New donation</em> instead.
+              <div style={{ fontSize: 13, opacity: 0.6, padding: 14, background: "rgba(10,16,25,0.03)", borderRadius: 10 }}>
+                This donor has no open pledges. Switch to <em>New donation</em> instead, or
+                create a new pledge from the donor profile.
               </div>
             ) : (
               <select value={pledgeId} onChange={(e) => setPledgeId(e.target.value)} style={input} required>
                 <option value="">— Select pledge —</option>
-                {pledges.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {fmtMoney(p.amount)} pledged ({fmtMoney(p.paid_amount)} paid){p.project_name ? ` · ${p.project_name}` : ""} · {fmtDate(p.pledge_date)}
-                  </option>
-                ))}
+                {pledges.map((p) => {
+                  const remaining = Math.max(0, p.amount - p.paid_amount);
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {fmtMoney(p.amount)} pledged · {fmtMoney(remaining)} remaining
+                      {p.project_name ? ` · ${p.project_name}` : ""} · {fmtDate(p.pledge_date)}
+                    </option>
+                  );
+                })}
               </select>
             )}
+
+            {/* Pledge balance card — appears once a pledge is selected, with a one-click "Pay full remaining" */}
+            {selectedPledge && (() => {
+              const remaining = Math.max(0, selectedPledge.amount - selectedPledge.paid_amount);
+              const pct = selectedPledge.amount > 0 ? Math.min(100, (selectedPledge.paid_amount / selectedPledge.amount) * 100) : 0;
+              return (
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: 14,
+                    background: "rgba(28,93,142,0.04)",
+                    border: "1px solid rgba(28,93,142,0.18)",
+                    borderRadius: 12,
+                  }}
+                >
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
+                    <BalanceStat label="Pledged" value={fmtMoney(selectedPledge.amount)} />
+                    <BalanceStat label="Paid so far" value={fmtMoney(selectedPledge.paid_amount)} tone="green" />
+                    <BalanceStat
+                      label="Remaining"
+                      value={fmtMoney(remaining)}
+                      tone={remaining === 0 ? "green" : "orange"}
+                    />
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{ background: "rgba(10,16,25,0.06)", borderRadius: 99, height: 6, overflow: "hidden", marginBottom: 10 }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: "var(--shed-green)", transition: "width 300ms" }} />
+                  </div>
+                  {remaining > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(remaining))}
+                      style={{
+                        padding: "8px 14px",
+                        background: "var(--blueprint)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 8,
+                        fontWeight: 700,
+                        fontSize: 13,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Pay full remaining — {fmtMoney(remaining)}
+                    </button>
+                  )}
+                  {remaining === 0 && (
+                    <div style={{ fontSize: 13, color: "var(--shed-green)", fontWeight: 600 }}>
+                      ✓ This pledge is fully paid. You can still record an extra payment if needed.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {selectedPledge && installments.length > 0 && (
               <div style={{ marginTop: 12 }}>
@@ -829,6 +888,9 @@ export default function PayPage() {
                     </option>
                   ))}
                 </select>
+                <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+                  Link to a specific installment to mark it paid, or leave blank to record a partial payment against the pledge.
+                </div>
               </div>
             )}
           </Section>
@@ -1117,6 +1179,38 @@ function Section({ number, title, children }: { number: number; title: string; c
       </div>
       {children}
     </section>
+  );
+}
+
+function BalanceStat({ label, value, tone }: { label: string; value: string; tone?: "green" | "orange" }) {
+  const color =
+    tone === "green" ? "var(--shed-green)" : tone === "orange" ? "var(--cone-orange)" : "var(--cast-iron)";
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 800,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          opacity: 0.65,
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 800,
+          fontFamily: "var(--font-bricolage), sans-serif",
+          color,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 
