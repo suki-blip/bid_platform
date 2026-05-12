@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { OCCUPATION_CATEGORIES } from "@/lib/fundraising-options";
+import HebrewInput from "./HebrewInput";
 
 interface EditableDonor {
   id: string;
@@ -118,19 +119,17 @@ export default function DonorEditModal({
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mr., Rabbi, Dr." style={input} />
           </L>
           <L label="תואר עברי לפני השם (prefix)">
-            <input
+            <HebrewInput
               value={hebrewTitle}
-              onChange={(e) => setHebrewTitle(e.target.value)}
-              dir="rtl"
+              onChange={setHebrewTitle}
               style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
               placeholder="הרב, מרן, הגאון, הר״ר"
             />
           </L>
           <L label="תואר עברי אחרי השם (suffix)">
-            <input
+            <HebrewInput
               value={hebrewSuffixTitle}
-              onChange={(e) => setHebrewSuffixTitle(e.target.value)}
-              dir="rtl"
+              onChange={setHebrewSuffixTitle}
               style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
               placeholder="שליט״א, זצ״ל, ע״ה, הי״ו, הכהן"
             />
@@ -145,19 +144,17 @@ export default function DonorEditModal({
 
         <Row>
           <L label="שם פרטי (Hebrew first name)">
-            <input
+            <HebrewInput
               value={hebrewFirstName}
-              onChange={(e) => setHebrewFirstName(e.target.value)}
-              dir="rtl"
+              onChange={setHebrewFirstName}
               style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
               placeholder="יוסף"
             />
           </L>
           <L label="שם משפחה (Hebrew last name)">
-            <input
+            <HebrewInput
               value={hebrewLastName}
-              onChange={(e) => setHebrewLastName(e.target.value)}
-              dir="rtl"
+              onChange={setHebrewLastName}
               style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
               placeholder="כהן"
             />
@@ -166,10 +163,9 @@ export default function DonorEditModal({
 
         <Row>
           <L label="שם האב (Father's Hebrew name)">
-            <input
+            <HebrewInput
               value={hebrewFatherName}
-              onChange={(e) => setHebrewFatherName(e.target.value)}
-              dir="rtl"
+              onChange={setHebrewFatherName}
               style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
               placeholder="דוד"
             />
@@ -181,10 +177,9 @@ export default function DonorEditModal({
 
         <Row>
           <L label="Hebrew name (full / legacy)">
-            <input
+            <HebrewInput
               value={hebrewName}
-              onChange={(e) => setHebrewName(e.target.value)}
-              dir="rtl"
+              onChange={setHebrewName}
               style={{ ...input, fontFamily: "'Frank Ruhl Libre', serif", textAlign: "right" }}
               placeholder="יוסף בן דוד הכהן"
             />

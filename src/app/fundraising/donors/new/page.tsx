@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { OCCUPATION_CATEGORIES, COUNTRIES, US_STATES } from "@/lib/fundraising-options";
+import HebrewInput from "../../_components/HebrewInput";
 
 interface PhoneRow {
   label: string;
@@ -267,18 +268,18 @@ function NewDonorPage() {
             />
           </Field>
           <Field label="תואר בעברית — לפני השם (Hebrew title — prefix)">
-            <input
-              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+            <HebrewInput
+              style={{ ...fieldStyle, textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
               value={hebrewTitle}
-              onChange={(e) => setHebrewTitle(e.target.value)}
+              onChange={setHebrewTitle}
               placeholder="הרב, מרן, הגאון, הר״ר, מרת, ר׳"
             />
           </Field>
           <Field label="תואר אחרי השם (Hebrew title — suffix)">
-            <input
-              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+            <HebrewInput
+              style={{ ...fieldStyle, textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
               value={hebrewSuffixTitle}
-              onChange={(e) => setHebrewSuffixTitle(e.target.value)}
+              onChange={setHebrewSuffixTitle}
               placeholder="שליט״א, זצ״ל, ע״ה, הי״ו, הכהן, הלוי, נ״י"
             />
           </Field>
@@ -286,34 +287,34 @@ function NewDonorPage() {
             <input style={fieldStyle} value={spouseName} onChange={(e) => setSpouseName(e.target.value)} />
           </Field>
           <Field label="שם פרטי (Hebrew first name)">
-            <input
-              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+            <HebrewInput
+              style={{ ...fieldStyle, textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
               value={hebrewFirstName}
-              onChange={(e) => setHebrewFirstName(e.target.value)}
+              onChange={setHebrewFirstName}
               placeholder="יוסף"
             />
           </Field>
           <Field label="שם משפחה (Hebrew last name)">
-            <input
-              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+            <HebrewInput
+              style={{ ...fieldStyle, textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
               value={hebrewLastName}
-              onChange={(e) => setHebrewLastName(e.target.value)}
+              onChange={setHebrewLastName}
               placeholder="כהן"
             />
           </Field>
           <Field label="שם האב (Father's Hebrew name)">
-            <input
-              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+            <HebrewInput
+              style={{ ...fieldStyle, textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
               value={hebrewFatherName}
-              onChange={(e) => setHebrewFatherName(e.target.value)}
+              onChange={setHebrewFatherName}
               placeholder="דוד"
             />
           </Field>
           <Field label="Hebrew name (full / legacy)">
-            <input
-              style={{ ...fieldStyle, direction: "rtl", textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
+            <HebrewInput
+              style={{ ...fieldStyle, textAlign: "right", fontFamily: "'Frank Ruhl Libre', serif" }}
               value={hebrewName}
-              onChange={(e) => setHebrewName(e.target.value)}
+              onChange={setHebrewName}
               placeholder="יוסף בן דוד הכהן"
             />
           </Field>
