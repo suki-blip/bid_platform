@@ -26,7 +26,43 @@ interface CommitResult {
 
 interface Source { id: string; name: string }
 
-export default function ImportPage() {
+export default function ImportPageWrapper() {
+  const [tab, setTab] = useState<"donors" | "payments">("donors");
+  return (
+    <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+      {/* Top tab switcher */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 22, borderBottom: "1px solid rgba(10,16,25,0.08)", overflowX: "auto" }}>
+        {(
+          [
+            { k: "donors", label: "Import donors" },
+            { k: "payments", label: "Import payments" },
+          ] as { k: "donors" | "payments"; label: string }[]
+        ).map((t) => (
+          <button
+            key={t.k}
+            onClick={() => setTab(t.k)}
+            style={{
+              padding: "12px 18px",
+              background: "transparent",
+              border: "none",
+              borderBottom: tab === t.k ? "2px solid var(--cast-iron)" : "2px solid transparent",
+              cursor: "pointer",
+              fontSize: 14,
+              fontWeight: 700,
+              color: tab === t.k ? "var(--cast-iron)" : "rgba(10,16,25,0.55)",
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "donors" ? <DonorsImport /> : <PaymentsImport />}
+    </div>
+  );
+}
+
+function DonorsImport() {
   const [file, setFile] = useState<File | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -93,10 +129,10 @@ export default function ImportPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+    <div>
       <div style={{ marginBottom: 18 }}>
-        <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
-          Import donors from Excel / CSV
+        <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+          Import donors
         </h1>
         <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
           Upload your spreadsheet, map your columns to donor fields, preview, and commit. Hebrew names &amp; UTF-8 supported.
@@ -391,3 +427,395 @@ const ghostBtn: React.CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
 };
+
+// ============================================================
+// Payments import — separate workflow for "received payments" Excel exports.
+// ============================================================
+
+interface PaymentPreviewRow {
+  index: number;
+  receipt: string;
+  receipt_base: string;
+  installment_n: number | null;
+  date_iso: string | null;
+  raw_jewish_name: string;
+  hebrew_core: string;
+  amount: number | null;
+  payment_type: string;
+  ref: string;
+  status: string;
+  card_holder_name: string;
+  source: string;
+  match: {
+    donor_id: string | null;
+    donor_label: string | null;
+    match_kind: "hebrew" | "english" | "none";
+    will_create: boolean;
+  };
+  parsed_titles: { raw: string; prefix: string | null; core: string; suffix: string | null };
+}
+
+interface PaymentPreviewResponse {
+  sheet_name: string;
+  total_rows: number;
+  matched_count: number;
+  new_donor_rows: number;
+  distinct_new_donors: number;
+  rows: PaymentPreviewRow[];
+}
+
+interface PaymentCommitResponse {
+  created_donors: number;
+  created_pledges: number;
+  created_payments: number;
+  skipped: number;
+  total_groups: number;
+  errors: { row: number; reason: string }[];
+}
+
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
+function PaymentsImport() {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<PaymentPreviewResponse | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [error, setError] = useState("");
+  const [autoCreate, setAutoCreate] = useState(true);
+  const [defaultProjectId, setDefaultProjectId] = useState("");
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [result, setResult] = useState<PaymentCommitResponse | null>(null);
+
+  useEffect(() => {
+    fetch("/api/fundraising/projects?status=active")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((p) => setProjects(Array.isArray(p) ? p : []));
+  }, []);
+
+  async function handleFile(f: File) {
+    setError("");
+    setResult(null);
+    setFile(f);
+    setParsing(true);
+    const fd = new FormData();
+    fd.append("file", f);
+    const res = await fetch("/api/fundraising/import/payments/preview", { method: "POST", body: fd });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      setError(e.error || "Parse failed");
+      setParsing(false);
+      return;
+    }
+    setPreview(await res.json());
+    setParsing(false);
+  }
+
+  async function commit() {
+    if (!file) return;
+    setCommitting(true);
+    setError("");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("auto_create", autoCreate ? "1" : "0");
+    if (defaultProjectId) fd.append("default_project_id", defaultProjectId);
+    const res = await fetch("/api/fundraising/import/payments/commit", { method: "POST", body: fd });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      setError(e.error || "Import failed");
+      setCommitting(false);
+      return;
+    }
+    setResult(await res.json());
+    setCommitting(false);
+  }
+
+  function reset() {
+    setFile(null);
+    setPreview(null);
+    setResult(null);
+    setError("");
+  }
+
+  // ------- Result screen -------
+  if (result) {
+    return (
+      <div>
+        <div
+          style={{
+            background: "#fff",
+            border: "2px solid var(--shed-green)",
+            borderRadius: 14,
+            padding: 30,
+            textAlign: "center",
+            marginBottom: 18,
+          }}
+        >
+          <div style={{ fontSize: 50, marginBottom: 8 }}>✅</div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 14px", color: "var(--shed-green)" }}>
+            Import complete
+          </h2>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 14,
+              maxWidth: 600,
+              margin: "0 auto",
+            }}
+          >
+            <ResultStat label="Donors created" value={result.created_donors} />
+            <ResultStat label="Pledges created" value={result.created_pledges} />
+            <ResultStat label="Payments created" value={result.created_payments} />
+            <ResultStat label="Skipped" value={result.skipped} dim={result.skipped === 0} />
+          </div>
+        </div>
+        {result.errors.length > 0 && (
+          <div
+            style={{
+              background: "rgba(232,93,31,0.05)",
+              border: "1px solid rgba(232,93,31,0.25)",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 18,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "var(--cone-orange)" }}>
+              {result.errors.length} {result.errors.length === 1 ? "issue" : "issues"} during import
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.6 }}>
+              {result.errors.map((e, i) => (
+                <li key={i}>
+                  Row {e.row}: {e.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <button onClick={reset} style={primaryBtn}>
+          Import another file
+        </button>
+      </div>
+    );
+  }
+
+  // ------- Upload screen -------
+  if (!preview) {
+    return (
+      <div>
+        <div style={{ marginBottom: 18 }}>
+          <h2 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+            Import received payments
+          </h2>
+          <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
+            Upload a transaction-list export (Donary, OJC, etc.). We&apos;ll match each row to an
+            existing donor by Hebrew name, and optionally create a new donor record for ones we don&apos;t recognize.
+          </div>
+        </div>
+        <div
+          style={{
+            background: "#fff",
+            border: "2px dashed rgba(10,16,25,0.15)",
+            borderRadius: 14,
+            padding: 50,
+            textAlign: "center",
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const f = e.dataTransfer.files[0];
+            if (f) handleFile(f);
+          }}
+        >
+          <div style={{ fontSize: 50, marginBottom: 10 }}>💳</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
+            {parsing ? "Reading file…" : "Drop a transactions file here"}
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.55, marginBottom: 16 }}>
+            Expected columns: Receipt #, Payment Date, Donor Jewish Name, Amount, Payment Type,
+            Ref #, Status, Schedule #, Card Holder Name, Source
+          </div>
+          <label style={{ cursor: "pointer", display: "inline-block" }}>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+              style={{ display: "none" }}
+            />
+            <span style={{ ...primaryBtn, display: "inline-block" }}>Choose file</span>
+          </label>
+          {error && <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 16 }}>{error}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // ------- Preview screen -------
+  return (
+    <div>
+      <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h2 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 22, fontWeight: 800, margin: 0 }}>
+            Preview
+          </h2>
+          <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
+            {preview.total_rows} payment rows · {preview.matched_count} matched to existing donors
+            {preview.new_donor_rows > 0 && (
+              <>
+                {" "}·{" "}
+                <strong>{preview.new_donor_rows}</strong> rows need a new donor
+                {preview.distinct_new_donors !== preview.new_donor_rows && (
+                  <> ({preview.distinct_new_donors} distinct)</>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+        <button onClick={reset} style={ghostBtn}>← Choose a different file</button>
+      </div>
+
+      {/* Options */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid rgba(10,16,25,0.08)",
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 14,
+          display: "flex",
+          gap: 18,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+          <input type="checkbox" checked={autoCreate} onChange={(e) => setAutoCreate(e.target.checked)} />
+          <span>
+            Auto-create missing donors{" "}
+            <span style={{ opacity: 0.55, fontSize: 11 }}>
+              (unchecked = skip rows whose donor doesn&apos;t exist yet)
+            </span>
+          </span>
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+          <span style={{ opacity: 0.65 }}>Tag all pledges to project:</span>
+          <select
+            value={defaultProjectId}
+            onChange={(e) => setDefaultProjectId(e.target.value)}
+            style={{ ...inputStyle, width: "auto", padding: "6px 10px" }}
+          >
+            <option value="">— None (general) —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Rows */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid rgba(10,16,25,0.08)",
+          borderRadius: 12,
+          overflow: "hidden",
+          marginBottom: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "60px 80px 1.5fr 90px 90px 90px 110px",
+            gap: 8,
+            padding: "10px 14px",
+            borderBottom: "1px solid rgba(10,16,25,0.08)",
+            background: "rgba(10,16,25,0.02)",
+            fontSize: 11,
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            opacity: 0.7,
+          }}
+        >
+          <div>Row</div>
+          <div>Receipt</div>
+          <div>Donor → match</div>
+          <div style={{ textAlign: "right" }}>Amount</div>
+          <div>Method</div>
+          <div>Status</div>
+          <div>Date</div>
+        </div>
+        {preview.rows.map((r) => {
+          const match = r.match;
+          return (
+            <div
+              key={r.index}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "60px 80px 1.5fr 90px 90px 90px 110px",
+                gap: 8,
+                padding: "10px 14px",
+                borderBottom: "1px solid rgba(10,16,25,0.05)",
+                alignItems: "center",
+                fontSize: 12,
+                background: match.match_kind === "none" ? "rgba(240,168,48,0.04)" : "transparent",
+              }}
+            >
+              <div style={{ opacity: 0.5 }}>{r.index}</div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>{r.receipt || "—"}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: "'Frank Ruhl Libre', serif", direction: "rtl", textAlign: "right", fontSize: 13, fontWeight: 600 }}>
+                  {r.raw_jewish_name || "—"}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>
+                  {match.match_kind === "hebrew" && <>✅ match (Hebrew): <strong>{match.donor_label}</strong></>}
+                  {match.match_kind === "english" && <>✅ match (English): <strong>{match.donor_label}</strong></>}
+                  {match.match_kind === "none" && (
+                    <span style={{ color: "var(--cone-orange)" }}>
+                      ⚠ new donor — will create as &quot;{r.card_holder_name || r.parsed_titles.core || r.raw_jewish_name}&quot;
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                {r.amount != null ? `$${r.amount.toFixed(2)}` : "—"}
+              </div>
+              <div style={{ fontSize: 11 }}>{r.payment_type || "—"}</div>
+              <div style={{ fontSize: 11 }}>{r.status || "—"}</div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>{r.date_iso || "—"}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {error && (
+        <div style={{ color: "var(--cone-orange)", fontSize: 13, marginBottom: 14 }}>{error}</div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+        <button onClick={reset} style={ghostBtn}>Cancel</button>
+        <button onClick={commit} disabled={committing} style={primaryBtn}>
+          {committing ? "Importing…" : `Commit ${preview.total_rows} payments`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResultStat({ label, value, dim }: { label: string; value: number; dim?: boolean }) {
+  return (
+    <div style={{ textAlign: "center", opacity: dim ? 0.5 : 1 }}>
+      <div style={{ fontSize: 32, fontWeight: 800, fontFamily: "var(--font-bricolage), sans-serif", color: "var(--cast-iron)" }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.6, marginTop: 4 }}>
+        {label}
+      </div>
+    </div>
+  );
+}
