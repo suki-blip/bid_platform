@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
 import { paymentMethodLabel, methodIsCheckLike, PAYMENT_METHODS } from "@/lib/fundraising-types";
+import SolaCardForm, { type SolaCardFormHandle } from "../_components/SolaCardForm";
 
 interface DonorOption {
   id: string;
@@ -121,6 +122,19 @@ export default function PayPage() {
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [manualSuccess, setManualSuccess] = useState<ManualRecordedResponse | null>(null);
+
+  // Sola / Cardknox in-system charge state
+  const [solaConfig, setSolaConfig] = useState<{ can_charge: boolean; ifields_key: string; software_name: string } | null>(null);
+  const solaFormRef = useRef<SolaCardFormHandle | null>(null);
+  const [chargeBusy, setChargeBusy] = useState(false);
+  const [chargeError, setChargeError] = useState("");
+  const [chargeSuccess, setChargeSuccess] = useState<{ amount: number; transaction_ref: string | null; cc_last4: string | null; auth_code: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/fundraising/sola/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setSolaConfig(d));
+  }, []);
 
   const selectedDonor = useMemo(() => donors.find((d) => d.id === donorId) || null, [donors, donorId]);
   const selectedPledge = useMemo(() => pledges.find((p) => p.id === pledgeId) || null, [pledges, pledgeId]);
@@ -303,6 +317,75 @@ export default function PayPage() {
     }
   }
 
+  // Charge the donor's card in-system via Sola/Cardknox cc:sale. No redirect.
+  const chargeNow = useCallback(async () => {
+    setChargeError("");
+    if (!donorId) {
+      setChargeError("Please select a donor first.");
+      return;
+    }
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setChargeError("Please enter a valid amount.");
+      return;
+    }
+    if (mode === "existing_pledge" && !pledgeId) {
+      setChargeError("Please select a pledge.");
+      return;
+    }
+    if (!solaFormRef.current) {
+      setChargeError("Card form is not ready yet.");
+      return;
+    }
+
+    setChargeBusy(true);
+    let tokens;
+    try {
+      tokens = await solaFormRef.current.collectTokens();
+    } catch (e) {
+      setChargeError((e as Error).message);
+      setChargeBusy(false);
+      return;
+    }
+
+    try {
+      const r = await fetch("/api/fundraising/sola/charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          donor_id: donorId,
+          mode,
+          pledge_id: mode === "existing_pledge" ? pledgeId : null,
+          payment_id: mode === "existing_pledge" && installmentId ? installmentId : null,
+          project_id: mode === "new_donation" && projectId ? projectId : null,
+          amount: amt,
+          notes: notes.trim() || null,
+          sut_card: tokens.sut_card,
+          sut_cvv: tokens.sut_cvv,
+          exp: tokens.exp,
+          zip: tokens.zip,
+          street: tokens.street,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        setChargeError(d.reason || d.error || "Charge failed");
+        setChargeBusy(false);
+        return;
+      }
+      setChargeSuccess({
+        amount: amt,
+        transaction_ref: d.transaction_ref,
+        cc_last4: d.cc_last4,
+        auth_code: d.auth_code,
+      });
+    } catch (e) {
+      setChargeError((e as Error).message || "Network error");
+    } finally {
+      setChargeBusy(false);
+    }
+  }, [donorId, amount, mode, pledgeId, installmentId, projectId, notes]);
+
   async function cancelSession() {
     if (!session) return;
     if (!confirm("Cancel this payment? The pending charge will not be processed.")) return;
@@ -311,6 +394,59 @@ export default function PayPage() {
   }
 
   // ---------- RENDER ----------
+  if (chargeSuccess) {
+    return (
+      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        <h1 style={h1Style}>Card charged</h1>
+        <div
+          style={{
+            background: "#fff",
+            border: "2px solid var(--shed-green)",
+            borderRadius: 14,
+            padding: 28,
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 56, marginBottom: 8 }}>💳✅</div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 8px", color: "var(--shed-green)" }}>
+            {fmtMoney(chargeSuccess.amount)} approved
+          </h2>
+          <p style={{ fontSize: 13, opacity: 0.7, margin: 0 }}>
+            {chargeSuccess.cc_last4 && <>Card ending {chargeSuccess.cc_last4} · </>}
+            Sola ref {chargeSuccess.transaction_ref || "—"}
+            {chargeSuccess.auth_code && <> · Auth {chargeSuccess.auth_code}</>}
+          </p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
+            <button
+              onClick={() => {
+                setChargeSuccess(null);
+                reset();
+              }}
+              style={btnDark}
+            >
+              Record another payment
+            </button>
+            <Link
+              href="/fundraising/payments"
+              style={{
+                padding: "10px 18px",
+                background: "transparent",
+                color: "var(--cast-iron)",
+                border: "1px solid rgba(10,16,25,0.18)",
+                borderRadius: 8,
+                textDecoration: "none",
+                fontWeight: 600,
+                fontSize: 13,
+              }}
+            >
+              View all payments
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (manualSuccess) {
     const methodLabel = paymentMethodLabel(manualSuccess.method);
     return (
@@ -807,7 +943,31 @@ export default function PayPage() {
                 </div>
               )}
 
-              {method === "credit_card" && (
+              {method === "credit_card" && solaConfig?.can_charge && (
+                <div
+                  style={{
+                    background: "rgba(45,122,61,0.04)",
+                    border: "1px solid rgba(45,122,61,0.2)",
+                    borderRadius: 10,
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.7, marginBottom: 10 }}>
+                    Enter card details — charges via Sola Payments
+                  </div>
+                  <SolaCardForm
+                    ifieldsKey={solaConfig.ifields_key}
+                    softwareName={solaConfig.software_name}
+                    disabled={chargeBusy}
+                    onReady={(h) => (solaFormRef.current = h)}
+                  />
+                  {chargeError && (
+                    <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 10 }}>{chargeError}</div>
+                  )}
+                </div>
+              )}
+
+              {method === "credit_card" && !solaConfig?.can_charge && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <label style={inputLabel}>Card last 4 (optional)</label>
@@ -891,16 +1051,28 @@ export default function PayPage() {
                 <button
                   type="button"
                   onClick={() => submit(null, true)}
-                  disabled={submitting}
+                  disabled={submitting || chargeBusy}
                   style={btnLight}
                   title="Mark as paid without opening the gateway (e.g. you already charged the card elsewhere)"
                 >
                   Record manually
                 </button>
-                {/* Primary action: gateway redirect */}
-                <button type="submit" disabled={submitting} style={btnDark}>
-                  {submitting ? "Preparing…" : `Continue to payment — ${fmtMoney(Number(amount) || 0)}`}
-                </button>
+                {solaConfig?.can_charge ? (
+                  // Primary action: in-system Sola charge (uses iFields tokens above)
+                  <button
+                    type="button"
+                    onClick={chargeNow}
+                    disabled={chargeBusy || submitting}
+                    style={btnDark}
+                  >
+                    {chargeBusy ? "Charging…" : `Charge card now — ${fmtMoney(Number(amount) || 0)}`}
+                  </button>
+                ) : (
+                  // Fallback: redirect to external gateway (the legacy flow)
+                  <button type="submit" disabled={submitting} style={btnDark}>
+                    {submitting ? "Preparing…" : `Continue to payment — ${fmtMoney(Number(amount) || 0)}`}
+                  </button>
+                )}
               </>
             ) : (
               // Non-credit-card methods: single button — record immediately, no gateway

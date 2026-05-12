@@ -525,6 +525,33 @@ async function initializeDatabase() {
   // Hebrew suffix title — shown after the name (שליט"א, זצ"ל, ע"ה, הי"ו, הכהן, הלוי, נ"י, etc.)
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN hebrew_suffix_title TEXT'); } catch {}
 
+  // Sola / Cardknox credentials (per owner). Keys are sensitive — only the SETTINGS API
+  // returns them, and only masked. Server-side endpoints read them directly to call x1.cardknox.com.
+  //   sola_xkey         — Cardknox API key (xKey). Server-only. Used for cc:sale + Report:Transactions.
+  //   sola_ifields_key  — public-ish key for the browser-side iFields tokenizer.
+  //   sola_software_name — registered with Cardknox for tracking (default 'easyfundraisings').
+  try { await client.execute('ALTER TABLE saas_users ADD COLUMN sola_xkey TEXT'); } catch {}
+  try { await client.execute('ALTER TABLE saas_users ADD COLUMN sola_ifields_key TEXT'); } catch {}
+  try { await client.execute('ALTER TABLE saas_users ADD COLUMN sola_software_name TEXT'); } catch {}
+
+  // Sola sync log — what we pulled from Report:Transactions and when. Lets the Settings page
+  // show "Last sync: 5 minutes ago, 12 new payments, 3 updated".
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_sola_sync_log (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at TEXT,
+      from_date TEXT,
+      to_date TEXT,
+      transactions_seen INTEGER NOT NULL DEFAULT 0,
+      payments_created INTEGER NOT NULL DEFAULT 0,
+      payments_updated INTEGER NOT NULL DEFAULT 0,
+      error TEXT
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_sola_sync_owner ON fr_sola_sync_log(owner_id, started_at DESC)'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

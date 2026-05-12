@@ -14,6 +14,34 @@ export default function SettingsPage() {
   const [gatewaySaving, setGatewaySaving] = useState(false);
   const [gatewaySaved, setGatewaySaved] = useState(false);
 
+  // Sola / Cardknox credentials
+  const [solaLoaded, setSolaLoaded] = useState(false);
+  const [solaHasXkey, setSolaHasXkey] = useState(false);
+  const [solaXkeyMasked, setSolaXkeyMasked] = useState<string | null>(null);
+  const [solaXkeyInput, setSolaXkeyInput] = useState("");
+  const [solaIfieldsKey, setSolaIfieldsKey] = useState("");
+  const [solaSoftwareName, setSolaSoftwareName] = useState("easyfundraisings");
+  const [solaSaving, setSolaSaving] = useState(false);
+  const [solaSaved, setSolaSaved] = useState(false);
+
+  // Sola sync state
+  const [syncing, setSyncing] = useState(false);
+  const [syncFrom, setSyncFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [syncTo, setSyncTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [syncRecordOrphans, setSyncRecordOrphans] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    transactions_seen: number;
+    payments_updated: number;
+    payments_created: number;
+    orphan_count: number;
+    orphans: Array<{ xRefNum: string | null; xAmount: string | null; xBillFirstName: string | null; xBillLastName: string | null; xEmail: string | null; xDate: string | null; xStatus: string }>;
+  } | null>(null);
+  const [syncError, setSyncError] = useState("");
+
   useEffect(() => {
     fetch("/api/fundraising/settings/gateway")
       .then((r) => (r.ok ? r.json() : { gateway_url: "" }))
@@ -21,7 +49,70 @@ export default function SettingsPage() {
         setGatewayUrl(d.gateway_url || "");
         setGatewayLoaded(true);
       });
+    fetch("/api/fundraising/settings/sola")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setSolaHasXkey(!!d.has_xkey);
+        setSolaXkeyMasked(d.xkey_masked || null);
+        setSolaIfieldsKey(d.ifields_key || "");
+        setSolaSoftwareName(d.software_name || "easyfundraisings");
+        setSolaLoaded(true);
+      });
   }, []);
+
+  async function saveSolaCredentials() {
+    setSolaSaving(true);
+    setSolaSaved(false);
+    const payload: Record<string, string> = {
+      ifields_key: solaIfieldsKey.trim(),
+      software_name: solaSoftwareName.trim(),
+    };
+    // Only send xkey if the user typed a new one — empty input means "leave as-is"
+    if (solaXkeyInput.trim()) payload.xkey = solaXkeyInput.trim();
+    const r = await fetch("/api/fundraising/settings/sola", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setSolaSaving(false);
+    if (r.ok) {
+      setSolaSaved(true);
+      setSolaXkeyInput("");
+      // Refresh to get new masked value
+      const fresh = await fetch("/api/fundraising/settings/sola").then((rr) => rr.json());
+      setSolaHasXkey(!!fresh.has_xkey);
+      setSolaXkeyMasked(fresh.xkey_masked || null);
+      setTimeout(() => setSolaSaved(false), 2500);
+    }
+  }
+
+  async function runSolaSync() {
+    setSyncing(true);
+    setSyncError("");
+    setSyncResult(null);
+    try {
+      const r = await fetch("/api/fundraising/sola/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_date: syncFrom,
+          to_date: syncTo,
+          record_orphans: syncRecordOrphans,
+        }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        setSyncError(e.error || `HTTP ${r.status}`);
+        setSyncing(false);
+        return;
+      }
+      setSyncResult(await r.json());
+    } catch (e) {
+      setSyncError(String(e));
+    }
+    setSyncing(false);
+  }
 
   async function saveGateway() {
     setGatewaySaving(true);
@@ -155,6 +246,128 @@ export default function SettingsPage() {
             not need to ask Sola to enable xPostUrl webhooks — the redirect-back is enough. If
             you do enable webhooks at Sola, point them at the URL above.
           </div>
+        </div>
+      </Section>
+
+      {/* ----------------- Sola / Cardknox API integration ----------------- */}
+      <Section
+        title="Sola Payments — full integration"
+        subtitle="Charge cards directly from inside the app and auto-sync all transactions made in your Sola portal."
+      >
+        <p style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.75, marginBottom: 14 }}>
+          With your <strong>Sola API key (xKey)</strong> and <strong>iFields key</strong> configured below, the
+          Payment page will collect card details inline (no redirect to Sola) using Sola&apos;s tokenized iFields,
+          then charge via Cardknox&apos;s cc:sale API. The Sync button at the bottom pulls every transaction —
+          including ones made directly in the Sola portal — and reconciles them with your local records.
+        </p>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelCss}>Sola API key (xKey) — server-side, kept secret</label>
+          <input
+            type="password"
+            value={solaXkeyInput}
+            onChange={(e) => setSolaXkeyInput(e.target.value)}
+            placeholder={solaHasXkey ? `Currently set: ${solaXkeyMasked || "•••• on file"} — leave blank to keep it` : "Paste your xKey from Sola portal (Account → API)"}
+            style={{ ...inputCss, width: "100%", direction: "ltr", fontFamily: "var(--font-mono, monospace)" }}
+            dir="ltr"
+            disabled={!solaLoaded}
+            autoComplete="off"
+          />
+          <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+            We never display this value back. Type a new key to replace it.
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelCss}>iFields key — public-ish, used by the browser tokenizer</label>
+          <input
+            type="text"
+            value={solaIfieldsKey}
+            onChange={(e) => setSolaIfieldsKey(e.target.value)}
+            placeholder="Paste your iFields key from Sola portal"
+            style={{ ...inputCss, width: "100%", direction: "ltr", fontFamily: "var(--font-mono, monospace)" }}
+            dir="ltr"
+            disabled={!solaLoaded}
+          />
+        </div>
+
+        <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "flex-end" }}>
+          <div>
+            <label style={labelCss}>Software name (registered with Cardknox)</label>
+            <input
+              type="text"
+              value={solaSoftwareName}
+              onChange={(e) => setSolaSoftwareName(e.target.value)}
+              style={{ ...inputCss, width: "100%", direction: "ltr" }}
+              dir="ltr"
+              disabled={!solaLoaded}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button onClick={saveSolaCredentials} disabled={solaSaving || !solaLoaded} style={primaryBtn}>
+              {solaSaving ? "Saving…" : "Save Sola keys"}
+            </button>
+            {solaSaved && (
+              <span style={{ fontSize: 12, color: "var(--shed-green)", fontWeight: 700 }}>✓ Saved</span>
+            )}
+          </div>
+        </div>
+
+        {/* ---- Sync from Sola portal ---- */}
+        <div style={{ borderTop: "1px solid rgba(10,16,25,0.08)", paddingTop: 16, marginTop: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 800, margin: "0 0 8px" }}>Sync transactions from Sola</h3>
+          <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 12, lineHeight: 1.5 }}>
+            Pulls every transaction in the date range below and reconciles it with your local records.
+            Status changes (approved → declined, etc.) are applied. Toggle the orphan switch to also
+            auto-record charges that don&apos;t exist locally yet.
+          </p>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+            <div>
+              <label style={labelCss}>From</label>
+              <input type="date" value={syncFrom} onChange={(e) => setSyncFrom(e.target.value)} style={{ ...inputCss, width: 160 }} />
+            </div>
+            <div>
+              <label style={labelCss}>To</label>
+              <input type="date" value={syncTo} onChange={(e) => setSyncTo(e.target.value)} style={{ ...inputCss, width: 160 }} />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, padding: "0 8px 6px" }}>
+              <input type="checkbox" checked={syncRecordOrphans} onChange={(e) => setSyncRecordOrphans(e.target.checked)} />
+              Record orphan transactions
+            </label>
+            <button onClick={runSolaSync} disabled={syncing || !solaHasXkey} style={primaryBtn} title={!solaHasXkey ? "Save Sola xKey first" : ""}>
+              {syncing ? "Syncing…" : "Sync now"}
+            </button>
+          </div>
+
+          {syncError && (
+            <div style={{ color: "var(--cone-orange)", fontSize: 13, marginBottom: 12 }}>{syncError}</div>
+          )}
+          {syncResult && (
+            <div style={{ background: "rgba(45,122,61,0.06)", border: "1px solid rgba(45,122,61,0.25)", borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.5 }}>
+              <strong>Sync complete.</strong>{" "}
+              {syncResult.transactions_seen} transactions seen ·{" "}
+              {syncResult.payments_updated} payments updated ·{" "}
+              {syncResult.payments_created} new payments recorded ·{" "}
+              {syncResult.orphan_count} orphan{syncResult.orphan_count === 1 ? "" : "s"}
+              {syncResult.orphans.length > 0 && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ cursor: "pointer", color: "var(--blueprint)", fontWeight: 600 }}>
+                    Show orphans ({syncResult.orphans.length})
+                  </summary>
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 20, fontSize: 12 }}>
+                    {syncResult.orphans.map((o, i) => (
+                      <li key={i}>
+                        Ref {o.xRefNum || "—"} · ${o.xAmount || "—"} ·{" "}
+                        {[o.xBillFirstName, o.xBillLastName].filter(Boolean).join(" ") || o.xEmail || "Unknown"} ·{" "}
+                        {o.xStatus} · {o.xDate || "—"}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
         </div>
       </Section>
 
