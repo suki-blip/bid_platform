@@ -1653,15 +1653,18 @@ function QuickDonationModal({
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={modalCard}>
         <h2 style={modalTitle}>Quick donation</h2>
         <p style={{ fontSize: 12, opacity: 0.6, margin: "0 0 14px" }}>
-          Records a one-shot, already-paid donation. Apply it to an existing pledge
-          (even an old one) or let the system create a new standalone pledge.
+          Records a one-shot, already-paid donation. Either apply it to an existing pledge,
+          or record it as a free donation with no pledge attached.
         </p>
 
-        {/* Apply-to selector — first thing the user sees so they pick the target upfront. */}
+        {/* Apply-to selector — first thing the user sees so they pick the target upfront.
+            Empty value means "free donation, no pledge tracking" — internally we still write
+            a wrapper row (the DB requires it) but it's tagged is_standalone=1 and never shown
+            in any pledge list. */}
         <Lbl label="Apply to">
           <select value={applyToPledgeId} onChange={(e) => setApplyToPledgeId(e.target.value)} style={inputCss}>
-            <option value="">+ Create a new standalone pledge (default)</option>
-            {openPledges.length > 0 && <option disabled>───────── Existing pledges ─────────</option>}
+            <option value="">— Free donation (no pledge) —</option>
+            {openPledges.length > 0 && <option disabled>───────── Apply to an existing pledge ─────────</option>}
             {openPledges.map((p) => {
               const remaining = Math.max(0, p.amount - p.paid_amount);
               return (
@@ -1672,9 +1675,13 @@ function QuickDonationModal({
               );
             })}
           </select>
-          {applyToPledgeId && (
+          {applyToPledgeId ? (
             <div style={{ fontSize: 11, color: "var(--blueprint)", marginTop: 4 }}>
               ⓘ This payment will reduce that pledge&apos;s balance. No new pledge is created.
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+              Records a standalone donation. It will not appear in the donor&apos;s Pledges list — just under Payments.
             </div>
           )}
         </Lbl>
