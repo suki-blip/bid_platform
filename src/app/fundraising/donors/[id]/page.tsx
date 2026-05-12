@@ -1294,6 +1294,14 @@ export default function DonorProfilePage() {
         <QuickDonationModal
           donorId={String(params.id)}
           projects={projects}
+          pledges={pledges.map((p) => ({
+            id: p.id,
+            amount: p.amount,
+            paid_amount: p.paid_amount,
+            status: p.status,
+            project_name: p.project_name,
+            pledge_date: p.pledge_date,
+          }))}
           onClose={() => setShowQuickModal(false)}
           onCreated={() => {
             setShowQuickModal(false);
@@ -1519,16 +1527,23 @@ function PledgeModal({
 function QuickDonationModal({
   donorId,
   projects,
+  pledges,
   onClose,
   onCreated,
 }: {
   donorId: string;
   projects: { id: string; name: string }[];
+  // Existing pledges for this donor. The user can pick one and apply the payment to it
+  // instead of creating a new lump-sum pledge — works even when the paid_date is older
+  // than the pledge_date (no date constraint).
+  pledges: { id: string; amount: number; paid_amount: number; status: string; project_name: string | null; pledge_date: string }[];
   onClose: () => void;
   onCreated: () => void;
 }) {
   const [amount, setAmount] = useState("");
   const [projectId, setProjectId] = useState("");
+  // Empty string = "create new pledge"; otherwise a pledge id from the existing list.
+  const [applyToPledgeId, setApplyToPledgeId] = useState("");
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState("credit_card");
   const [checkNumber, setCheckNumber] = useState("");
@@ -1539,6 +1554,9 @@ function QuickDonationModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Only open pledges make sense as a target. Closed/cancelled ones we hide.
+  const openPledges = pledges.filter((p) => p.status === "open");
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -1548,7 +1566,10 @@ function QuickDonationModal({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         amount: Number(amount),
+        // When attaching to an existing pledge, the backend inherits the pledge's project.
+        // We still allow override via the Project picker.
         project_id: projectId || null,
+        pledge_id: applyToPledgeId || null,
         paid_date: paidDate,
         method,
         check_number: method === "check" ? checkNumber || null : null,
@@ -1572,8 +1593,31 @@ function QuickDonationModal({
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={modalCard}>
         <h2 style={modalTitle}>Quick donation</h2>
         <p style={{ fontSize: 12, opacity: 0.6, margin: "0 0 14px" }}>
-          Records a one-shot, already-paid donation. Use Add pledge for installments.
+          Records a one-shot, already-paid donation. Apply it to an existing pledge
+          (even an old one) or let the system create a new standalone pledge.
         </p>
+
+        {/* Apply-to selector — first thing the user sees so they pick the target upfront. */}
+        <Lbl label="Apply to">
+          <select value={applyToPledgeId} onChange={(e) => setApplyToPledgeId(e.target.value)} style={inputCss}>
+            <option value="">+ Create a new standalone pledge (default)</option>
+            {openPledges.length > 0 && <option disabled>───────── Existing pledges ─────────</option>}
+            {openPledges.map((p) => {
+              const remaining = Math.max(0, p.amount - p.paid_amount);
+              return (
+                <option key={p.id} value={p.id}>
+                  ${remaining.toLocaleString()} remaining of ${p.amount.toLocaleString()}
+                  {p.project_name ? ` · ${p.project_name}` : ""} · {p.pledge_date}
+                </option>
+              );
+            })}
+          </select>
+          {applyToPledgeId && (
+            <div style={{ fontSize: 11, color: "var(--blueprint)", marginTop: 4 }}>
+              ⓘ This payment will reduce that pledge&apos;s balance. No new pledge is created.
+            </div>
+          )}
+        </Lbl>
 
         <FormRow>
           <Lbl label="Amount *">
