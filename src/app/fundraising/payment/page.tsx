@@ -1287,7 +1287,7 @@ export default function PayPage() {
 
               {/* Transaction-ref methods: wire, ACH, OJC online, Pledger, Matbia, Quick Pay,
                   Donors Fund — and credit card (gateway txn id) all expose this field */}
-              {(["wire", "ach", "ojc_online", "pledger", "matbia", "quick_pay", "donors_fund", "credit_card"].includes(method)) && (
+              {(["wire", "ach", "ojc_online", "ojc_credit_card", "pledger", "matbia", "quick_pay", "donors_fund", "credit_card"].includes(method)) && (
                 <div>
                   <label style={inputLabel}>Transaction reference (optional)</label>
                   <input

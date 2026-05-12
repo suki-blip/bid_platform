@@ -13,6 +13,7 @@ export const PAYMENT_METHODS = [
   'ach',
   'ojc_check',
   'ojc_online',
+  'ojc_credit_card',
   'pledger',
   'matbia',
   'quick_pay',
@@ -35,6 +36,7 @@ export function paymentMethodLabel(m: string | null | undefined): string {
     case 'ach': return 'ACH';
     case 'ojc_check': return 'OJC Check';
     case 'ojc_online': return 'OJC Online';
+    case 'ojc_credit_card': return 'OJC Credit Card';
     case 'pledger': return 'Pledger';
     case 'matbia': return 'Matbia';
     case 'quick_pay': return 'Quick Pay';

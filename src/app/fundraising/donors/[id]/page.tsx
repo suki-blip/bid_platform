@@ -1639,7 +1639,7 @@ function QuickDonationModal({
             </Lbl>
           </FormRow>
         )}
-        {(["wire", "ach", "ojc_online", "pledger", "matbia", "quick_pay", "donors_fund"].includes(method)) && (
+        {(["wire", "ach", "ojc_online", "ojc_credit_card", "pledger", "matbia", "quick_pay", "donors_fund"].includes(method)) && (
           <Lbl label={`${paymentMethodLabel(method)} reference`}>
             <input value={transactionRef} onChange={(e) => setTransactionRef(e.target.value)} style={inputCss} />
           </Lbl>

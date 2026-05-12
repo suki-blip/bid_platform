@@ -120,6 +120,9 @@ function detectMethod(type: string, ref: string): string {
     ach: 'ach',
     'ojc check': 'ojc_check',
     'ojc online': 'ojc_online',
+    'ojc credit card': 'ojc_credit_card',
+    'ojc creditcard': 'ojc_credit_card',
+    'ojc cc': 'ojc_credit_card',
     ojc: 'ojc_check',
     pledger: 'pledger',
     matbia: 'matbia',
@@ -132,6 +135,7 @@ function detectMethod(type: string, ref: string): string {
   // Type "Other" — examine the ref for a service hint
   if (t === 'other' || !t) {
     if (r.includes('ojc online')) return 'ojc_online';
+    if (r.includes('ojc credit') || r.includes('ojc cc')) return 'ojc_credit_card';
     if (r.includes('ojc')) return 'ojc_check';
     if (r.includes('pledger')) return 'pledger';
     if (r.includes('matbia')) return 'matbia';
