@@ -123,12 +123,30 @@ export async function POST(request: Request) {
     const status = fieldsObj.status?.toLowerCase().includes('donor') ? 'donor' : defaultStatus === 'donor' ? 'donor' : 'prospect';
     const tags = fieldsObj.tags ? fieldsObj.tags.split(/[,;|]/).map((t) => t.trim()).filter(Boolean) : [];
 
+    // preferred_contact: accept common values; fall back to 'phone'
+    const pcRaw = (fieldsObj.preferred_contact || '').toLowerCase().trim();
+    const PC_MAP: Record<string, string> = {
+      phone: 'phone', mobile: 'phone', cell: 'phone', tel: 'phone', טלפון: 'phone',
+      email: 'email', mail: 'email', מייל: 'email', אימייל: 'email',
+      text: 'text', sms: 'text', whatsapp: 'text', וואטסאפ: 'text',
+      'in person': 'in_person', in_person: 'in_person', meeting: 'in_person',
+      letter: 'mail', post: 'mail', mailpost: 'mail',
+    };
+    const preferredContact = PC_MAP[pcRaw] || 'phone';
+
+    // do_not_contact: truthy strings ("yes", "true", "1", "x", Hebrew "כן") → 1
+    const dncRaw = (fieldsObj.do_not_contact || '').toLowerCase().trim();
+    const doNotContact = /^(1|true|yes|y|x|on|כן)$/i.test(dncRaw) ? 1 : 0;
+
     const stmts: ImportStmt[] = [
       {
         sql: `INSERT INTO fr_donors
-                (id, owner_id, status, first_name, last_name, hebrew_name, title, spouse_name,
-                 email, organization, occupation, birthday, anniversary, yahrzeit, tags, source_id, notes, preferred_contact)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'phone')`,
+                (id, owner_id, status, first_name, last_name,
+                 hebrew_name, hebrew_first_name, hebrew_last_name, hebrew_father_name,
+                 title, spouse_name,
+                 email, organization, occupation, birthday, anniversary, yahrzeit,
+                 tags, source_id, source_notes, notes, preferred_contact, do_not_contact)
+              VALUES (?, ?, ?, ?, ?,  ?, ?, ?, ?,  ?, ?,  ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?, ?)`,
         args: [
           donorId,
           session.ownerId,
@@ -136,6 +154,9 @@ export async function POST(request: Request) {
           fieldsObj.first_name || '(Unknown)',
           fieldsObj.last_name || null,
           fieldsObj.hebrew_name || null,
+          fieldsObj.hebrew_first_name || null,
+          fieldsObj.hebrew_last_name || null,
+          fieldsObj.hebrew_father_name || null,
           fieldsObj.title || null,
           fieldsObj.spouse_name || null,
           fieldsObj.email || null,
@@ -146,28 +167,37 @@ export async function POST(request: Request) {
           fieldsObj.yahrzeit || null,
           JSON.stringify(tags),
           sourceId,
+          fieldsObj.source_notes || null,
           fieldsObj.notes || null,
+          preferredContact,
+          doNotContact,
         ],
       },
     ];
 
+    // Each phone-* field becomes a row in fr_donor_phones, keyed by label.
+    // First-non-empty wins is_primary so the donor always has exactly one primary phone.
     let phoneOrder = 0;
-    if (fieldsObj.phone) {
+    const phoneSpecs: { value: string | undefined; label: string }[] = [
+      { value: fieldsObj.phone, label: 'mobile' },
+      { value: fieldsObj.phone_home, label: 'home' },
+      { value: fieldsObj.phone_office, label: 'office' },
+      { value: fieldsObj.phone_mother, label: 'mother' },
+      { value: fieldsObj.phone_father, label: 'father' },
+      { value: fieldsObj.phone_spouse, label: 'spouse' },
+    ];
+    for (const spec of phoneSpecs) {
+      if (!spec.value) continue;
       stmts.push({
-        sql: 'INSERT INTO fr_donor_phones (id, donor_id, label, phone, is_primary, sort_order) VALUES (?, ?, ?, ?, 1, ?)',
-        args: [crypto.randomUUID(), donorId, 'mobile', fieldsObj.phone, phoneOrder++],
-      });
-    }
-    if (fieldsObj.phone_home) {
-      stmts.push({
-        sql: `INSERT INTO fr_donor_phones (id, donor_id, label, phone, is_primary, sort_order) VALUES (?, ?, 'home', ?, ?, ?)`,
-        args: [crypto.randomUUID(), donorId, fieldsObj.phone_home, phoneOrder === 0 ? 1 : 0, phoneOrder++],
-      });
-    }
-    if (fieldsObj.phone_office) {
-      stmts.push({
-        sql: `INSERT INTO fr_donor_phones (id, donor_id, label, phone, is_primary, sort_order) VALUES (?, ?, 'office', ?, ?, ?)`,
-        args: [crypto.randomUUID(), donorId, fieldsObj.phone_office, phoneOrder === 0 ? 1 : 0, phoneOrder++],
+        sql: 'INSERT INTO fr_donor_phones (id, donor_id, label, phone, is_primary, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [
+          crypto.randomUUID(),
+          donorId,
+          spec.label,
+          spec.value,
+          phoneOrder === 0 ? 1 : 0,
+          phoneOrder++,
+        ],
       });
     }
 
