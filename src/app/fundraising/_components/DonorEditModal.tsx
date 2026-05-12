@@ -28,12 +28,32 @@ interface EditableDonor {
   do_not_contact: boolean;
 }
 
+// Each phone row in the editor. `id` is set on existing rows; new rows get `_new=true`.
+// Rows marked `_deleted` stay in state until save (so we know what to DELETE) but render hidden.
+interface PhoneRow {
+  id?: string;
+  label: string;
+  phone: string;
+  is_primary: boolean;
+  _new?: boolean;
+  _deleted?: boolean;
+}
+
+interface ExistingPhone {
+  id: string;
+  label: string;
+  phone: string;
+  is_primary: number; // 0 / 1 as stored
+}
+
 export default function DonorEditModal({
   donor,
+  phones: initialPhones,
   onClose,
   onSaved,
 }: {
   donor: EditableDonor;
+  phones?: ExistingPhone[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -60,6 +80,44 @@ export default function DonorEditModal({
   const [sourceNotes, setSourceNotes] = useState(donor.source_notes || "");
   const [notes, setNotes] = useState(donor.notes || "");
   const [doNotContact, setDoNotContact] = useState(donor.do_not_contact);
+
+  // Phones — local editable list. Snapshot of original values so we can diff at save.
+  const [phones, setPhones] = useState<PhoneRow[]>(() =>
+    (initialPhones || []).map((p) => ({
+      id: p.id,
+      label: p.label || "mobile",
+      phone: p.phone || "",
+      is_primary: Number(p.is_primary) === 1,
+    })),
+  );
+  // Snapshot of the original phones, used to decide which ones need PATCH on save.
+  const [originalPhones] = useState<ExistingPhone[]>(initialPhones || []);
+
+  function addPhoneRow() {
+    setPhones((prev) => [
+      ...prev,
+      { label: "mobile", phone: "", is_primary: prev.filter((p) => !p._deleted).length === 0, _new: true },
+    ]);
+  }
+  function updatePhoneRow(idx: number, patch: Partial<PhoneRow>) {
+    setPhones((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }
+  function setPrimaryPhone(idx: number) {
+    setPhones((prev) => prev.map((p, i) => ({ ...p, is_primary: i === idx })));
+  }
+  function removePhoneRow(idx: number) {
+    setPhones((prev) =>
+      prev
+        .map((p, i) => {
+          if (i !== idx) return p;
+          // Existing rows: mark for deletion. New rows: drop entirely.
+          if (p.id) return { ...p, _deleted: true };
+          return null;
+        })
+        .filter((p): p is PhoneRow => p !== null),
+    );
+  }
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -104,6 +162,66 @@ export default function DonorEditModal({
       setBusy(false);
       return;
     }
+
+    // ----- Persist phone changes -----
+    // Each row falls into one of four buckets:
+    //   _deleted + has id     → DELETE
+    //   _new                  → POST
+    //   has id, changed       → PATCH
+    //   has id, unchanged     → no-op
+    // We compare against the original snapshot to detect "changed".
+    const origById = new Map(originalPhones.map((p) => [p.id, p]));
+    const phoneOps: Promise<Response>[] = [];
+
+    for (const p of phones) {
+      if (p._deleted && p.id) {
+        phoneOps.push(
+          fetch(`/api/fundraising/donors/${donor.id}/phones/${p.id}`, { method: "DELETE" }),
+        );
+        continue;
+      }
+      if (p._new) {
+        if (!p.phone.trim()) continue; // skip empty new rows
+        phoneOps.push(
+          fetch(`/api/fundraising/donors/${donor.id}/phones`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              label: p.label,
+              phone: p.phone.trim(),
+              is_primary: p.is_primary ? 1 : 0,
+            }),
+          }),
+        );
+        continue;
+      }
+      if (p.id) {
+        const orig = origById.get(p.id);
+        const wasPrimary = orig ? Number(orig.is_primary) === 1 : false;
+        const changed =
+          !orig ||
+          orig.label !== p.label ||
+          orig.phone !== p.phone ||
+          wasPrimary !== p.is_primary;
+        if (changed) {
+          phoneOps.push(
+            fetch(`/api/fundraising/donors/${donor.id}/phones/${p.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                label: p.label,
+                phone: p.phone.trim(),
+                is_primary: p.is_primary ? 1 : 0,
+              }),
+            }),
+          );
+        }
+      }
+    }
+
+    // Wait for all phone ops before signalling done
+    await Promise.all(phoneOps);
+
     onSaved();
   }
 
@@ -201,6 +319,102 @@ export default function DonorEditModal({
             </select>
           </L>
         </Row>
+
+        {/* Phones */}
+        <div style={{ marginTop: 6, marginBottom: 10 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              opacity: 0.65,
+              marginBottom: 6,
+            }}
+          >
+            Phones
+          </div>
+          {phones.filter((p) => !p._deleted).length === 0 && (
+            <div style={{ fontSize: 12, opacity: 0.55, marginBottom: 6 }}>
+              No phones on file yet.
+            </div>
+          )}
+          {phones.map((p, idx) =>
+            p._deleted ? null : (
+              <div
+                key={p.id || `new-${idx}`}
+                style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center", flexWrap: "wrap" }}
+              >
+                <select
+                  value={p.label}
+                  onChange={(e) => updatePhoneRow(idx, { label: e.target.value })}
+                  style={{ ...input, width: 130 }}
+                >
+                  <option value="mobile">Mobile</option>
+                  <option value="home">Home</option>
+                  <option value="office">Office</option>
+                  <option value="mother">Mother (אמא)</option>
+                  <option value="father">Father (אבא)</option>
+                  <option value="spouse">Spouse</option>
+                  <option value="other">Other</option>
+                </select>
+                <input
+                  type="tel"
+                  value={p.phone}
+                  onChange={(e) => updatePhoneRow(idx, { phone: e.target.value })}
+                  placeholder="Phone number"
+                  style={{ ...input, flex: 1, minWidth: 160 }}
+                />
+                <label
+                  style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}
+                  title="Mark as the primary phone for this donor"
+                >
+                  <input
+                    type="radio"
+                    name="edit-primary-phone"
+                    checked={p.is_primary}
+                    onChange={() => setPrimaryPhone(idx)}
+                  />
+                  Primary
+                </label>
+                <button
+                  type="button"
+                  onClick={() => removePhoneRow(idx)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid rgba(232,93,31,0.3)",
+                    color: "var(--cone-orange)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    padding: "4px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                  title="Remove this phone"
+                >
+                  ×
+                </button>
+              </div>
+            ),
+          )}
+          <button
+            type="button"
+            onClick={addPhoneRow}
+            style={{
+              padding: "6px 12px",
+              background: "transparent",
+              border: "1px dashed rgba(10,16,25,0.2)",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--blueprint)",
+              marginTop: 2,
+            }}
+          >
+            + Add phone
+          </button>
+        </div>
 
         <Row>
           <L label="Organization">

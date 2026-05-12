@@ -1325,6 +1325,7 @@ export default function DonorProfilePage() {
             notes: donor.notes,
             do_not_contact: donor.do_not_contact,
           }}
+          phones={phones}
           onClose={() => setShowDonorEdit(false)}
           onSaved={() => {
             setShowDonorEdit(false);
