@@ -69,6 +69,7 @@ export default function PaymentsPage() {
     due_date: string | null;
     project_id: string | null;
     notes: string | null;
+    donor_id: string;
     donor_label?: string;
   } | null>(null);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -106,6 +107,7 @@ export default function PaymentsPage() {
           due_date: p.due_date || null,
           project_id: p.project_id || null,
           notes: p.notes || null,
+          donor_id: row ? row.donor_id : "",
           donor_label: donorLabel,
         });
       });

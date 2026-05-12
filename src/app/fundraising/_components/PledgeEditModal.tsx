@@ -20,8 +20,21 @@ interface EditablePledge {
   due_date?: string | null;
   project_id?: string | null;
   notes?: string | null;
-  // Display-only context
+  // Donor context — required so the Delete dialog can fetch the donor's OTHER pledges
+  // (for the 'move' option) and so we know whose totals to recompute.
+  donor_id: string;
   donor_label?: string;
+}
+
+// Used in the Delete dialog's "Move payments to another pledge" dropdown
+interface SiblingPledge {
+  id: string;
+  amount: number;
+  paid_amount: number;
+  status: string;
+  pledge_date: string;
+  project_name: string | null;
+  is_standalone?: number | null;
 }
 
 interface ProjectOption { id: string; name: string }
@@ -47,6 +60,30 @@ export default function PledgeEditModal({
   const [notes, setNotes] = useState(pledge.notes || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Delete-dialog state. Opened from the "Delete pledge" button when there are paid
+  // payments on the pledge. Lets the user pick what happens to the payments.
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  type DeleteAction = "delete" | "move" | "standalone";
+  const [deleteAction, setDeleteAction] = useState<DeleteAction>("delete");
+  const [moveTargetId, setMoveTargetId] = useState<string>("");
+  const [standaloneProjectId, setStandaloneProjectId] = useState<string>("");
+  const [siblings, setSiblings] = useState<SiblingPledge[]>([]);
+
+  // Lazy-load sibling pledges (other pledges of the same donor) only when the dialog opens
+  useEffect(() => {
+    if (!showDeleteDialog) return;
+    if (siblings.length > 0) return;
+    fetch(`/api/fundraising/donors/${pledge.donor_id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.pledges) return;
+        const others = (d.pledges as SiblingPledge[]).filter(
+          (p) => p.id !== pledge.id && !p.is_standalone,
+        );
+        setSiblings(others);
+      });
+  }, [showDeleteDialog, pledge.donor_id, pledge.id, siblings.length]);
 
   // Show a warning if the user tries to set an amount LOWER than what's already paid.
   // Server doesn't reject this (it's just a number), but the UI flags it as suspicious.
@@ -88,22 +125,42 @@ export default function PledgeEditModal({
     onSaved();
   }
 
-  async function destroy() {
-    if (
-      !confirm(
-        `Delete this pledge${pledge.donor_label ? ` for ${pledge.donor_label}` : ""}? This will also delete all of its payment rows (paid and scheduled). This cannot be undone.`,
-      )
-    )
+  function onClickDelete() {
+    // If the pledge has zero paid money, just confirm + cascade delete. Otherwise open
+    // the 3-option dialog so the user decides what happens to the existing payments.
+    if (paid === 0) {
+      if (!confirm(`Delete this pledge${pledge.donor_label ? ` for ${pledge.donor_label}` : ""}? This cannot be undone.`)) return;
+      runDelete("delete");
       return;
+    }
+    setShowDeleteDialog(true);
+  }
+
+  async function runDelete(action: DeleteAction) {
     setBusy(true);
     setError("");
-    const res = await fetch(`/api/fundraising/pledges/${pledge.id}`, { method: "DELETE" });
+
+    const params = new URLSearchParams();
+    params.set("payment_action", action);
+    if (action === "move") {
+      if (!moveTargetId) {
+        setError("Please pick a target pledge.");
+        setBusy(false);
+        return;
+      }
+      params.set("target_pledge_id", moveTargetId);
+    } else if (action === "standalone" && standaloneProjectId) {
+      params.set("project_id", standaloneProjectId);
+    }
+
+    const res = await fetch(`/api/fundraising/pledges/${pledge.id}?${params}`, { method: "DELETE" });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
       setError(e.error || "Failed to delete");
       setBusy(false);
       return;
     }
+    setShowDeleteDialog(false);
     if (onDeleted) onDeleted();
     else onSaved();
   }
@@ -192,7 +249,7 @@ export default function PledgeEditModal({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, gap: 12, flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={destroy}
+            onClick={onClickDelete}
             disabled={busy}
             style={{
               padding: "8px 14px",
@@ -214,8 +271,147 @@ export default function PledgeEditModal({
           </div>
         </div>
       </form>
+
+      {/* Delete dialog — shown when the pledge has paid money on it. The user has to decide
+          what happens to the existing payments before we can cascade-delete. */}
+      {showDeleteDialog && (
+        <div
+          style={{ ...overlay, zIndex: 250 }}
+          onClick={() => {
+            if (!busy) setShowDeleteDialog(false);
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ ...card, maxWidth: 540 }}
+          >
+            <h3 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 4px" }}>Delete pledge — what about the payments?</h3>
+            <p style={{ fontSize: 12, opacity: 0.65, margin: "0 0 14px", lineHeight: 1.5 }}>
+              This pledge has <strong>{fmtMoney(paid)}</strong> already received. Choose what should
+              happen to those payment records.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* Option 1 — Delete payments too */}
+              <label style={optionRow(deleteAction === "delete")}>
+                <input
+                  type="radio"
+                  name="del-action"
+                  checked={deleteAction === "delete"}
+                  onChange={() => setDeleteAction("delete")}
+                />
+                <div>
+                  <div style={{ fontWeight: 700 }}>Delete the payments too</div>
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>
+                    Removes the pledge and every payment row attached to it. Use this when the whole
+                    pledge was entered by mistake.
+                  </div>
+                </div>
+              </label>
+
+              {/* Option 2 — Move to another pledge */}
+              <label style={optionRow(deleteAction === "move")}>
+                <input
+                  type="radio"
+                  name="del-action"
+                  checked={deleteAction === "move"}
+                  onChange={() => setDeleteAction("move")}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700 }}>Move the payments to another pledge</div>
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>
+                    Re-attributes every payment to a different pledge of this donor. Use when the
+                    payments really belonged to another commitment.
+                  </div>
+                  {deleteAction === "move" && (
+                    <div style={{ marginTop: 8 }}>
+                      {siblings.length === 0 ? (
+                        <div style={{ fontSize: 12, opacity: 0.6, padding: 8, background: "rgba(10,16,25,0.04)", borderRadius: 6 }}>
+                          No other pledges for this donor.
+                        </div>
+                      ) : (
+                        <select value={moveTargetId} onChange={(e) => setMoveTargetId(e.target.value)} style={input}>
+                          <option value="">— Pick a pledge —</option>
+                          {siblings.map((p) => {
+                            const remaining = Math.max(0, p.amount - p.paid_amount);
+                            return (
+                              <option key={p.id} value={p.id}>
+                                {fmtMoney(p.amount)} pledged · {fmtMoney(remaining)} remaining
+                                {p.project_name ? ` · ${p.project_name}` : ""} · {p.pledge_date} · {p.status}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </label>
+
+              {/* Option 3 — Keep as standalone donations */}
+              <label style={optionRow(deleteAction === "standalone")}>
+                <input
+                  type="radio"
+                  name="del-action"
+                  checked={deleteAction === "standalone"}
+                  onChange={() => setDeleteAction("standalone")}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700 }}>Keep as standalone donations</div>
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>
+                    Converts each payment into its own free donation — no pledge tracking, just the
+                    money. Optionally tag them to a project.
+                  </div>
+                  {deleteAction === "standalone" && (
+                    <div style={{ marginTop: 8 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, opacity: 0.65, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>
+                        Project (optional)
+                      </label>
+                      <select value={standaloneProjectId} onChange={(e) => setStandaloneProjectId(e.target.value)} style={input}>
+                        <option value="">— General (no project) —</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            {error && <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 10 }}>{error}</div>}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+              <button type="button" onClick={() => setShowDeleteDialog(false)} disabled={busy} style={cancel}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => runDelete(deleteAction)}
+                disabled={busy || (deleteAction === "move" && !moveTargetId)}
+                style={{ ...submitBtn, background: "var(--cone-orange, #e85d1f)" }}
+              >
+                {busy ? "Working…" : "Delete pledge"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function optionRow(active: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    gap: 10,
+    alignItems: "flex-start",
+    padding: 12,
+    border: active ? "2px solid var(--cast-iron)" : "1px solid rgba(10,16,25,0.12)",
+    borderRadius: 10,
+    cursor: "pointer",
+    background: active ? "rgba(10,16,25,0.03)" : "#fff",
+  };
 }
 
 function Row({ children }: { children: React.ReactNode }) {

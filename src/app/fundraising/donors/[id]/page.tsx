@@ -1417,6 +1417,7 @@ export default function DonorProfilePage() {
             due_date: editingPledge.due_date,
             project_id: editingPledge.project_id,
             notes: editingPledge.notes,
+            donor_id: String(params.id),
             donor_label: `${donor.first_name} ${donor.last_name || ""}`.trim(),
           }}
           projects={projects}
