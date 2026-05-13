@@ -158,8 +158,20 @@ export default function ProjectDetailPage() {
 
   const { project, totals, pledges, payments } = data;
   const goal = project.goal_amount;
-  const pct = goal && goal > 0 ? Math.min(100, (totals.paid / goal) * 100) : null;
-  const remaining = goal && goal > 0 ? Math.max(0, goal - totals.paid) : null;
+
+  // Four KPIs:
+  //   Goal       — project.goal_amount
+  //   Received   — money already in the bank (totals.paid)
+  //   Collected  — money in the bank + outstanding pledge commitments. This is what we
+  //                expect the project to bring in total. = paid + (pledged - pledged_paid)
+  //                = pledged + standalone_paid. Includes both real pledge promises and the
+  //                free donations that already arrived.
+  //   Remaining  — Goal - Collected. The gap we still need to close with new pledges /
+  //                donations.
+  const received = totals.paid;
+  const collected = totals.paid + Math.max(0, totals.pledged - totals.pledged_paid);
+  const remaining = goal && goal > 0 ? Math.max(0, goal - collected) : null;
+  const pct = goal && goal > 0 ? Math.min(100, (collected / goal) * 100) : null;
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
@@ -246,22 +258,16 @@ export default function ProjectDetailPage() {
           )}
         </div>
 
-        {/* KPIs
-            - Raised        — every paid payment (pledge + standalone donations)
-            - Pledge collected — paid amounts that arrived through a real pledge
-            - Pledged outstanding — pledge commitments minus what's been paid against them
-            - Goal / Remaining / Donors as before */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginTop: 18 }}>
-          <Stat label="Raised" value={fmtMoney(totals.paid)} tone="success" />
-          <Stat label="Pledge collected" value={fmtMoney(totals.pledged_paid)} tone="info" />
+        {/* KPIs — exactly four, in the user's mental order */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginTop: 18 }}>
+          <Stat label="Goal" value={goal ? fmtMoney(goal) : "—"} tone="default" />
+          <Stat label="Received" value={fmtMoney(received)} tone="success" />
+          <Stat label="Collected (incl. pledges)" value={fmtMoney(collected)} tone="info" />
           <Stat
-            label="Pledge outstanding"
-            value={fmtMoney(Math.max(0, totals.pledged - totals.pledged_paid))}
-            tone="warn"
+            label="Remaining to collect"
+            value={remaining !== null ? fmtMoney(remaining) : "—"}
+            tone={remaining === 0 ? "success" : "warn"}
           />
-          {goal && <Stat label="Goal" value={fmtMoney(goal)} tone="default" />}
-          {remaining !== null && <Stat label="Remaining to goal" value={fmtMoney(remaining)} tone="warn" />}
-          <Stat label="Donors" value={String(totals.donor_count)} tone="default" />
         </div>
 
         {pct !== null && (
@@ -277,7 +283,7 @@ export default function ProjectDetailPage() {
               />
             </div>
             <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, textAlign: "right" }}>
-              {pct.toFixed(1)}% of goal
+              {pct.toFixed(1)}% of goal collected
             </div>
           </div>
         )}
