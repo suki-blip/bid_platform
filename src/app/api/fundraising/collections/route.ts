@@ -39,13 +39,18 @@ export async function GET(request: NextRequest) {
   }
 
   const result = await db().execute({
+    // pledge_amount = the pledge's total commitment; pledge_paid_total = sum of paid payments
+    // on that pledge. The frontend shows both alongside the installment amount so the user
+    // can quickly see how much of the commitment has been collected and how much remains.
     sql: `SELECT pp.id, pp.amount, pp.method, pp.status, pp.due_date, pp.paid_date,
                  pp.installment_number, pp.check_number, pp.check_date, pp.bank_name,
                  pp.cc_last4, pp.notes, pp.pledge_id,
                  d.id AS donor_id, d.first_name, d.last_name, d.hebrew_name,
                  (SELECT phone FROM fr_donor_phones WHERE donor_id = d.id ORDER BY is_primary DESC, sort_order ASC LIMIT 1) AS primary_phone,
                  prj.name AS project_name,
-                 pl.installments_total
+                 pl.installments_total,
+                 pl.amount AS pledge_amount,
+                 COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = pl.id AND status = 'paid'), 0) AS pledge_paid_total
           FROM fr_pledge_payments pp
           JOIN fr_donors d ON d.id = pp.donor_id
           LEFT JOIN fr_projects prj ON prj.id = pp.project_id

@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 
+// Helper: a filter query param can now be empty, a single id, or a comma-separated list.
+// The sentinel value '__none__' means "match rows where the field IS NULL" (for example
+// "no project" payments). Both can be mixed: 'project-1,__none__,project-2' →
+//   (project_id IN ('project-1','project-2') OR project_id IS NULL).
+function buildInOrNullClause(field: string, value: string): { sql: string; args: string[] } | null {
+  if (!value) return null;
+  const parts = value.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  const includeNull = parts.includes('__none__');
+  const ids = parts.filter((p) => p !== '__none__');
+
+  if (includeNull && ids.length === 0) return { sql: `${field} IS NULL`, args: [] };
+  if (!includeNull && ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    return { sql: `${field} IN (${placeholders})`, args: ids };
+  }
+  if (includeNull && ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    return { sql: `(${field} IN (${placeholders}) OR ${field} IS NULL)`, args: ids };
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const session = await getFundraisingSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -10,10 +33,11 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const from = url.searchParams.get('from'); // YYYY-MM-DD
   const to = url.searchParams.get('to');
-  const projectId = url.searchParams.get('project_id') || '';
-  const sourceId = url.searchParams.get('source_id') || '';
-  const fundraiserId = url.searchParams.get('fundraiser_id') || '';
-  const donorId = url.searchParams.get('donor_id') || '';
+  // All four filters now accept comma-separated ID lists + '__none__' for IS NULL.
+  const projectIdParam = url.searchParams.get('project_id') || '';
+  const sourceIdParam = url.searchParams.get('source_id') || '';
+  const fundraiserIdParam = url.searchParams.get('fundraiser_id') || '';
+  const donorIdParam = url.searchParams.get('donor_id') || '';
 
   // Build WHERE clauses for paid payments
   let payWhere = `d.owner_id = ? AND pp.status = 'paid'`;
@@ -22,9 +46,12 @@ export async function GET(request: NextRequest) {
   if (session.role === 'fundraiser') {
     payWhere += ' AND d.assigned_to = ?';
     payArgs.push(session.fundraiserId!);
-  } else if (fundraiserId) {
-    payWhere += ' AND d.assigned_to = ?';
-    payArgs.push(fundraiserId);
+  } else if (fundraiserIdParam) {
+    const f = buildInOrNullClause('d.assigned_to', fundraiserIdParam);
+    if (f) {
+      payWhere += ` AND ${f.sql}`;
+      payArgs.push(...f.args);
+    }
   }
   if (from) {
     payWhere += ' AND pp.paid_date >= ?';
@@ -34,17 +61,26 @@ export async function GET(request: NextRequest) {
     payWhere += ' AND pp.paid_date <= ?';
     payArgs.push(to);
   }
-  if (projectId) {
-    payWhere += ' AND pp.project_id = ?';
-    payArgs.push(projectId);
+  if (projectIdParam) {
+    const f = buildInOrNullClause('pp.project_id', projectIdParam);
+    if (f) {
+      payWhere += ` AND ${f.sql}`;
+      payArgs.push(...f.args);
+    }
   }
-  if (sourceId) {
-    payWhere += ' AND d.source_id = ?';
-    payArgs.push(sourceId);
+  if (sourceIdParam) {
+    const f = buildInOrNullClause('d.source_id', sourceIdParam);
+    if (f) {
+      payWhere += ` AND ${f.sql}`;
+      payArgs.push(...f.args);
+    }
   }
-  if (donorId) {
-    payWhere += ' AND d.id = ?';
-    payArgs.push(donorId);
+  if (donorIdParam) {
+    const f = buildInOrNullClause('d.id', donorIdParam);
+    if (f) {
+      payWhere += ` AND ${f.sql}`;
+      payArgs.push(...f.args);
+    }
   }
 
   const [summary, byProject, bySource, byMethod, byMonth, topDonors, detail] = await Promise.all([
@@ -127,26 +163,40 @@ export async function GET(request: NextRequest) {
   ]);
 
   // ===== Outstanding pledges (independent of paid filter) =====
-  let openWhere = `d.owner_id = ? AND p.status = 'open'`;
+  // Also limit to REAL pledges (is_standalone=0) — the standalone wrappers around free
+  // donations aren't commitments and shouldn't inflate the "outstanding" figure.
+  let openWhere = `d.owner_id = ? AND p.status = 'open' AND COALESCE(p.is_standalone, 0) = 0`;
   const openArgs: (string | number)[] = [session.ownerId];
   if (session.role === 'fundraiser') {
     openWhere += ' AND d.assigned_to = ?';
     openArgs.push(session.fundraiserId!);
-  } else if (fundraiserId) {
-    openWhere += ' AND d.assigned_to = ?';
-    openArgs.push(fundraiserId);
+  } else if (fundraiserIdParam) {
+    const f = buildInOrNullClause('d.assigned_to', fundraiserIdParam);
+    if (f) {
+      openWhere += ` AND ${f.sql}`;
+      openArgs.push(...f.args);
+    }
   }
-  if (projectId) {
-    openWhere += ' AND p.project_id = ?';
-    openArgs.push(projectId);
+  if (projectIdParam) {
+    const f = buildInOrNullClause('p.project_id', projectIdParam);
+    if (f) {
+      openWhere += ` AND ${f.sql}`;
+      openArgs.push(...f.args);
+    }
   }
-  if (sourceId) {
-    openWhere += ' AND d.source_id = ?';
-    openArgs.push(sourceId);
+  if (sourceIdParam) {
+    const f = buildInOrNullClause('d.source_id', sourceIdParam);
+    if (f) {
+      openWhere += ` AND ${f.sql}`;
+      openArgs.push(...f.args);
+    }
   }
-  if (donorId) {
-    openWhere += ' AND d.id = ?';
-    openArgs.push(donorId);
+  if (donorIdParam) {
+    const f = buildInOrNullClause('d.id', donorIdParam);
+    if (f) {
+      openWhere += ` AND ${f.sql}`;
+      openArgs.push(...f.args);
+    }
   }
 
   const outstanding = await db().execute({
@@ -157,6 +207,25 @@ export async function GET(request: NextRequest) {
           FROM fr_pledges p
           JOIN fr_donors d ON d.id = p.donor_id
           WHERE ${openWhere}`,
+    args: openArgs,
+  });
+
+  // ===== Pledge detail list — every real pledge matching the filters =====
+  // Surfaces the actual commitments behind the "outstanding" KPI so users can see
+  // which donor owes what and how far through each pledge they are.
+  const pledgesDetail = await db().execute({
+    sql: `SELECT p.id, p.amount, p.status, p.pledge_date, p.due_date, p.installments_total, p.payment_plan,
+                 p.collection_mode,
+                 d.id AS donor_id,
+                 d.first_name, d.last_name, d.hebrew_name,
+                 prj.name AS project_name,
+                 COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = p.id AND status = 'paid'), 0) AS paid_amount
+          FROM fr_pledges p
+          JOIN fr_donors d ON d.id = p.donor_id
+          LEFT JOIN fr_projects prj ON prj.id = p.project_id
+          WHERE ${openWhere.replace("p.status = 'open'", "p.status IN ('open','fulfilled')")}
+          ORDER BY (p.amount - COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = p.id AND status = 'paid'), 0)) DESC
+          LIMIT 500`,
     args: openArgs,
   });
   const outRow = outstanding.rows[0];
@@ -184,5 +253,24 @@ export async function GET(request: NextRequest) {
       count: Number(r.count),
     })),
     detail: detail.rows,
+    pledges_detail: pledgesDetail.rows.map((r) => {
+      const amount = Number(r.amount);
+      const paid = Number(r.paid_amount);
+      return {
+        id: String(r.id),
+        donor_id: String(r.donor_id),
+        donor_name: `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}`,
+        hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
+        project_name: r.project_name ? String(r.project_name) : null,
+        amount,
+        paid_amount: paid,
+        remaining: Math.max(0, amount - paid),
+        status: String(r.status),
+        pledge_date: String(r.pledge_date),
+        installments_total: Number(r.installments_total),
+        payment_plan: String(r.payment_plan),
+        collection_mode: r.collection_mode ? String(r.collection_mode) : 'manual',
+      };
+    }),
   });
 }

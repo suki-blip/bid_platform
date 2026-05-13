@@ -73,6 +73,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (sets.length === 0) return NextResponse.json({ ok: true });
   args.push(id);
   await db().execute({ sql: `UPDATE fr_pledges SET ${sets.join(', ')} WHERE id = ?`, args });
+
+  // If project_id changed, cascade the new project to every payment row of this pledge.
+  // Reports / project pages query payments by their own project_id (not by the pledge's),
+  // so without this update the payments would still show under the OLD project.
+  if ('project_id' in body) {
+    const newProjectId = body.project_id === '' ? null : body.project_id ?? null;
+    await db().execute({
+      sql: 'UPDATE fr_pledge_payments SET project_id = ? WHERE pledge_id = ?',
+      args: [newProjectId, id],
+    });
+  }
+
   await recomputeDonorTotals(String(pledge.donor_id));
   return NextResponse.json({ ok: true });
 }

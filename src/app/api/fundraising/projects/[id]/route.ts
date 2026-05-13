@@ -47,15 +47,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       args: [id, ...fundraiserArgs],
     }),
     db().execute({
-      // 'pledged' total excludes standalone pledges (the money is real, but it wasn't pledged —
-      // it was just donated). 'paid' counts every paid payment regardless.
-      // 'donor_count' counts only real pledgers so the project page doesn't double-count
-      // someone who just made a one-off donation.
+      // 'pledged'        — sum of real-pledge commitments (excludes standalone donations)
+      // 'paid'           — every paid payment regardless of pledge type
+      // 'pledged_paid'   — sum of paid payments that came IN through a real pledge.
+      //                    Equivalent to "how much of the commitments have been collected."
+      //                    Joins payments back to pledges so we can filter is_standalone=0.
+      // 'donor_count'    — only real pledgers, so a one-off donor doesn't double-count
       sql: `SELECT
               COALESCE((SELECT SUM(amount) FROM fr_pledges WHERE project_id = ? AND status IN ('open','fulfilled') AND COALESCE(is_standalone, 0) = 0), 0) AS pledged,
               COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE project_id = ? AND status = 'paid'), 0) AS paid,
+              COALESCE((
+                SELECT SUM(pp.amount)
+                FROM fr_pledge_payments pp
+                JOIN fr_pledges pl ON pl.id = pp.pledge_id
+                WHERE pp.project_id = ? AND pp.status = 'paid' AND COALESCE(pl.is_standalone, 0) = 0
+              ), 0) AS pledged_paid,
               COALESCE((SELECT COUNT(DISTINCT donor_id) FROM fr_pledges WHERE project_id = ? AND COALESCE(is_standalone, 0) = 0), 0) AS donor_count`,
-      args: [id, id, id],
+      args: [id, id, id, id],
     }),
   ]);
 
@@ -67,6 +75,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     totals: {
       pledged: Number(totals.rows[0]?.pledged || 0),
       paid: Number(totals.rows[0]?.paid || 0),
+      pledged_paid: Number(totals.rows[0]?.pledged_paid || 0),
       donor_count: Number(totals.rows[0]?.donor_count || 0),
     },
     pledges: pledges.rows,

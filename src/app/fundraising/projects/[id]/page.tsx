@@ -60,6 +60,7 @@ interface Payment {
 interface Totals {
   pledged: number;
   paid: number;
+  pledged_paid: number;
   donor_count: number;
 }
 
@@ -245,10 +246,19 @@ export default function ProjectDetailPage() {
           )}
         </div>
 
-        {/* KPIs */}
+        {/* KPIs
+            - Raised        — every paid payment (pledge + standalone donations)
+            - Pledge collected — paid amounts that arrived through a real pledge
+            - Pledged outstanding — pledge commitments minus what's been paid against them
+            - Goal / Remaining / Donors as before */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginTop: 18 }}>
           <Stat label="Raised" value={fmtMoney(totals.paid)} tone="success" />
-          <Stat label="Pledged" value={fmtMoney(totals.pledged)} tone="info" />
+          <Stat label="Pledge collected" value={fmtMoney(totals.pledged_paid)} tone="info" />
+          <Stat
+            label="Pledge outstanding"
+            value={fmtMoney(Math.max(0, totals.pledged - totals.pledged_paid))}
+            tone="warn"
+          />
           {goal && <Stat label="Goal" value={fmtMoney(goal)} tone="default" />}
           {remaining !== null && <Stat label="Remaining to goal" value={fmtMoney(remaining)} tone="warn" />}
           <Stat label="Donors" value={String(totals.donor_count)} tone="default" />

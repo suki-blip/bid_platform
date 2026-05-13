@@ -1,8 +1,12 @@
+// Always shows cents — even on round amounts (so $100 reads as "$100.00", $1,234.56 stays
+// "$1,234.56"). Accuracy beats prettiness here: the user wants to see the exact figure they
+// charged or received, including the change.
 export function fmtMoney(n: number, currency = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(n || 0);
 }
 

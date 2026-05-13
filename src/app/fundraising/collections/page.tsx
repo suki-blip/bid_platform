@@ -23,6 +23,10 @@ interface CollectionItem {
   primary_phone: string | null;
   project_name: string | null;
   pledge_id: string;
+  // Pledge-level rollup (joined in the API): total commitment + total paid on this pledge.
+  // Used to show the donor's bigger picture next to the row's installment amount.
+  pledge_amount: number;
+  pledge_paid_total: number;
 }
 
 interface Summary {
@@ -256,7 +260,9 @@ export default function CollectionsPage() {
                 <Th>Donor</Th>
                 <Th>Project</Th>
                 <Th>Method</Th>
-                <Th align="right">Amount</Th>
+                <Th align="right">Installment</Th>
+                <Th align="right">Pledge total</Th>
+                <Th align="right">Still owed</Th>
                 <Th>Due</Th>
                 <Th>Status</Th>
                 <Th align="right">Actions</Th>
@@ -303,6 +309,19 @@ export default function CollectionsPage() {
                     </td>
                     <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
                       {fmtMoney(item.amount)}
+                    </td>
+                    <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, fontVariantNumeric: "tabular-nums", opacity: 0.85 }}>
+                      {fmtMoney(item.pledge_amount)}
+                    </td>
+                    <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+                      {(() => {
+                        const remaining = Math.max(0, item.pledge_amount - item.pledge_paid_total);
+                        return (
+                          <span style={{ color: remaining > 0 ? "var(--cone-orange)" : "var(--shed-green)", fontWeight: 700 }}>
+                            {fmtMoney(remaining)}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding: "10px 14px", fontSize: 12 }}>
                       {fmtDate(item.due_date)}

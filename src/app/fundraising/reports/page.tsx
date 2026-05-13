@@ -26,6 +26,21 @@ interface ReportData {
     count: number;
   }[];
   detail: Record<string, unknown>[];
+  pledges_detail: {
+    id: string;
+    donor_id: string;
+    donor_name: string;
+    hebrew_name: string | null;
+    project_name: string | null;
+    amount: number;
+    paid_amount: number;
+    remaining: number;
+    status: string;
+    pledge_date: string;
+    installments_total: number;
+    payment_plan: string;
+    collection_mode: string;
+  }[];
 }
 
 interface Project { id: string; name: string }
@@ -43,10 +58,12 @@ export default function ReportsPage() {
 
   const [from, setFrom] = useState(yearAgo);
   const [to, setTo] = useState(today);
-  const [projectId, setProjectId] = useState("");
-  const [sourceId, setSourceId] = useState("");
-  const [donorId, setDonorId] = useState("");
-  const [fundraiserId, setFundraiserId] = useState("");
+  // Multi-select filters. Each holds an array of selected IDs. The sentinel value
+  // '__none__' (only in projectIds) means "include items with no project assigned".
+  const [projectIds, setProjectIds] = useState<string[]>([]);
+  const [sourceIds, setSourceIds] = useState<string[]>([]);
+  const [donorIds, setDonorIds] = useState<string[]>([]);
+  const [fundraiserIds, setFundraiserIds] = useState<string[]>([]);
 
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,12 +88,12 @@ export default function ReportsPage() {
     const params = new URLSearchParams();
     if (from) params.set("from", from);
     if (to) params.set("to", to);
-    if (projectId) params.set("project_id", projectId);
-    if (sourceId) params.set("source_id", sourceId);
-    if (donorId) params.set("donor_id", donorId);
-    if (fundraiserId) params.set("fundraiser_id", fundraiserId);
+    if (projectIds.length > 0) params.set("project_id", projectIds.join(","));
+    if (sourceIds.length > 0) params.set("source_id", sourceIds.join(","));
+    if (donorIds.length > 0) params.set("donor_id", donorIds.join(","));
+    if (fundraiserIds.length > 0) params.set("fundraiser_id", fundraiserIds.join(","));
     return params.toString();
-  }, [from, to, projectId, sourceId, donorId, fundraiserId]);
+  }, [from, to, projectIds, sourceIds, donorIds, fundraiserIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,25 +176,39 @@ export default function ReportsPage() {
           <Field label="To">
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
           </Field>
-          <Field label="Project">
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} style={inputStyle}>
-              <option value="">All projects</option>
+          <Field label="Projects (Ctrl/Cmd-click for multi)">
+            <select
+              multiple
+              value={projectIds}
+              onChange={(e) => setProjectIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+              style={{ ...inputStyle, minHeight: 100 }}
+            >
+              <option value="__none__">— No project (general) —</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </Field>
-          <Field label="Source">
-            <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} style={inputStyle}>
-              <option value="">All sources</option>
+          <Field label="Sources (Ctrl/Cmd-click for multi)">
+            <select
+              multiple
+              value={sourceIds}
+              onChange={(e) => setSourceIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+              style={{ ...inputStyle, minHeight: 100 }}
+            >
+              <option value="__none__">— No source —</option>
               {sources.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </Field>
-          <Field label="Donor">
-            <select value={donorId} onChange={(e) => setDonorId(e.target.value)} style={inputStyle}>
-              <option value="">All donors</option>
+          <Field label="Donors (Ctrl/Cmd-click for multi)">
+            <select
+              multiple
+              value={donorIds}
+              onChange={(e) => setDonorIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+              style={{ ...inputStyle, minHeight: 100 }}
+            >
               {donors.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.first_name} {d.last_name || ""}
@@ -186,9 +217,13 @@ export default function ReportsPage() {
             </select>
           </Field>
           {isManager && (
-            <Field label="Fundraiser">
-              <select value={fundraiserId} onChange={(e) => setFundraiserId(e.target.value)} style={inputStyle}>
-                <option value="">All fundraisers</option>
+            <Field label="Fundraisers (Ctrl/Cmd-click for multi)">
+              <select
+                multiple
+                value={fundraiserIds}
+                onChange={(e) => setFundraiserIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                style={{ ...inputStyle, minHeight: 100 }}
+              >
                 {fundraisers.map((f) => (
                   <option key={f.id} value={f.id}>{f.name}</option>
                 ))}
@@ -290,6 +325,70 @@ export default function ReportsPage() {
               )}
             </Panel>
           </div>
+
+          {/* Pledges detail — every real (non-standalone) pledge matching the filters.
+              Shows the bigger picture beyond just paid payments: which commitments exist,
+              how much has been collected, and what's still outstanding per donor. */}
+          {data.pledges_detail && data.pledges_detail.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <Panel title={`Pledges (${data.pledges_detail.length})`}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: "#fbf7ec", textAlign: "left" }}>
+                        <Th>Date</Th>
+                        <Th>Donor</Th>
+                        <Th>Project</Th>
+                        <Th align="right">Pledged</Th>
+                        <Th align="right">Paid</Th>
+                        <Th align="right">Remaining</Th>
+                        <Th>Status</Th>
+                        <Th>Plan</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.pledges_detail.slice(0, 200).map((p) => (
+                        <tr key={p.id} style={{ borderTop: "1px solid rgba(10,16,25,0.05)" }}>
+                          <td style={td}>{p.pledge_date}</td>
+                          <td style={td}>
+                            <Link href={`/fundraising/donors/${p.donor_id}`} style={{ color: "var(--cast-iron)", textDecoration: "none" }}>
+                              {p.donor_name}
+                            </Link>
+                            {p.hebrew_name && (
+                              <div style={{ fontSize: 11, opacity: 0.6, fontFamily: "'Frank Ruhl Libre', serif", direction: "rtl" }}>
+                                {p.hebrew_name}
+                              </div>
+                            )}
+                          </td>
+                          <td style={td}>{p.project_name || "— General —"}</td>
+                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
+                            {fmtMoney(p.amount)}
+                          </td>
+                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--shed-green)" }}>
+                            {fmtMoney(p.paid_amount)}
+                          </td>
+                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: p.remaining > 0 ? "var(--cone-orange)" : "var(--shed-green)" }}>
+                            {fmtMoney(p.remaining)}
+                          </td>
+                          <td style={td}>{p.status}</td>
+                          <td style={{ ...td, fontSize: 11, opacity: 0.7 }}>
+                            {p.installments_total > 1
+                              ? `${p.installments_total} × ${p.payment_plan} · ${p.collection_mode}`
+                              : "Lump sum"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {data.pledges_detail.length > 200 && (
+                    <div style={{ padding: 8, fontSize: 11, opacity: 0.55, textAlign: "center" }}>
+                      Showing 200 of {data.pledges_detail.length}. Export CSV for the full list.
+                    </div>
+                  )}
+                </div>
+              </Panel>
+            </div>
+          )}
 
           {/* Detail */}
           <div style={{ marginTop: 14 }}>
