@@ -54,20 +54,61 @@ export async function refreshDonorNextFollowup(donorId: string): Promise<void> {
   });
 }
 
+// Generate due-dates for a multi-installment pledge.
+//
+// startDate    — ISO YYYY-MM-DD of the FIRST installment (also drives day-of-month /
+//                day-of-week when paymentDay is null).
+// count        — number of installments.
+// plan         — cadence. 'weekly' adds 7 days; 'monthly' adds 1 month; 'quarterly' = 3
+//                months; 'annual' = 12 months. 'lump_sum' / 'custom' return [startDate].
+// paymentDay   — optional override. For monthly/quarterly/annual: day-of-month (1-31);
+//                if the target month has fewer days (e.g. 31 in Feb), we clamp to month
+//                end. For weekly: day-of-week (0=Sun, 6=Sat); the first installment shifts
+//                forward to the next matching weekday, then we step by 7 days.
 export function generateInstallmentDates(
   startDate: string,
   count: number,
-  plan: 'lump_sum' | 'monthly' | 'quarterly' | 'annual' | 'custom',
+  plan: 'lump_sum' | 'weekly' | 'monthly' | 'quarterly' | 'annual' | 'custom',
+  paymentDay?: number | null,
 ): string[] {
-  if (plan === 'lump_sum' || count <= 1) return [startDate];
+  if (plan === 'lump_sum' || plan === 'custom' || count <= 1) return [startDate];
 
-  const monthsBetween = plan === 'monthly' ? 1 : plan === 'quarterly' ? 3 : plan === 'annual' ? 12 : 1;
-  const start = new Date(startDate);
+  const start = new Date(startDate + 'T00:00:00');
   const dates: string[] = [];
+
+  if (plan === 'weekly') {
+    // If a day-of-week is supplied, shift `start` forward to the next matching day.
+    if (paymentDay != null && paymentDay >= 0 && paymentDay <= 6) {
+      const currentDow = start.getDay();
+      const delta = (paymentDay - currentDow + 7) % 7;
+      start.setDate(start.getDate() + delta);
+    }
+    for (let i = 0; i < count; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i * 7);
+      dates.push(d.toISOString().slice(0, 10));
+    }
+    return dates;
+  }
+
+  const monthsBetween = plan === 'monthly' ? 1 : plan === 'quarterly' ? 3 : 12;
+  // Anchor to either the user-chosen day-of-month or startDate's own day.
+  const anchorDay = paymentDay && paymentDay >= 1 && paymentDay <= 31 ? paymentDay : start.getDate();
+
   for (let i = 0; i < count; i++) {
-    const d = new Date(start);
-    d.setMonth(d.getMonth() + i * monthsBetween);
-    dates.push(d.toISOString().slice(0, 10));
+    // Build the target year+month by adding monthsBetween * i to the start.
+    const year = start.getFullYear();
+    const monthIdx = start.getMonth() + i * monthsBetween;
+    // Last day of target month (Date(y, m+1, 0) = last day of month m).
+    const lastDay = new Date(year, monthIdx + 1, 0).getDate();
+    const day = Math.min(anchorDay, lastDay);
+    const d = new Date(year, monthIdx, day);
+    // toISOString in UTC can roll back a day if the local TZ is ahead of UTC — build the
+    // string manually from local-time fields to avoid that.
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
   }
   return dates;
 }

@@ -24,13 +24,20 @@ export async function GET(request: NextRequest) {
     where += " AND pp.status IN ('scheduled','failed') AND pp.due_date IS NOT NULL AND pp.due_date < ?";
     args.push(today);
   } else if (view === 'upcoming') {
-    where += " AND pp.status = 'scheduled' AND pp.due_date IS NOT NULL AND pp.due_date >= ?";
-    args.push(today);
+    // Future scheduled installments (next 30 days). Kept as an opt-in view so the user can
+    // look ahead, but they don't pollute the default "All open" tab anymore.
+    where += " AND pp.status = 'scheduled' AND pp.due_date IS NOT NULL AND pp.due_date >= ? AND pp.due_date <= ?";
+    const in30 = new Date();
+    in30.setDate(in30.getDate() + 30);
+    args.push(today, in30.toISOString().slice(0, 10));
   } else if (view === 'bounced') {
     where += " AND pp.status IN ('bounced','failed')";
   } else {
-    // 'all' = anything that needs attention (not yet paid, not cancelled)
-    where += " AND pp.status IN ('scheduled','bounced','failed')";
+    // 'all' (default) = rows whose due_date has actually arrived + bounced/failed.
+    // Future-dated installments are hidden — they're not actionable yet. To peek at them,
+    // switch to the "Upcoming" tab.
+    where += " AND pp.status IN ('scheduled','bounced','failed') AND (pp.due_date IS NULL OR pp.due_date <= ?)";
+    args.push(today);
   }
 
   if (projectId) {

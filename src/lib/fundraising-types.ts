@@ -1,7 +1,7 @@
 export const DONOR_STATUSES = ['prospect', 'donor'] as const;
 export type DonorStatus = (typeof DONOR_STATUSES)[number];
 
-export const PAYMENT_PLANS = ['lump_sum', 'monthly', 'quarterly', 'annual', 'custom'] as const;
+export const PAYMENT_PLANS = ['lump_sum', 'weekly', 'monthly', 'quarterly', 'annual', 'custom'] as const;
 export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
 
 export const PAYMENT_METHODS = [

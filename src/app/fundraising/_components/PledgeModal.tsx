@@ -27,7 +27,12 @@ export default function PledgeModal({
   const [projectId, setProjectId] = useState("");
   const [pledgeDate, setPledgeDate] = useState(new Date().toISOString().slice(0, 10));
   const [installments, setInstallments] = useState("1");
-  const [plan, setPlan] = useState<"lump_sum" | "monthly" | "quarterly" | "annual">("lump_sum");
+  type Plan = "lump_sum" | "weekly" | "monthly" | "quarterly" | "annual";
+  const [plan, setPlan] = useState<Plan>("lump_sum");
+  // payment_day:
+  //   monthly/quarterly/annual → day-of-month (1-31). Empty string = use pledge_date.
+  //   weekly                   → day-of-week (0-6, Sunday=0). Empty = use pledge_date's weekday.
+  const [paymentDay, setPaymentDay] = useState<string>("");
   const [defaultMethod, setDefaultMethod] = useState("pending");
   // collection_mode:
   //   manual    → Collections shows each installment as its own row (we chase each month)
@@ -50,6 +55,7 @@ export default function PledgeModal({
         pledge_date: pledgeDate,
         installments_total: Number(installments),
         payment_plan: plan,
+        payment_day: paymentDay === "" ? null : Number(paymentDay),
         default_method: defaultMethod,
         collection_mode: collectionMode,
         notes: notes || null,
@@ -115,10 +121,14 @@ export default function PledgeModal({
           <L label="Payment plan">
             <select
               value={plan}
-              onChange={(e) => setPlan(e.target.value as "lump_sum" | "monthly" | "quarterly" | "annual")}
+              onChange={(e) => {
+                setPlan(e.target.value as Plan);
+                setPaymentDay(""); // reset day when plan changes — interpretation differs
+              }}
               style={input}
             >
               <option value="lump_sum">Lump sum (1 payment)</option>
+              <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
               <option value="quarterly">Quarterly</option>
               <option value="annual">Annual</option>
@@ -135,6 +145,45 @@ export default function PledgeModal({
             />
           </L>
         </Row>
+
+        {/* Per-plan day picker. Monthly/quarterly/annual → day of month; weekly → day of week. */}
+        {plan === "weekly" && Number(installments) > 1 && (
+          <Row>
+            <L label="Day of the week">
+              <select value={paymentDay} onChange={(e) => setPaymentDay(e.target.value)} style={input}>
+                <option value="">— Use the day from pledge date —</option>
+                <option value="0">Sunday</option>
+                <option value="1">Monday</option>
+                <option value="2">Tuesday</option>
+                <option value="3">Wednesday</option>
+                <option value="4">Thursday</option>
+                <option value="5">Friday</option>
+                <option value="6">Saturday</option>
+              </select>
+            </L>
+          </Row>
+        )}
+        {(plan === "monthly" || plan === "quarterly" || plan === "annual") && Number(installments) > 1 && (
+          <Row>
+            <L label="Day of the month (1-31)">
+              <input
+                type="number"
+                min="1"
+                max="31"
+                value={paymentDay}
+                placeholder="Use the day from pledge date"
+                onChange={(e) => {
+                  const n = e.target.value.replace(/\D/g, "").slice(0, 2);
+                  setPaymentDay(n);
+                }}
+                style={input}
+              />
+              <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+                ⓘ Months shorter than this number (e.g. Feb 30) will use the last day of the month.
+              </div>
+            </L>
+          </Row>
+        )}
 
         {/* Collection mode — only meaningful when there are multiple installments */}
         {plan !== "lump_sum" && Number(installments) > 1 && (

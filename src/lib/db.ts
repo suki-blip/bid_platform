@@ -542,6 +542,14 @@ async function initializeDatabase() {
   // only one row either way.
   try { await client.execute("ALTER TABLE fr_pledges ADD COLUMN collection_mode TEXT NOT NULL DEFAULT 'manual'"); } catch {}
 
+  // payment_day: anchor for installment scheduling.
+  //   monthly/quarterly/annual → day-of-month (1-31). If a target month is shorter (Feb 30),
+  //                              we clamp to the last day of that month.
+  //   weekly                   → day-of-week (0=Sun, 1=Mon, ..., 6=Sat).
+  //   lump_sum / custom        → unused.
+  // NULL means "use the day from pledge_date" — original behaviour.
+  try { await client.execute('ALTER TABLE fr_pledges ADD COLUMN payment_day INTEGER'); } catch {}
+
   // Sola / Cardknox credentials (per owner). Keys are sensitive — only the SETTINGS API
   // returns them, and only masked. Server-side endpoints read them directly to call x1.cardknox.com.
   //   sola_xkey         — Cardknox API key (xKey). Server-only. Used for cc:sale + Report:Transactions.

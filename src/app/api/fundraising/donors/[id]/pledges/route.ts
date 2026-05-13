@@ -20,7 +20,7 @@ interface PaymentInput {
   bank_name?: string;
 }
 
-const VALID_PLANS = ['lump_sum', 'monthly', 'quarterly', 'annual', 'custom'] as const;
+const VALID_PLANS = ['lump_sum', 'weekly', 'monthly', 'quarterly', 'annual', 'custom'] as const;
 type Plan = (typeof VALID_PLANS)[number];
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -39,6 +39,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const plan: Plan = VALID_PLANS.includes(body.payment_plan) ? body.payment_plan : 'lump_sum';
   const installmentsTotalRequested = Math.max(1, Number(body.installments_total) || 1);
   const pledgeDate = body.pledge_date || new Date().toISOString().slice(0, 10);
+
+  // payment_day: optional override for when each installment falls. Validate per-plan:
+  //   monthly/quarterly/annual → day-of-month (1..31)
+  //   weekly                   → day-of-week (0..6)
+  //   other plans              → ignored
+  let paymentDay: number | null = null;
+  if (body.payment_day != null && body.payment_day !== '') {
+    const n = Number(body.payment_day);
+    if (plan === 'weekly') {
+      if (Number.isInteger(n) && n >= 0 && n <= 6) paymentDay = n;
+    } else if (plan === 'monthly' || plan === 'quarterly' || plan === 'annual') {
+      if (Number.isInteger(n) && n >= 1 && n <= 31) paymentDay = n;
+    }
+  }
   // 'pending' means the donor pledged but the payment method will be decided later
   // (the Collections team will fill it in when the payment is actually made).
   const defaultMethod = body.default_method || 'pending';
@@ -57,8 +71,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     {
       sql: `INSERT INTO fr_pledges
               (id, owner_id, donor_id, project_id, fundraiser_id, amount, currency, status,
-               pledge_date, due_date, installments_total, payment_plan, notes, collection_mode)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`,
+               pledge_date, due_date, installments_total, payment_plan, notes, collection_mode, payment_day)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         pledgeId,
         session.ownerId,
@@ -73,6 +87,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         plan,
         body.notes || null,
         collectionMode,
+        paymentDay,
       ],
     },
   ];
@@ -92,7 +107,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       },
     ];
   } else {
-    const dates = generateInstallmentDates(pledgeDate, installmentsTotal, plan);
+    const dates = generateInstallmentDates(pledgeDate, installmentsTotal, plan, paymentDay);
     const baseAmt = Math.floor((amount * 100) / installmentsTotal) / 100;
     const remainder = Math.round((amount - baseAmt * installmentsTotal) * 100) / 100;
     payments = dates.map((d, i) => ({
