@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // Sola/Cardknox iFields embed.
 //
-// Loads https://cdn.cardknox.com/ifields/2.16.2412.0801/ifields.min.js, calls
+// Loads https://cdn.cardknox.com/ifields/latest/ifields.min.js, calls
 // setAccount(ifieldsKey, softwareName, '1.0'), and renders the two iframe-style
 // inputs (card-number + cvv). When the parent calls `submit()` via the imperative
 // ref, we run getTokens() and resolve with { sut_card, sut_cvv }.
@@ -17,8 +17,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // inputs are rendered by Cardknox inside cross-origin iframes — sensitive data
 // never touches our DOM, our server, or our network logs. Cardknox returns
 // single-use tokens (SUTs) instead, which the merchant API can charge once.
+//
+// We use /latest/ (not a pinned version) because Cardknox does not maintain old
+// pinned URLs on the CDN — they 404 within months of release. /latest/ is the
+// supported stable URL per Cardknox docs; the API surface (setAccount, getTokens)
+// is contractually stable across versions.
 
-const IFIELDS_SCRIPT_URL = "https://cdn.cardknox.com/ifields/2.16.2412.0801/ifields.min.js";
+const IFIELDS_SCRIPT_URL = "https://cdn.cardknox.com/ifields/latest/ifields.min.js";
 
 // The script attaches these globals to window:
 interface IFieldsAPI {
