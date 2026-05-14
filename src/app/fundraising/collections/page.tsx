@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import DonorSidePanel from "../_components/DonorSidePanel";
 import CardChargeModal from "../_components/CardChargeModal";
+import DataTable, { type DataTableColumn } from "../_components/DataTable";
 import { fmtMoney, fmtDate, daysOverdue, fmtMethod } from "@/lib/fundraising-format";
 
 interface CollectionItem {
@@ -247,155 +248,185 @@ export default function CollectionsPage() {
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Nothing to collect 🙌</div>
           <div style={{ fontSize: 12, opacity: 0.6 }}>All payments in this view are squared away.</div>
         </div>
-      ) : filtered.length === 0 ? (
-        <div style={{ padding: 30, textAlign: "center", background: "#fff", border: "1px dashed rgba(10,16,25,0.12)", borderRadius: 12, fontSize: 13, opacity: 0.6 }}>
-          No items match these filters.{" "}
-          <button onClick={clearFilters} style={{ background: "none", border: "none", color: "var(--blueprint)", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600 }}>Clear</button>
-        </div>
       ) : (
-        <div style={{ background: "#fff", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 12, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "#fbf7ec", textAlign: "left" }}>
-                <Th>Donor</Th>
-                <Th>Project</Th>
-                <Th>Method</Th>
-                <Th align="right">Installment</Th>
-                <Th align="right">Pledge total</Th>
-                <Th align="right">Still owed</Th>
-                <Th>Due</Th>
-                <Th>Status</Th>
-                <Th align="right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => {
+        <DataTable
+          data={filtered}
+          rowKey={(i) => i.id}
+          emptyMessage={
+            <span>
+              No items match these filters.{" "}
+              <button onClick={clearFilters} style={{ background: "none", border: "none", color: "var(--blueprint)", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600 }}>
+                Clear
+              </button>
+            </span>
+          }
+          storageKey="collections"
+          columns={[
+            {
+              key: "donor",
+              header: "Donor",
+              accessor: (i) => i.donor_name,
+              render: (item) => (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewDonorId(item.donor_id);
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      color: "var(--cast-iron)",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      fontSize: "inherit",
+                      textAlign: "left",
+                    }}
+                  >
+                    {item.donor_name}
+                  </button>
+                  {item.primary_phone && (
+                    <div style={{ fontSize: 11, opacity: 0.6 }}>
+                      <a href={`tel:${item.primary_phone}`} style={{ color: "inherit", textDecoration: "none" }}>
+                        {item.primary_phone}
+                      </a>
+                    </div>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: "project",
+              header: "Project",
+              accessor: (i) => i.project_name || "(General)",
+              render: (i) => <span style={{ fontSize: 12 }}>{i.project_name || "—"}</span>,
+            },
+            {
+              key: "method",
+              header: "Method",
+              accessor: (i) => i.method,
+              filterDisplay: (v) => fmtMethod(String(v)),
+              render: (item) => (
+                <span style={{ fontSize: 12 }}>
+                  <div style={{ textTransform: "capitalize" }}>{fmtMethod(item.method)}</div>
+                  <div style={{ fontSize: 10, opacity: 0.55 }}>
+                    {item.method === "check" && item.check_number && `#${item.check_number}`}
+                    {item.method === "credit_card" && item.cc_last4 && `····${item.cc_last4}`}
+                    {item.installments_total > 1 && ` · #${item.installment_number}/${item.installments_total}`}
+                  </div>
+                </span>
+              ),
+            },
+            {
+              key: "installment",
+              header: "Installment",
+              accessor: (i) => i.amount,
+              render: (i) => <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(i.amount)}</span>,
+              align: "right",
+            },
+            {
+              key: "pledge_total",
+              header: "Pledge total",
+              accessor: (i) => i.pledge_amount,
+              render: (i) => <span style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", opacity: 0.85 }}>{fmtMoney(i.pledge_amount)}</span>,
+              align: "right",
+            },
+            {
+              key: "owed",
+              header: "Still owed",
+              accessor: (i) => Math.max(0, i.pledge_amount - i.pledge_paid_total),
+              render: (item) => {
+                const remaining = Math.max(0, item.pledge_amount - item.pledge_paid_total);
+                return (
+                  <span style={{ color: remaining > 0 ? "var(--cone-orange)" : "var(--shed-green)", fontWeight: 700, fontVariantNumeric: "tabular-nums", fontSize: 12 }}>
+                    {fmtMoney(remaining)}
+                  </span>
+                );
+              },
+              align: "right",
+            },
+            {
+              key: "due",
+              header: "Due",
+              accessor: (i) => i.due_date,
+              render: (item) => {
                 const overdue = daysOverdue(item.due_date);
                 return (
-                  <tr key={item.id} style={{ borderTop: "1px solid rgba(10,16,25,0.05)" }}>
-                    <td style={{ padding: "10px 14px" }}>
-                      <button
-                        onClick={() => setPreviewDonorId(item.donor_id)}
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          padding: 0,
-                          color: "var(--cast-iron)",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          fontSize: "inherit",
-                          textAlign: "left",
-                        }}
-                      >
-                        {item.donor_name}
-                      </button>
-                      {item.primary_phone && (
-                        <div style={{ fontSize: 11, opacity: 0.6 }}>
-                          <a href={`tel:${item.primary_phone}`} style={{ color: "inherit", textDecoration: "none" }}>
-                            {item.primary_phone}
-                          </a>
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: "10px 14px", fontSize: 12 }}>{item.project_name || "—"}</td>
-                    <td style={{ padding: "10px 14px", fontSize: 12 }}>
-                      <div style={{ textTransform: "capitalize" }}>{fmtMethod(item.method)}</div>
-                      <div style={{ fontSize: 10, opacity: 0.55 }}>
-                        {item.method === "check" && item.check_number && `#${item.check_number}`}
-                        {item.method === "credit_card" && item.cc_last4 && `····${item.cc_last4}`}
-                        {item.installments_total > 1 && ` · #${item.installment_number}/${item.installments_total}`}
-                      </div>
-                    </td>
-                    <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                      {fmtMoney(item.amount)}
-                    </td>
-                    <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, fontVariantNumeric: "tabular-nums", opacity: 0.85 }}>
-                      {fmtMoney(item.pledge_amount)}
-                    </td>
-                    <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-                      {(() => {
-                        const remaining = Math.max(0, item.pledge_amount - item.pledge_paid_total);
-                        return (
-                          <span style={{ color: remaining > 0 ? "var(--cone-orange)" : "var(--shed-green)", fontWeight: 700 }}>
-                            {fmtMoney(remaining)}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td style={{ padding: "10px 14px", fontSize: 12 }}>
-                      {fmtDate(item.due_date)}
-                      {overdue > 0 && item.status !== "paid" && (
-                        <div style={{ fontSize: 10, color: "var(--cone-orange)", fontWeight: 700 }}>
-                          {overdue}d overdue
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: "10px 14px" }}>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          padding: "3px 8px",
-                          borderRadius: 999,
-                          background:
-                            item.status === "bounced" || item.status === "failed"
-                              ? "rgba(232,93,31,0.12)"
-                              : "rgba(28,93,142,0.1)",
-                          color:
-                            item.status === "bounced" || item.status === "failed"
-                              ? "var(--cone-orange)"
-                              : "var(--blueprint)",
-                        }}
-                      >
-                        {item.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      {/* In-system credit card charge — opens iFields dialog, no redirect.
-                          Visible for every open row; if Sola isn't configured the dialog
-                          itself shows a friendly hint pointing to Settings. */}
-                      <button
-                        onClick={() => setChargingItem(item)}
-                        style={{
-                          padding: "5px 10px",
-                          background: "var(--blueprint)",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          marginRight: 4,
-                        }}
-                        title="Charge a card now via Sola — applies the payment to this installment"
-                      >
-                        💳 Charge
-                      </button>
-                      <button onClick={() => markPaid(item.id)} style={actionBtn} title="Mark paid">
-                        ✓ Paid
-                      </button>{" "}
-                      <button onClick={() => reschedule(item.id)} style={actionBtnGhost} title="Reschedule">
-                        Reschedule
-                      </button>{" "}
-                      {item.status !== "bounced" && item.method === "check" && (
-                        <>
-                          <button onClick={() => markBounced(item.id)} style={{ ...actionBtnGhost, color: "var(--cone-orange)" }}>
-                            Bounce
-                          </button>{" "}
-                        </>
-                      )}
-                      <button onClick={() => cancelPayment(item.id)} style={{ ...actionBtnGhost, color: "rgba(10,16,25,0.5)" }}>
-                        Cancel
-                      </button>
-                    </td>
-                  </tr>
+                  <span style={{ fontSize: 12 }}>
+                    {fmtDate(item.due_date)}
+                    {overdue > 0 && item.status !== "paid" && (
+                      <div style={{ fontSize: 10, color: "var(--cone-orange)", fontWeight: 700 }}>{overdue}d overdue</div>
+                    )}
+                  </span>
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
+              },
+            },
+            {
+              key: "status",
+              header: "Status",
+              accessor: (i) => i.status,
+              render: (item) => (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    background: item.status === "bounced" || item.status === "failed" ? "rgba(232,93,31,0.12)" : "rgba(28,93,142,0.1)",
+                    color: item.status === "bounced" || item.status === "failed" ? "var(--cone-orange)" : "var(--blueprint)",
+                  }}
+                >
+                  {item.status}
+                </span>
+              ),
+            },
+            {
+              key: "actions",
+              header: "",
+              accessor: () => null,
+              sortable: false,
+              filterable: false,
+              align: "right",
+              render: (item) => (
+                <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", whiteSpace: "nowrap" }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setChargingItem(item); }}
+                    style={{
+                      padding: "5px 10px",
+                      background: "var(--blueprint)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                    title="Charge a card now via Sola"
+                  >
+                    💳 Charge
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); markPaid(item.id); }} style={actionBtn} title="Mark paid">
+                    ✓ Paid
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); reschedule(item.id); }} style={actionBtnGhost} title="Reschedule">
+                    Reschedule
+                  </button>
+                  {item.status !== "bounced" && item.method === "check" && (
+                    <button onClick={(e) => { e.stopPropagation(); markBounced(item.id); }} style={{ ...actionBtnGhost, color: "var(--cone-orange)" }}>
+                      Bounce
+                    </button>
+                  )}
+                  <button onClick={(e) => { e.stopPropagation(); cancelPayment(item.id); }} style={{ ...actionBtnGhost, color: "rgba(10,16,25,0.5)" }}>
+                    Cancel
+                  </button>
+                </div>
+              ),
+            },
+          ] as DataTableColumn<CollectionItem>[]}
+        />
       )}
 
       <DonorSidePanel donorId={previewDonorId} onClose={() => setPreviewDonorId(null)} />

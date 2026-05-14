@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtMoney, fmtDate, fmtMethod } from "@/lib/fundraising-format";
 import PaymentEditModal from "../_components/PaymentEditModal";
 import PledgeEditModal from "../_components/PledgeEditModal";
+import DataTable, { type DataTableColumn } from "../_components/DataTable";
 
 interface PaymentRow {
   id: string;
@@ -142,6 +143,132 @@ export default function PaymentsPage() {
 
   const visibleRows = useMemo(() => rows, [rows]);
 
+  // DataTable column definitions. Each column declares how to extract its sortable/filterable
+  // value (`accessor`) and how to render its cell (`render`). The Actions column has both
+  // sortable and filterable disabled because it's pure UI (buttons).
+  const columns = useMemo<DataTableColumn<PaymentRow>[]>(() => [
+    {
+      key: "date",
+      header: "Date",
+      accessor: (p) => p.paid_date || p.due_date || null,
+      render: (p) => {
+        const d = p.paid_date || p.due_date;
+        return <span style={{ fontSize: 12, opacity: 0.75 }}>{d ? fmtDate(d) : "—"}</span>;
+      },
+      width: 110,
+    },
+    {
+      key: "donor",
+      header: "Donor",
+      accessor: (p) => `${p.donor_first_name} ${p.donor_last_name || ""}`.trim(),
+      render: (p) => (
+        <Link
+          href={`/fundraising/donors/${p.donor_id}`}
+          style={{ fontWeight: 700, color: "var(--cast-iron)", textDecoration: "none" }}
+        >
+          {`${p.donor_first_name} ${p.donor_last_name || ""}`.trim()}
+        </Link>
+      ),
+    },
+    {
+      key: "project",
+      header: "Project",
+      accessor: (p) => p.project_name || "General",
+      render: (p) => (
+        <span style={{ fontSize: 12, opacity: 0.75 }}>
+          {p.project_name || "General"}
+          {p.installment_number > 1 && <span style={{ opacity: 0.55 }}> · #{p.installment_number}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      accessor: (p) => p.amount,
+      render: (p) => (
+        <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(p.amount)}</span>
+      ),
+      align: "right",
+      width: 110,
+    },
+    {
+      key: "method",
+      header: "Method",
+      accessor: (p) => p.method,
+      render: (p) => <span style={{ fontSize: 12 }}>{fmtMethod(p.method)}</span>,
+      filterDisplay: (v) => fmtMethod(String(v)),
+      width: 130,
+    },
+    {
+      key: "status",
+      header: "Status",
+      accessor: (p) => p.status,
+      render: (p) => <StatusPill status={p.status} />,
+      width: 120,
+    },
+    {
+      key: "ref",
+      header: "Ref",
+      accessor: (p) => p.check_number || p.cc_last4 || p.transaction_ref || null,
+      render: (p) => (
+        <span style={{ fontSize: 11, opacity: 0.7 }}>
+          {p.check_number ? `#${p.check_number}` : p.cc_last4 ? `•••• ${p.cc_last4}` : p.transaction_ref || "—"}
+        </span>
+      ),
+      width: 130,
+    },
+    {
+      key: "actions",
+      header: "",
+      accessor: () => null,
+      sortable: false,
+      filterable: false,
+      align: "right",
+      render: (p) => (
+        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingPledgeId(p.pledge_id);
+            }}
+            style={{
+              padding: "5px 10px",
+              background: "transparent",
+              color: "var(--cast-iron)",
+              border: "1px solid rgba(10,16,25,0.18)",
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+            title="View / edit the pledge this payment is attached to"
+          >
+            Pledge
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditing(p);
+            }}
+            style={{
+              padding: "5px 12px",
+              background: "transparent",
+              color: "var(--blueprint)",
+              border: "1px solid rgba(28,93,142,0.3)",
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Edit
+          </button>
+        </div>
+      ),
+      width: 170,
+    },
+  ], []);
+
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
       <div style={{ marginBottom: 20 }}>
@@ -246,134 +373,14 @@ export default function PaymentsPage() {
       {/* Rows */}
       {loading ? (
         <div style={{ opacity: 0.5, padding: 30 }}>Loading…</div>
-      ) : visibleRows.length === 0 ? (
-        <div
-          style={{
-            background: "#fff",
-            border: "1px dashed rgba(10,16,25,0.12)",
-            borderRadius: 12,
-            padding: 40,
-            textAlign: "center",
-            fontSize: 14,
-            opacity: 0.6,
-          }}
-        >
-          No payments match these filters.
-        </div>
       ) : (
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid rgba(10,16,25,0.08)",
-            borderRadius: 12,
-            overflow: "hidden",
-          }}
-        >
-          {/* Header */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "120px 1fr 100px 110px 110px 130px 110px",
-              gap: 12,
-              padding: "10px 14px",
-              borderBottom: "1px solid rgba(10,16,25,0.08)",
-              background: "rgba(10,16,25,0.02)",
-              fontSize: 11,
-              fontWeight: 800,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              opacity: 0.7,
-            }}
-          >
-            <div>Date</div>
-            <div>Donor / project</div>
-            <div style={{ textAlign: "right" }}>Amount</div>
-            <div>Method</div>
-            <div>Status</div>
-            <div>Ref</div>
-            <div style={{ textAlign: "right" }}>Actions</div>
-          </div>
-
-          {visibleRows.map((p) => {
-            const date = p.paid_date || p.due_date || "";
-            const donorName = `${p.donor_first_name} ${p.donor_last_name || ""}`.trim();
-            return (
-              <div
-                key={p.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "120px 1fr 100px 110px 110px 130px 110px",
-                  gap: 12,
-                  padding: "10px 14px",
-                  borderBottom: "1px solid rgba(10,16,25,0.05)",
-                  alignItems: "center",
-                  fontSize: 13,
-                }}
-              >
-                <div style={{ fontSize: 12, opacity: 0.7 }}>{date ? fmtDate(date) : "—"}</div>
-                <div style={{ minWidth: 0 }}>
-                  <Link
-                    href={`/fundraising/donors/${p.donor_id}`}
-                    style={{ fontWeight: 700, color: "var(--cast-iron)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}
-                  >
-                    {donorName}
-                  </Link>
-                  <div style={{ fontSize: 11, opacity: 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p.project_name || "General"}
-                    {p.installment_number > 1 && ` · #${p.installment_number}`}
-                  </div>
-                </div>
-                <div style={{ textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                  {fmtMoney(p.amount)}
-                </div>
-                <div style={{ fontSize: 12 }}>{fmtMethod(p.method)}</div>
-                <div>
-                  <StatusPill status={p.status} />
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.65, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.check_number
-                    ? `#${p.check_number}`
-                    : p.cc_last4
-                    ? `•••• ${p.cc_last4}`
-                    : p.transaction_ref || "—"}
-                </div>
-                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                  <button
-                    onClick={() => setEditingPledgeId(p.pledge_id)}
-                    style={{
-                      padding: "5px 10px",
-                      background: "transparent",
-                      color: "var(--cast-iron)",
-                      border: "1px solid rgba(10,16,25,0.18)",
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                    title="View / edit the pledge this payment is attached to"
-                  >
-                    Pledge
-                  </button>
-                  <button
-                    onClick={() => setEditing(p)}
-                    style={{
-                      padding: "5px 12px",
-                      background: "transparent",
-                      color: "var(--blueprint)",
-                      border: "1px solid rgba(28,93,142,0.3)",
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Edit
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <DataTable
+          data={visibleRows}
+          columns={columns}
+          rowKey={(p) => p.id}
+          emptyMessage="No payments match these filters."
+          storageKey="payments"
+        />
       )}
 
       {/* Edit modal — supports delete from within. */}
