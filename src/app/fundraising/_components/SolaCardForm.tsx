@@ -170,8 +170,17 @@ export default function SolaCardForm({ ifieldsKey, softwareName, disabled, onRea
     <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: disabled ? 0.55 : 1, pointerEvents: disabled ? "none" : "auto" }}>
       <div>
         <label style={labelStyle}>Card number</label>
-        {/* Cardknox iFields injects a sandboxed iframe inside this element when it sees data-ifields="card-number" */}
-        <div data-ifields="card-number" data-ifields-placeholder="•••• •••• •••• ••••" style={ifieldsCardCss} />
+        {/* Cardknox iFields scans for <iframe data-ifields="card-number"> at setAccount() time and
+            assigns the src to its tokenizer page. The iframe MUST exist (with empty src) when
+            setAccount() is called — that's why we render this directly, not a div placeholder. */}
+        <iframe
+          data-ifields="card-number"
+          data-ifields-placeholder="•••• •••• •••• ••••"
+          scrolling="no"
+          frameBorder="0"
+          style={ifieldsCardCss}
+          title="Card number"
+        />
         {/* Hidden input where Cardknox writes the SUT after getTokens() */}
         <input type="hidden" ref={cardTokenRef} name="xCardNum" data-ifields="card-number-token" />
       </div>
@@ -194,7 +203,14 @@ export default function SolaCardForm({ ifieldsKey, softwareName, disabled, onRea
         </div>
         <div>
           <label style={labelStyle}>CVV</label>
-          <div data-ifields="cvv" data-ifields-placeholder="•••" style={ifieldsCvvCss} />
+          <iframe
+            data-ifields="cvv"
+            data-ifields-placeholder="•••"
+            scrolling="no"
+            frameBorder="0"
+            style={ifieldsCvvCss}
+            title="CVV"
+          />
           <input type="hidden" ref={cvvTokenRef} name="xCVV" data-ifields="cvv-token" />
         </div>
       </div>
