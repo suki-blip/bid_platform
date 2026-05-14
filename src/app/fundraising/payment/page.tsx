@@ -172,6 +172,34 @@ export default function PayPage() {
   const [cardChoice, setCardChoice] = useState<"new" | string>("new");
   const [saveCard, setSaveCard] = useState(true);
 
+  // Charge mode (for credit-card payments only):
+  //   'now'       — single charge, immediate (legacy default; nothing new persists).
+  //   'scheduled' — single charge on a future date. Requires a saved card OR charging now
+  //                 first to tokenize. We implement it as a pledge with installments=1 +
+  //                 due_date=schedule_date + auto_charge_card_id. The daily cron handles it.
+  //   'recurring' — multiple installments at a chosen cadence. Uses pledge + auto_charge_card_id
+  //                 same as PledgeModal, but exposes the option to also charge the first
+  //                 installment immediately so we get the token even with a new card.
+  type ChargeMode = "now" | "scheduled" | "recurring";
+  const [chargeMode, setChargeMode] = useState<ChargeMode>("now");
+  // Scheduled-mode state
+  const [scheduleDate, setScheduleDate] = useState<string>(() => {
+    // Default to tomorrow so the date is in the future and the cron picks it up.
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  });
+  // Recurring-mode state
+  type RecurringPlan = "weekly" | "monthly" | "quarterly" | "annual";
+  const [recPlan, setRecPlan] = useState<RecurringPlan>("monthly");
+  const [recInstallments, setRecInstallments] = useState<string>("12");
+  const [recPaymentDay, setRecPaymentDay] = useState<string>(""); // day-of-month (1-31) or day-of-week (0-6)
+  const [recStartDate, setRecStartDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // Whether the FIRST installment should be charged immediately (and the rest auto-scheduled).
+  // Useful with a brand-new card: charging now both pulls money in AND tokenizes it for
+  // future auto-charges. With a saved card, this is just a UX shortcut.
+  const [chargeFirstNow, setChargeFirstNow] = useState(true);
+
   useEffect(() => {
     fetch("/api/fundraising/sola/config")
       .then((r) => (r.ok ? r.json() : null))
@@ -444,15 +472,97 @@ export default function PayPage() {
 
     setChargeBusy(true);
 
-    // Branch: charge a saved card (no iFields, no card entry) vs collect a new card.
+    // Branch by chargeMode + card source.
+    //
+    // Card paths:
+    //   - 'saved':    chargeChoice points to an existing fr_donor_cards row id
+    //   - 'new':      collect iFields tokens; charging now triggers save_card=true (so the
+    //                 token persists for any scheduled/recurring follow-ups)
+    //
+    // Charge modes:
+    //   - 'now':       single immediate charge. Uses /sola/charge or /sola/charge-token.
+    //   - 'scheduled': single charge on a future date. Requires saved card. Creates a pledge
+    //                  with installments=1, due_date=schedule_date, auto_charge_card_id=...
+    //                  The daily cron picks it up on the date.
+    //   - 'recurring': N installments with a chosen cadence. Always creates a pledge with
+    //                  auto_charge_card_id. If a saved card is used + chargeFirstNow=false,
+    //                  the cron handles every installment. With a new card or chargeFirstNow=true,
+    //                  we charge the first installment immediately (using /sola/charge with
+    //                  save_card=true) and pass the resulting card_id to the pledge.
     const useSavedCard = cardChoice !== "new";
+    const isSplit = mode === "split";
+
+    // Validation: split mode is only meaningful with 'now' (one-shot multi-allocation).
+    if (isSplit && chargeMode !== "now") {
+      setChargeError("Split payments must be charged immediately. Switch back to 'Charge now'.");
+      setChargeBusy(false);
+      return;
+    }
+    if (chargeMode === "scheduled" && !useSavedCard) {
+      setChargeError(
+        "Scheduled charges require a saved card. Charge now once first to tokenize the card, then schedule.",
+      );
+      setChargeBusy(false);
+      return;
+    }
+    if (chargeMode === "recurring") {
+      const n = Number(recInstallments);
+      if (!Number.isInteger(n) || n < 2) {
+        setChargeError("Recurring requires at least 2 installments.");
+        setChargeBusy(false);
+        return;
+      }
+    }
 
     try {
-      if (useSavedCard) {
-        const r = await fetch("/api/fundraising/sola/charge-token", {
+      // ===== Mode: charge now (legacy path, unchanged) =====
+      if (chargeMode === "now") {
+        if (useSavedCard) {
+          const r = await fetch("/api/fundraising/sola/charge-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...body, card_id: cardChoice }),
+          });
+          const d = await r.json();
+          if (!r.ok || !d.ok) {
+            setChargeError(d.reason || d.error || "Charge failed");
+            setChargeBusy(false);
+            return;
+          }
+          setChargeSuccess({
+            amount: displayTotal,
+            transaction_ref: d.transaction_ref,
+            cc_last4: d.cc_last4,
+            auth_code: d.auth_code,
+          });
+          return;
+        }
+        // New card immediate charge
+        if (!solaFormRef.current) {
+          setChargeError("Card form is not ready yet.");
+          setChargeBusy(false);
+          return;
+        }
+        let tokens;
+        try {
+          tokens = await solaFormRef.current.collectTokens();
+        } catch (e) {
+          setChargeError((e as Error).message);
+          setChargeBusy(false);
+          return;
+        }
+        Object.assign(body, {
+          sut_card: tokens.sut_card,
+          sut_cvv: tokens.sut_cvv,
+          exp: tokens.exp,
+          zip: tokens.zip,
+          street: tokens.street,
+          save_card: saveCard,
+        });
+        const r = await fetch("/api/fundraising/sola/charge", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...body, card_id: cardChoice }),
+          body: JSON.stringify(body),
         });
         const d = await r.json();
         if (!r.ok || !d.ok) {
@@ -469,53 +579,231 @@ export default function PayPage() {
         return;
       }
 
-      // New card path — collect tokens from iFields.
-      if (!solaFormRef.current) {
-        setChargeError("Card form is not ready yet.");
-        setChargeBusy(false);
-        return;
-      }
-      let tokens;
-      try {
-        tokens = await solaFormRef.current.collectTokens();
-      } catch (e) {
-        setChargeError((e as Error).message);
-        setChargeBusy(false);
+      // ===== Mode: scheduled (single future-dated charge) =====
+      // Requires saved card (validated above). Build a 1-installment pledge with
+      // due_date=schedule_date and auto_charge_card_id=<saved card>.
+      if (chargeMode === "scheduled") {
+        const amt = Number(amount);
+        const r = await fetch(`/api/fundraising/donors/${donorId}/pledges`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: amt,
+            project_id: mode === "new_donation" && projectId ? projectId : null,
+            pledge_date: scheduleDate, // anchor; due_date for the one installment matches
+            installments_total: 1,
+            payment_plan: "lump_sum",
+            default_method: "credit_card",
+            collection_mode: "manual",
+            auto_charge_card_id: cardChoice,
+            notes: notes.trim() || null,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.id) {
+          setChargeError(d.error || "Failed to schedule charge");
+          setChargeBusy(false);
+          return;
+        }
+        // Surface a friendly success message. Reuse chargeSuccess shape — refrains from
+        // implying immediate settlement. We borrow `transaction_ref` for the pledge id so
+        // the user has something to reference.
+        setChargeSuccess({
+          amount: amt,
+          transaction_ref: `Scheduled for ${scheduleDate}`,
+          cc_last4: null,
+          auth_code: null,
+        });
         return;
       }
 
-      Object.assign(body, {
-        sut_card: tokens.sut_card,
-        sut_cvv: tokens.sut_cvv,
-        exp: tokens.exp,
-        zip: tokens.zip,
-        street: tokens.street,
-        save_card: saveCard,
-      });
+      // ===== Mode: recurring (multi-installment pledge with auto-charge) =====
+      // If using a saved card + !chargeFirstNow: just create the pledge with auto-charge.
+      // Otherwise we charge the first installment now (which also tokenizes a new card)
+      // and then create the pledge for the REMAINING installments only, anchored to the
+      // next due date.
+      const amt = Number(amount);
+      const installments = Number(recInstallments);
+      const paymentDay = recPaymentDay === "" ? null : Number(recPaymentDay);
 
-      const r = await fetch("/api/fundraising/sola/charge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      if (!r.ok || !d.ok) {
-        setChargeError(d.reason || d.error || "Charge failed");
-        setChargeBusy(false);
+      // Path A: saved card, no first-now charge — pure cron handling.
+      if (useSavedCard && !chargeFirstNow) {
+        const r = await fetch(`/api/fundraising/donors/${donorId}/pledges`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: amt * installments,
+            project_id: mode === "new_donation" && projectId ? projectId : null,
+            pledge_date: recStartDate,
+            installments_total: installments,
+            payment_plan: recPlan,
+            payment_day: paymentDay,
+            default_method: "credit_card",
+            collection_mode: "manual",
+            auto_charge_card_id: cardChoice,
+            notes: notes.trim() || null,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.id) {
+          setChargeError(d.error || "Failed to create recurring plan");
+          setChargeBusy(false);
+          return;
+        }
+        setChargeSuccess({
+          amount: amt * installments,
+          transaction_ref: `Recurring plan created (${installments} × ${fmtMoney(amt)})`,
+          cc_last4: null,
+          auth_code: null,
+        });
         return;
       }
+
+      // Path B: charge first installment now, then create pledge for the rest.
+      // For a new card: chargeNow flows through /sola/charge with save_card=true. The
+      // response includes saved_card_id we can attach to the pledge.
+      // For a saved card with chargeFirstNow=true: use /sola/charge-token, then create pledge.
+      let firstChargeResult;
+      if (useSavedCard) {
+        const r = await fetch("/api/fundraising/sola/charge-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            donor_id: donorId,
+            mode: mode === "existing_pledge" ? "existing_pledge" : "new_donation",
+            pledge_id: mode === "existing_pledge" ? pledgeId : null,
+            project_id: mode === "new_donation" && projectId ? projectId : null,
+            amount: amt,
+            notes: notes.trim() || null,
+            card_id: cardChoice,
+          }),
+        });
+        firstChargeResult = await r.json();
+        if (!r.ok || !firstChargeResult.ok) {
+          setChargeError(firstChargeResult.reason || firstChargeResult.error || "First charge failed");
+          setChargeBusy(false);
+          return;
+        }
+      } else {
+        // New card — collect tokens, charge with save_card=true so the token is persisted.
+        if (!solaFormRef.current) {
+          setChargeError("Card form is not ready yet.");
+          setChargeBusy(false);
+          return;
+        }
+        let tokens;
+        try {
+          tokens = await solaFormRef.current.collectTokens();
+        } catch (e) {
+          setChargeError((e as Error).message);
+          setChargeBusy(false);
+          return;
+        }
+        const r = await fetch("/api/fundraising/sola/charge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            donor_id: donorId,
+            mode: "new_donation",
+            project_id: mode === "new_donation" && projectId ? projectId : null,
+            amount: amt,
+            notes: notes.trim() || null,
+            sut_card: tokens.sut_card,
+            sut_cvv: tokens.sut_cvv,
+            exp: tokens.exp,
+            zip: tokens.zip,
+            street: tokens.street,
+            save_card: true,
+            set_default: false,
+          }),
+        });
+        firstChargeResult = await r.json();
+        if (!r.ok || !firstChargeResult.ok) {
+          setChargeError(firstChargeResult.reason || firstChargeResult.error || "First charge failed");
+          setChargeBusy(false);
+          return;
+        }
+        if (!firstChargeResult.saved_card_id) {
+          setChargeError(
+            "First charge succeeded but the card could not be saved for future installments.",
+          );
+          setChargeBusy(false);
+          return;
+        }
+      }
+
+      const cardIdForRest = useSavedCard ? cardChoice : firstChargeResult.saved_card_id;
+      const remaining = installments - 1;
+      // Compute the NEXT due date — the first installment was just charged today, so the
+      // pledge anchor should be the date of the SECOND installment. We pass that as
+      // pledge_date and let the backend's generateInstallmentDates() do the rest.
+      const today = new Date();
+      const nextDate = new Date(today);
+      if (recPlan === "weekly") nextDate.setDate(nextDate.getDate() + 7);
+      else if (recPlan === "monthly") nextDate.setMonth(nextDate.getMonth() + 1);
+      else if (recPlan === "quarterly") nextDate.setMonth(nextDate.getMonth() + 3);
+      else nextDate.setFullYear(nextDate.getFullYear() + 1);
+      const pledgeDateForRest = nextDate.toISOString().slice(0, 10);
+
+      if (remaining > 0) {
+        const r = await fetch(`/api/fundraising/donors/${donorId}/pledges`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: amt * remaining,
+            project_id: mode === "new_donation" && projectId ? projectId : null,
+            pledge_date: pledgeDateForRest,
+            installments_total: remaining,
+            payment_plan: recPlan,
+            payment_day: paymentDay,
+            default_method: "credit_card",
+            collection_mode: "manual",
+            auto_charge_card_id: cardIdForRest,
+            notes: notes.trim()
+              ? `${notes.trim()} (recurring, first installment charged ${today.toISOString().slice(0, 10)})`
+              : `Recurring (first installment charged ${today.toISOString().slice(0, 10)})`,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.id) {
+          setChargeError(
+            `First charge succeeded but failed to schedule remaining installments: ${d.error || "unknown"}`,
+          );
+          setChargeBusy(false);
+          return;
+        }
+      }
+
       setChargeSuccess({
-        amount: displayTotal,
-        transaction_ref: d.transaction_ref,
-        cc_last4: d.cc_last4,
-        auth_code: d.auth_code,
+        amount: amt,
+        transaction_ref: firstChargeResult.transaction_ref,
+        cc_last4: firstChargeResult.cc_last4,
+        auth_code: firstChargeResult.auth_code,
       });
     } catch (e) {
       setChargeError((e as Error).message || "Network error");
     } finally {
       setChargeBusy(false);
     }
-  }, [donorId, amount, mode, pledgeId, installmentId, projectId, notes, allocations, cardChoice, saveCard]);
+  }, [
+    donorId,
+    amount,
+    mode,
+    pledgeId,
+    installmentId,
+    projectId,
+    notes,
+    allocations,
+    cardChoice,
+    saveCard,
+    chargeMode,
+    scheduleDate,
+    recPlan,
+    recInstallments,
+    recPaymentDay,
+    recStartDate,
+    chargeFirstNow,
+  ]);
 
   async function cancelSession() {
     if (!session) return;
@@ -1317,6 +1605,155 @@ export default function PayPage() {
                     padding: 14,
                   }}
                 >
+                  {/* When-to-charge picker: single immediate | single scheduled | recurring installments. */}
+                  {mode !== "split" && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.7, marginBottom: 8 }}>
+                        When to charge
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                        {([
+                          { id: "now", title: "Charge now", desc: "One-time, immediate" },
+                          { id: "scheduled", title: "Schedule", desc: "One-time, future date" },
+                          { id: "recurring", title: "Recurring", desc: "Multiple installments" },
+                        ] as { id: ChargeMode; title: string; desc: string }[]).map((opt) => (
+                          <label
+                            key={opt.id}
+                            style={{
+                              padding: "10px 12px",
+                              border: chargeMode === opt.id ? "2px solid var(--cast-iron)" : "1px solid rgba(10,16,25,0.12)",
+                              borderRadius: 8,
+                              background: chargeMode === opt.id ? "rgba(10,16,25,0.03)" : "#fff",
+                              cursor: "pointer",
+                              textAlign: "center",
+                            }}
+                          >
+                            <input
+                              type="radio"
+                              name="charge-mode"
+                              checked={chargeMode === opt.id}
+                              onChange={() => setChargeMode(opt.id)}
+                              style={{ display: "none" }}
+                            />
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>{opt.title}</div>
+                            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>{opt.desc}</div>
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Scheduled-mode date picker */}
+                      {chargeMode === "scheduled" && (
+                        <div style={{ marginTop: 12 }}>
+                          <label style={inputLabel}>Charge date</label>
+                          <input
+                            type="date"
+                            value={scheduleDate}
+                            min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}
+                            onChange={(e) => setScheduleDate(e.target.value)}
+                            style={input}
+                          />
+                          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, lineHeight: 1.4 }}>
+                            ⓘ The daily auto-charge cron will attempt this charge on the chosen date.
+                            Scheduled charges require a <strong>saved card</strong> — if the donor has
+                            none yet, use &quot;Charge now&quot; first to tokenize their card.
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recurring-mode config */}
+                      {chargeMode === "recurring" && (
+                        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div>
+                            <label style={inputLabel}>Frequency</label>
+                            <select
+                              value={recPlan}
+                              onChange={(e) => {
+                                setRecPlan(e.target.value as RecurringPlan);
+                                setRecPaymentDay(""); // day interpretation differs per plan
+                              }}
+                              style={input}
+                            >
+                              <option value="weekly">Weekly</option>
+                              <option value="monthly">Monthly</option>
+                              <option value="quarterly">Quarterly</option>
+                              <option value="annual">Annual</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style={inputLabel}>Number of installments</label>
+                            <input
+                              type="number"
+                              min="2"
+                              value={recInstallments}
+                              onChange={(e) => setRecInstallments(e.target.value)}
+                              style={input}
+                            />
+                          </div>
+                          {recPlan === "weekly" ? (
+                            <div>
+                              <label style={inputLabel}>Day of the week</label>
+                              <select value={recPaymentDay} onChange={(e) => setRecPaymentDay(e.target.value)} style={input}>
+                                <option value="">— Use start date&apos;s weekday —</option>
+                                <option value="0">Sunday</option>
+                                <option value="1">Monday</option>
+                                <option value="2">Tuesday</option>
+                                <option value="3">Wednesday</option>
+                                <option value="4">Thursday</option>
+                                <option value="5">Friday</option>
+                                <option value="6">Saturday</option>
+                              </select>
+                            </div>
+                          ) : (
+                            <div>
+                              <label style={inputLabel}>Day of the month (1-31)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="31"
+                                value={recPaymentDay}
+                                placeholder="Use start date's day"
+                                onChange={(e) => setRecPaymentDay(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                                style={input}
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <label style={inputLabel}>Start date</label>
+                            <input
+                              type="date"
+                              value={recStartDate}
+                              onChange={(e) => setRecStartDate(e.target.value)}
+                              style={input}
+                            />
+                          </div>
+                          <div style={{ gridColumn: "span 2" }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: cardChoice === "new" ? "not-allowed" : "pointer" }}>
+                              <input
+                                type="checkbox"
+                                checked={chargeFirstNow || cardChoice === "new"}
+                                onChange={(e) => setChargeFirstNow(e.target.checked)}
+                                disabled={cardChoice === "new"}
+                              />
+                              <span>
+                                Charge the first installment immediately
+                                {cardChoice === "new" && (
+                                  <span style={{ opacity: 0.65, fontSize: 11, marginLeft: 6 }}>
+                                    (required to tokenize a new card)
+                                  </span>
+                                )}
+                              </span>
+                            </label>
+                          </div>
+                          <div style={{ gridColumn: "span 2", fontSize: 11, opacity: 0.65, lineHeight: 1.5 }}>
+                            ⓘ The first installment&apos;s due-date is the start date. Subsequent
+                            installments follow the cadence and day-of-month/week rules. The daily
+                            auto-charge cron handles each one on its due date.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Saved card picker — shows only if the donor has any usable cards on file */}
                   {savedCards.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
@@ -1513,7 +1950,24 @@ export default function PayPage() {
                     )}
                     {solaConfig?.can_charge ? (
                       <button type="button" onClick={chargeNow} disabled={chargeBusy || submitting} style={btnDark}>
-                        {chargeBusy ? "Charging…" : `Charge card now — ${moneyStr}`}
+                        {(() => {
+                          if (chargeBusy) {
+                            return chargeMode === "scheduled"
+                              ? "Scheduling…"
+                              : chargeMode === "recurring"
+                              ? "Setting up…"
+                              : "Charging…";
+                          }
+                          if (chargeMode === "scheduled") {
+                            return `Schedule charge — ${moneyStr} on ${scheduleDate}`;
+                          }
+                          if (chargeMode === "recurring") {
+                            const n = Number(recInstallments) || 0;
+                            const total = (Number(amount) || 0) * n;
+                            return `Set up ${n} × ${moneyStr} (total ${fmtMoney(total)})`;
+                          }
+                          return `Charge card now — ${moneyStr}`;
+                        })()}
                       </button>
                     ) : mode === "split" ? (
                       <div style={{ fontSize: 12, color: "var(--cone-orange)" }}>
