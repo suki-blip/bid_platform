@@ -39,6 +39,7 @@ declare global {
   interface Window {
     setAccount?: IFieldsAPI["setAccount"];
     getTokens?: IFieldsAPI["getTokens"];
+    enableAutoFormatting?: () => void;
   }
 }
 
@@ -98,6 +99,9 @@ export default function SolaCardForm({ ifieldsKey, softwareName, disabled, onRea
         if (cancelled) return;
         try {
           window.setAccount?.(ifieldsKey, softwareName || "easyfundraisings", "1.0");
+          // Auto-formatting (spaces in card number, etc.) is recommended by Cardknox
+          // immediately after setAccount. Calling it before setAccount silently no-ops.
+          window.enableAutoFormatting?.();
           setLoaded(true);
         } catch (e) {
           setLoadError((e as Error).message);
@@ -170,19 +174,21 @@ export default function SolaCardForm({ ifieldsKey, softwareName, disabled, onRea
     <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: disabled ? 0.55 : 1, pointerEvents: disabled ? "none" : "auto" }}>
       <div>
         <label style={labelStyle}>Card number</label>
-        {/* Cardknox iFields scans for <iframe data-ifields="card-number"> at setAccount() time and
-            assigns the src to its tokenizer page. The iframe MUST exist (with empty src) when
-            setAccount() is called — that's why we render this directly, not a div placeholder. */}
+        {/* Cardknox iFields markup (current /latest/ schema):
+            - attribute is data-ifields-id (NOT data-ifields)
+            - iframe needs explicit src pointing at ifield.htm; setAccount then injects credentials via postMessage
+            - hidden token input also uses data-ifields-id="<name>-token"
+            Older docs / pinned versions used data-ifields; the current script silently no-ops on those. */}
         <iframe
-          data-ifields="card-number"
+          data-ifields-id="card-number"
           data-ifields-placeholder="•••• •••• •••• ••••"
+          src="https://cdn.cardknox.com/ifields/latest/ifield.htm"
           scrolling="no"
           frameBorder="0"
           style={ifieldsCardCss}
           title="Card number"
         />
-        {/* Hidden input where Cardknox writes the SUT after getTokens() */}
-        <input type="hidden" ref={cardTokenRef} name="xCardNum" data-ifields="card-number-token" />
+        <input type="hidden" ref={cardTokenRef} name="xCardNum" data-ifields-id="card-number-token" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -204,14 +210,15 @@ export default function SolaCardForm({ ifieldsKey, softwareName, disabled, onRea
         <div>
           <label style={labelStyle}>CVV</label>
           <iframe
-            data-ifields="cvv"
+            data-ifields-id="cvv"
             data-ifields-placeholder="•••"
+            src="https://cdn.cardknox.com/ifields/latest/ifield.htm"
             scrolling="no"
             frameBorder="0"
             style={ifieldsCvvCss}
             title="CVV"
           />
-          <input type="hidden" ref={cvvTokenRef} name="xCVV" data-ifields="cvv-token" />
+          <input type="hidden" ref={cvvTokenRef} name="xCVV" data-ifields-id="cvv-token" />
         </div>
       </div>
 
