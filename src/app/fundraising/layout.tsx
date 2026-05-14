@@ -16,7 +16,7 @@ const NAV: { href: string; label: string; managerOnly?: boolean }[] = [
   { href: "/fundraising/today", label: "Today" },
   { href: "/fundraising/prospects", label: "Leads" },
   { href: "/fundraising/donors", label: "Donors" },
-  { href: "/fundraising/projects", label: "Projects" },
+  { href: "/fundraising/projects", label: "Campaigns" },
   { href: "/fundraising/payment", label: "New payment" },
   { href: "/fundraising/payments", label: "Payments" },
   { href: "/fundraising/collections", label: "Collections" },

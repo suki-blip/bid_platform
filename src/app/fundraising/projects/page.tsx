@@ -56,10 +56,10 @@ export default function ProjectsPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, gap: 16, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
-            Projects
+            Campaigns
           </h1>
           <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
-            Each donation gets tagged to a project so reports stay clean — General, Annual Campaign, Building Fund, etc.
+            Each donation gets tagged to a campaign so reports stay clean — General, Annual Campaign, Building Fund, etc.
           </div>
         </div>
         <button
@@ -75,7 +75,7 @@ export default function ProjectsPage() {
             cursor: "pointer",
           }}
         >
-          + New project
+          + New campaign
         </button>
       </div>
 
@@ -243,9 +243,9 @@ function Empty({ onCreate }: { onCreate: () => void }) {
         borderRadius: 12,
       }}
     >
-      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>No projects yet</div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>No campaigns yet</div>
       <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 16 }}>
-        Create your first project — General, Annual Campaign, etc. — to start tagging donations.
+        Create your first campaign — General, Annual Dinner, Building Fund, etc. — to start tagging donations.
       </div>
       <button
         onClick={onCreate}
@@ -260,7 +260,7 @@ function Empty({ onCreate }: { onCreate: () => void }) {
           cursor: "pointer",
         }}
       >
-        + New project
+        + New campaign
       </button>
     </div>
   );
@@ -309,9 +309,9 @@ function CreateModal({ projects, onClose, onCreated }: { projects: Project[]; on
     <div style={overlayStyle} onClick={onClose}>
       <form onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit} style={modalStyle}>
         <h2 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-bricolage), sans-serif", margin: "0 0 16px" }}>
-          New project
+          New campaign
         </h2>
-        <Field label="Project name *">
+        <Field label="Campaign name *">
           <input value={name} onChange={(e) => setName(e.target.value)} required style={inputStyle} autoFocus />
         </Field>
         <Field label="Description">
@@ -322,9 +322,9 @@ function CreateModal({ projects, onClose, onCreated }: { projects: Project[]; on
           />
         </Field>
         {parentChoices.length > 0 && (
-          <Field label="Parent project (optional)">
+          <Field label="Parent campaign (optional)">
             <select value={parentId} onChange={(e) => setParentId(e.target.value)} style={inputStyle}>
-              <option value="">— None (top-level project) —</option>
+              <option value="">— None (top-level campaign) —</option>
               {parentChoices.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -359,7 +359,7 @@ function CreateModal({ projects, onClose, onCreated }: { projects: Project[]; on
         )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
           <button type="button" onClick={onClose} style={cancelBtn}>Cancel</button>
-          <button type="submit" disabled={submitting} style={submitBtn}>{submitting ? "Saving…" : "Create project"}</button>
+          <button type="submit" disabled={submitting} style={submitBtn}>{submitting ? "Saving…" : "Create campaign"}</button>
         </div>
       </form>
     </div>

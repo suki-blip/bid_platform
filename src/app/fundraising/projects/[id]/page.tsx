@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
 import StarRating from "../../_components/StarRating";
+import CampaignProspects from "../../_components/CampaignProspects";
 
 interface AISuggestion {
   id: string;
@@ -176,7 +177,7 @@ export default function ProjectDetailPage() {
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
       <Link href="/fundraising/projects" style={{ fontSize: 12, color: "var(--blueprint)", textDecoration: "none" }}>
-        ← Back to projects
+        ← Back to campaigns
       </Link>
 
       <div
@@ -446,6 +447,11 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </section>
+
+      {/* Campaign prospects — internal call-list. Sits between the AI suggestions block
+          and the Pledges/Payments grid because it's effectively the "before" view: who
+          we're going to ask, then we see what actually came in below. */}
+      <CampaignProspects projectId={params.id} />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <Panel title={`Pledges (${pledges.length})`}>

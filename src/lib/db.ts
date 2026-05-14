@@ -637,6 +637,33 @@ async function initializeDatabase() {
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_auto_charge_log_payment ON fr_auto_charge_log(payment_id, attempted_at DESC)'); } catch {}
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_auto_charge_log_owner ON fr_auto_charge_log(owner_id, attempted_at DESC)'); } catch {}
 
+  // Campaign prospects — donors you THINK you can fundraise from for a specific project
+  // (rebranded "campaign" in the UI). These are private internal targets, not pledges:
+  //   - estimated_amount: how much you hope to raise from this donor for this campaign
+  //   - status: pending | called | confirmed | declined — call-list workflow state
+  //   - NOT counted in totals, NOT shown in Pledges, NOT in Collections
+  //
+  // Use case: "I'm running a $50k campaign. Let me list 30 donors I think can give, with
+  // estimated amounts, so I see what my goal is built on AND get a call list." Once a
+  // prospect actually pledges, the manager creates a real fr_pledges row separately;
+  // optionally they mark the prospect as 'confirmed' (or just delete it).
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_project_prospects (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES fr_projects(id) ON DELETE CASCADE,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      estimated_amount REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      contacted_at TEXT,
+      UNIQUE(project_id, donor_id)
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_project_prospects_project ON fr_project_prospects(project_id, status)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_project_prospects_donor ON fr_project_prospects(donor_id)'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (
