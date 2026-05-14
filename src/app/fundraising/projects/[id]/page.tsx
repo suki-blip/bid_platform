@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
 import StarRating from "../../_components/StarRating";
 import CampaignProspects from "../../_components/CampaignProspects";
+import CampaignEmailBlast from "../../_components/CampaignEmailBlast";
 
 interface AISuggestion {
   id: string;
@@ -447,6 +448,11 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </section>
+
+      {/* Email blast — collapsed by default. */}
+      <div style={{ marginBottom: 14 }}>
+        <CampaignEmailBlast projectId={params.id} projectName={project.name} />
+      </div>
 
       {/* Campaign prospects — internal call-list. Sits between the AI suggestions block
           and the Pledges/Payments grid because it's effectively the "before" view: who

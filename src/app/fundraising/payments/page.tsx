@@ -162,12 +162,26 @@ export default function PaymentsPage() {
       header: "Donor",
       accessor: (p) => `${p.donor_first_name} ${p.donor_last_name || ""}`.trim(),
       render: (p) => (
-        <Link
-          href={`/fundraising/donors/${p.donor_id}`}
-          style={{ fontWeight: 700, color: "var(--cast-iron)", textDecoration: "none" }}
-        >
-          {`${p.donor_first_name} ${p.donor_last_name || ""}`.trim()}
-        </Link>
+        <>
+          <Link
+            href={`/fundraising/donors/${p.donor_id}`}
+            style={{ fontWeight: 700, color: "var(--cast-iron)", textDecoration: "none" }}
+          >
+            {`${p.donor_first_name} ${p.donor_last_name || ""}`.trim()}
+          </Link>
+          {p.donor_hebrew_name && (
+            <div
+              style={{
+                fontSize: 12,
+                opacity: 0.6,
+                direction: "rtl",
+                fontFamily: "'Frank Ruhl Libre', 'David', serif",
+              }}
+            >
+              {p.donor_hebrew_name}
+            </div>
+          )}
+        </>
       ),
     },
     {
@@ -226,6 +240,37 @@ export default function PaymentsPage() {
       align: "right",
       render: (p) => (
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          {p.status === "paid" && (
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                const r = await fetch(`/api/fundraising/payments/${p.id}/receipt`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                });
+                const d = await r.json().catch(() => ({}));
+                if (r.ok && d.ok) {
+                  alert(`Receipt sent to ${d.to}`);
+                } else {
+                  alert(`Failed: ${d.error || `HTTP ${r.status}`}`);
+                }
+              }}
+              style={{
+                padding: "5px 10px",
+                background: "transparent",
+                color: "var(--shed-green)",
+                border: "1px solid rgba(45,122,61,0.3)",
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              title="Send a receipt email to the donor"
+            >
+              📧 Receipt
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -265,7 +310,7 @@ export default function PaymentsPage() {
           </button>
         </div>
       ),
-      width: 170,
+      width: 260,
     },
   ], []);
 

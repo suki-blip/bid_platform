@@ -15,6 +15,9 @@ interface Project {
   end_date: string | null;
   pledged_amount: number;
   paid_amount: number;
+  // paid + outstanding pledge commitments — the "money committed to this campaign"
+  // headline the card shows as "raised".
+  collected_amount: number;
   donor_count: number;
   parent_id: string | null;
 }
@@ -152,7 +155,11 @@ function Section({
 
 function ProjectCard({ project, onChange, isChild = false }: { project: Project; onChange: () => void; isChild?: boolean }) {
   const goal = project.goal_amount;
-  const pct = goal && goal > 0 ? Math.min(100, (project.paid_amount / goal) * 100) : null;
+  // Headline "raised" number includes outstanding pledge commitments (what the campaign
+  // has secured, not just the cash already in the bank). Progress bar uses the same
+  // figure so it tracks toward goal more accurately.
+  const raised = project.collected_amount ?? project.paid_amount;
+  const pct = goal && goal > 0 ? Math.min(100, (raised / goal) * 100) : null;
 
   async function archive() {
     if (!confirm(`Archive "${project.name}"?`)) return;
@@ -187,9 +194,16 @@ function ProjectCard({ project, onChange, isChild = false }: { project: Project;
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
         <div>
           <div style={{ fontSize: 22, fontFamily: "var(--font-bricolage), sans-serif", fontWeight: 800, color: "var(--shed-green)" }}>
-            {fmtMoney(project.paid_amount)}
+            {fmtMoney(raised)}
           </div>
-          <div style={{ fontSize: 11, opacity: 0.6 }}>raised</div>
+          <div style={{ fontSize: 11, opacity: 0.6 }}>
+            raised
+            {raised !== project.paid_amount && (
+              <span style={{ marginLeft: 4, opacity: 0.7 }}>
+                ({fmtMoney(project.paid_amount)} in)
+              </span>
+            )}
+          </div>
         </div>
         {goal && (
           <div style={{ textAlign: "right" }}>

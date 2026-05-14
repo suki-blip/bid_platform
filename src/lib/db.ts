@@ -664,6 +664,55 @@ async function initializeDatabase() {
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_project_prospects_project ON fr_project_prospects(project_id, status)'); } catch {}
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_project_prospects_donor ON fr_project_prospects(donor_id)'); } catch {}
 
+  // Email-sending settings (per owner) and outgoing-email log.
+  //   email_from         — "From" address to use, e.g. "Yeshivas Toras Chaim <office@yourdomain.org>"
+  //                        Must be a verified sender in Resend.
+  //   email_signature    — appended to the end of every outgoing email (HTML allowed)
+  //   resend_api_key     — owner's own Resend API key (re_...). Optional; if absent we
+  //                        fall back to the platform-wide RESEND_API_KEY env var.
+  //
+  // Per-owner key is the right model for multi-tenant — each org bills their own emails
+  // against their own Resend account. Falling back to a shared env var simplifies
+  // initial onboarding before they set up Resend themselves.
+  try { await client.execute('ALTER TABLE saas_users ADD COLUMN email_from TEXT'); } catch {}
+  try { await client.execute('ALTER TABLE saas_users ADD COLUMN email_signature TEXT'); } catch {}
+  try { await client.execute('ALTER TABLE saas_users ADD COLUMN resend_api_key TEXT'); } catch {}
+
+  // Outgoing-email log — one row per send attempt. Captures:
+  //   - to / cc / bcc, subject (for audit + "did we already send the receipt?")
+  //   - related entities (donor_id, payment_id, project_id) so we can show "emails sent
+  //     to this donor" on the profile + "receipts sent for this campaign" reports
+  //   - resend_message_id (returned by Resend API) for cross-referencing in Resend's
+  //     own dashboard / webhooks
+  //   - status: 'sent' | 'failed' (we don't track delivery webhooks yet; that comes
+  //     when we wire up Resend's bounce/complaint webhooks)
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_email_log (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      donor_id TEXT REFERENCES fr_donors(id) ON DELETE SET NULL,
+      payment_id TEXT REFERENCES fr_pledge_payments(id) ON DELETE SET NULL,
+      project_id TEXT REFERENCES fr_projects(id) ON DELETE SET NULL,
+      to_address TEXT NOT NULL,
+      cc TEXT,
+      bcc TEXT,
+      subject TEXT NOT NULL,
+      body_preview TEXT,
+      template TEXT,                 -- 'receipt' | 'campaign_blast' | 'custom' | ...
+      status TEXT NOT NULL DEFAULT 'sent',
+      resend_message_id TEXT,
+      error_message TEXT,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_log_owner ON fr_email_log(owner_id, sent_at DESC)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_log_donor ON fr_email_log(donor_id, sent_at DESC)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_log_payment ON fr_email_log(payment_id)'); } catch {}
+
+  // Per-donor email opt-out — donors can ask not to receive automated emails.
+  // 'receipts_only' = will get auto receipts but no bulk campaigns. 'none' = no email at all.
+  try { await client.execute("ALTER TABLE fr_donors ADD COLUMN email_opt_in TEXT NOT NULL DEFAULT 'all'"); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

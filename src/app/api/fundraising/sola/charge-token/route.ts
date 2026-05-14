@@ -5,6 +5,7 @@ import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount } from '@/lib/fundraising-types';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { loadSolaCredentials, solaTokenSale, solaApproved, ccLast4, SolaError } from '@/lib/sola-client';
+import { sendFundraisingEmail, renderReceiptEmail } from '@/lib/fundraising-email';
 
 // POST /api/fundraising/sola/charge-token
 //
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
 
   // Verify donor scope.
   const donorRow = await db().execute({
-    sql: 'SELECT id, first_name, last_name, email FROM fr_donors WHERE id = ? AND owner_id = ?',
+    sql: 'SELECT id, first_name, last_name, hebrew_name, email, email_opt_in FROM fr_donors WHERE id = ? AND owner_id = ?',
     args: [body.donor_id, session.ownerId],
   });
   if (donorRow.rows.length === 0) return NextResponse.json({ error: 'Donor not found' }, { status: 404 });
@@ -229,6 +230,58 @@ export async function POST(request: Request) {
       sql: "UPDATE fr_donor_cards SET last_used_at = datetime('now') WHERE id = ?",
       args: [body.card_id],
     });
+
+    // Auto-send receipt (best-effort, fire-and-forget).
+    const donorEmailVal = (donor.email as string | null) || null;
+    const optIn = (donor.email_opt_in as string | null) || 'all';
+    if (donorEmailVal && (optIn === 'all' || optIn === 'receipts_only')) {
+      let projectName: string | null = null;
+      const firstProj = allocations[0]?.project_id;
+      if (firstProj) {
+        try {
+          const pn = await db().execute({
+            sql: 'SELECT name FROM fr_projects WHERE id = ?',
+            args: [firstProj],
+          });
+          projectName = (pn.rows[0]?.name as string | null) || null;
+        } catch {}
+      }
+      let orgName = 'Our organization';
+      try {
+        const o = await db().execute({
+          sql: 'SELECT email_from FROM saas_users WHERE id = ?',
+          args: [session.ownerId],
+        });
+        const efrom = (o.rows[0]?.email_from as string | null) || '';
+        const m = efrom.match(/^([^<]+)<.+>$/);
+        if (m) orgName = m[1].trim();
+      } catch {}
+
+      const tpl = renderReceiptEmail({
+        donor_name: `${String(donor.first_name || '')} ${String(donor.last_name || '')}`.trim() || 'Donor',
+        hebrew_name: (donor.hebrew_name as string | null) || null,
+        amount: totalAmount,
+        currency: 'USD',
+        paid_date: new Date().toISOString().slice(0, 10),
+        method: 'Credit card (saved)',
+        project_name: projectName,
+        transaction_ref: saleRes.xRefNum,
+        cc_last4: last4,
+        organization_name: orgName,
+      });
+      const linkPaymentId = reserved[0]?.paymentId || null;
+      sendFundraisingEmail({
+        ownerId: session.ownerId,
+        to: donorEmailVal,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        template: 'receipt',
+        donorId: body.donor_id,
+        paymentId: linkPaymentId,
+        projectId: allocations[0]?.project_id || null,
+      }).catch((err) => console.error('[charge-token] receipt send failed:', err));
+    }
 
     return NextResponse.json({
       ok: true,

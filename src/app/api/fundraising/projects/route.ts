@@ -20,11 +20,20 @@ export async function GET(request: NextRequest) {
 
   const result = await db().execute({
     // pledged_amount excludes is_standalone (synthetic-pledge) rows. paid_amount includes
-    // every paid payment. donor_count is only real pledgers.
+    // every paid payment (both pledge installments and standalone). donor_count is only
+    // real pledgers.
+    //
+    // collected_amount = "money committed to this campaign" = paid + outstanding pledge
+    // commitments. It's what the user wants displayed as the headline "raised" number on
+    // the campaign card — same logic as the Collected KPI on the campaign detail page.
+    // Formula: paid + max(0, pledged - pledged_paid_on_pledge_rows). We compute it inline.
     sql: `SELECT
             p.*,
             COALESCE((SELECT SUM(amount) FROM fr_pledges WHERE project_id = p.id AND status IN ('open','fulfilled') AND COALESCE(is_standalone, 0) = 0), 0) AS pledged_amount,
             COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE project_id = p.id AND status = 'paid'), 0) AS paid_amount,
+            COALESCE((SELECT SUM(pp.amount) FROM fr_pledge_payments pp
+                      JOIN fr_pledges pl ON pl.id = pp.pledge_id
+                      WHERE pp.project_id = p.id AND pp.status = 'paid' AND COALESCE(pl.is_standalone, 0) = 0), 0) AS pledged_paid_amount,
             COALESCE((SELECT COUNT(DISTINCT donor_id) FROM fr_pledges WHERE project_id = p.id AND COALESCE(is_standalone, 0) = 0), 0) AS donor_count
           FROM fr_projects p
           WHERE ${where}
@@ -33,13 +42,21 @@ export async function GET(request: NextRequest) {
   });
 
   return NextResponse.json(
-    result.rows.map((r) => ({
-      ...r,
-      goal_amount: r.goal_amount === null ? null : Number(r.goal_amount),
-      pledged_amount: Number(r.pledged_amount),
-      paid_amount: Number(r.paid_amount),
-      donor_count: Number(r.donor_count),
-    })),
+    result.rows.map((r) => {
+      const pledged = Number(r.pledged_amount);
+      const paid = Number(r.paid_amount);
+      const pledgedPaid = Number(r.pledged_paid_amount);
+      // Outstanding = the part of the pledge total that hasn't been paid yet.
+      const outstanding = Math.max(0, pledged - pledgedPaid);
+      return {
+        ...r,
+        goal_amount: r.goal_amount === null ? null : Number(r.goal_amount),
+        pledged_amount: pledged,
+        paid_amount: paid,
+        collected_amount: paid + outstanding,
+        donor_count: Number(r.donor_count),
+      };
+    }),
   );
 }
 

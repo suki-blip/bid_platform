@@ -21,6 +21,7 @@ interface CollectionItem {
   notes: string | null;
   donor_id: string;
   donor_name: string;
+  hebrew_name: string | null;
   primary_phone: string | null;
   project_name: string | null;
   pledge_id: string;
@@ -287,6 +288,18 @@ export default function CollectionsPage() {
                   >
                     {item.donor_name}
                   </button>
+                  {item.hebrew_name && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        opacity: 0.6,
+                        direction: "rtl",
+                        fontFamily: "'Frank Ruhl Libre', 'David', serif",
+                      }}
+                    >
+                      {item.hebrew_name}
+                    </div>
+                  )}
                   {item.primary_phone && (
                     <div style={{ fontSize: 11, opacity: 0.6 }}>
                       <a href={`tel:${item.primary_phone}`} style={{ color: "inherit", textDecoration: "none" }}>

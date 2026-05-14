@@ -24,6 +24,20 @@ export default function SettingsPage() {
   const [solaSaving, setSolaSaving] = useState(false);
   const [solaSaved, setSolaSaved] = useState(false);
 
+  // Email config (Resend)
+  const [emailLoaded, setEmailLoaded] = useState(false);
+  const [emailFrom, setEmailFrom] = useState("");
+  const [emailSignature, setEmailSignature] = useState("");
+  const [resendKeyInput, setResendKeyInput] = useState("");
+  const [resendKeyMasked, setResendKeyMasked] = useState<string | null>(null);
+  const [resendHasKey, setResendHasKey] = useState(false);
+  const [resendEnvAvailable, setResendEnvAvailable] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailSaved, setEmailSaved] = useState(false);
+  const [testEmailAddr, setTestEmailAddr] = useState("");
+  const [testEmailBusy, setTestEmailBusy] = useState(false);
+  const [testEmailMsg, setTestEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   // Sola sync state
   const [syncing, setSyncing] = useState(false);
   const [syncFrom, setSyncFrom] = useState(() => {
@@ -59,7 +73,60 @@ export default function SettingsPage() {
         setSolaSoftwareName(d.software_name || "easyfundraisings");
         setSolaLoaded(true);
       });
+    fetch("/api/fundraising/settings/email")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setEmailFrom(d.email_from || "");
+        setEmailSignature(d.email_signature || "");
+        setResendKeyMasked(d.resend_key_masked || null);
+        setResendHasKey(!!d.has_resend_key);
+        setResendEnvAvailable(!!d.env_key_available);
+        setEmailLoaded(true);
+      });
   }, []);
+
+  async function saveEmailSettings() {
+    setEmailSaving(true);
+    setEmailSaved(false);
+    const payload: Record<string, string> = {
+      email_from: emailFrom.trim(),
+      email_signature: emailSignature.trim(),
+    };
+    if (resendKeyInput.trim()) payload.resend_api_key = resendKeyInput.trim();
+    const r = await fetch("/api/fundraising/settings/email", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setEmailSaving(false);
+    if (r.ok) {
+      setEmailSaved(true);
+      setResendKeyInput("");
+      // Refresh masked value
+      const fresh = await fetch("/api/fundraising/settings/email").then((rr) => rr.json());
+      setResendKeyMasked(fresh.resend_key_masked || null);
+      setResendHasKey(!!fresh.has_resend_key);
+      setTimeout(() => setEmailSaved(false), 2500);
+    }
+  }
+
+  async function sendTestEmail() {
+    setTestEmailBusy(true);
+    setTestEmailMsg(null);
+    const r = await fetch("/api/fundraising/settings/email/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: testEmailAddr.trim() }),
+    });
+    setTestEmailBusy(false);
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      setTestEmailMsg({ ok: true, text: `Sent! Check your inbox at ${testEmailAddr}.` });
+    } else {
+      setTestEmailMsg({ ok: false, text: d.error || "Send failed" });
+    }
+  }
 
   async function saveSolaCredentials() {
     setSolaSaving(true);
@@ -366,6 +433,130 @@ export default function SettingsPage() {
                   </ul>
                 </details>
               )}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Email config — Resend API key, From address, signature, test-send button. */}
+      <Section
+        title="Email"
+        subtitle="Send automatic receipts after every charge and bulk emails to donors. Uses Resend."
+      >
+        <p style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.75, marginBottom: 14 }}>
+          We send email through Resend. <strong>Quick setup:</strong> sign up at{" "}
+          <a href="https://resend.com" target="_blank" rel="noopener noreferrer" style={{ color: "var(--blueprint)" }}>resend.com</a>,
+          verify your sending domain, then paste your API key below and your From address.
+          When done, send yourself a test email to confirm it works.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <div>
+            <label style={labelCss}>From address</label>
+            <input
+              value={emailFrom}
+              onChange={(e) => setEmailFrom(e.target.value)}
+              placeholder='Yeshivas Toras Chaim <office@yourdomain.org>'
+              style={inputCss}
+            />
+            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+              Must be a verified sender in Resend. Format: <code>Name &lt;email@domain&gt;</code>
+            </div>
+          </div>
+          <div>
+            <label style={labelCss}>
+              Resend API key {resendHasKey && <span style={{ color: "var(--shed-green)", fontWeight: 700, fontSize: 10 }}>on file: {resendKeyMasked}</span>}
+            </label>
+            <input
+              type="password"
+              value={resendKeyInput}
+              onChange={(e) => setResendKeyInput(e.target.value)}
+              placeholder={resendHasKey ? "Type a new key to replace it (leave blank to keep)" : "Paste your re_... key from resend.com"}
+              style={inputCss}
+            />
+            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+              We never display this back. Type a new key to replace it.
+              {resendEnvAvailable && !resendHasKey && (
+                <span style={{ marginLeft: 6, color: "var(--blueprint)" }}>
+                  A platform key is configured as a fallback.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelCss}>Email signature (HTML allowed)</label>
+          <textarea
+            value={emailSignature}
+            onChange={(e) => setEmailSignature(e.target.value)}
+            placeholder="— Yeshivas Toras Chaim&#10;123 Main St, Brooklyn NY&#10;(718) 555-0123"
+            style={{ ...inputCss, minHeight: 80, fontFamily: "inherit" }}
+          />
+          <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+            Appended to the bottom of every outgoing email (receipts + bulk campaigns).
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={saveEmailSettings}
+            disabled={emailSaving || !emailLoaded}
+            style={{
+              padding: "9px 20px",
+              background: "var(--cast-iron)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            {emailSaving ? "Saving…" : "Save email settings"}
+          </button>
+          {emailSaved && <span style={{ color: "var(--shed-green)", fontSize: 12, fontWeight: 700 }}>✓ Saved</span>}
+        </div>
+
+        {/* Test send */}
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(10,16,25,0.06)" }}>
+          <label style={labelCss}>Send a test email</label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="email"
+              value={testEmailAddr}
+              onChange={(e) => setTestEmailAddr(e.target.value)}
+              placeholder="you@yourdomain.org"
+              style={{ ...inputCss, flex: 1, minWidth: 220 }}
+            />
+            <button
+              onClick={sendTestEmail}
+              disabled={testEmailBusy || !testEmailAddr.includes("@")}
+              style={{
+                padding: "9px 16px",
+                background: "var(--blueprint)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: testEmailBusy ? "not-allowed" : "pointer",
+                opacity: testEmailBusy ? 0.5 : 1,
+              }}
+            >
+              {testEmailBusy ? "Sending…" : "Send test"}
+            </button>
+          </div>
+          {testEmailMsg && (
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                color: testEmailMsg.ok ? "var(--shed-green)" : "var(--cone-orange)",
+                fontWeight: 600,
+              }}
+            >
+              {testEmailMsg.text}
             </div>
           )}
         </div>

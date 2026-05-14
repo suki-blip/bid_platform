@@ -5,6 +5,7 @@ import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount } from '@/lib/fundraising-types';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { loadSolaCredentials, solaSale, solaApproved, ccLast4, ccBrand, parseExp, SolaError } from '@/lib/sola-client';
+import { sendFundraisingEmail, renderReceiptEmail } from '@/lib/fundraising-email';
 
 // POST /api/fundraising/sola/charge
 //
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
 
   // ----- Verify donor scope -----
   const donorRow = await db().execute({
-    sql: 'SELECT id, first_name, last_name, email FROM fr_donors WHERE id = ? AND owner_id = ?',
+    sql: 'SELECT id, first_name, last_name, hebrew_name, email, email_opt_in FROM fr_donors WHERE id = ? AND owner_id = ?',
     args: [body.donor_id, session.ownerId],
   });
   if (donorRow.rows.length === 0) return NextResponse.json({ error: 'Donor not found' }, { status: 404 });
@@ -325,6 +326,64 @@ export async function POST(request: Request) {
         // Log but don't fail the response — the donation succeeded, just the card-save didn't.
         console.error('[sola/charge] save_card failed:', err);
       }
+    }
+
+    // ----- Auto-send receipt email (best-effort, doesn't block the response) -----
+    // We fire-and-forget: the API responds immediately and the email sends in the background.
+    // If email isn't configured (no Resend key + no From) the helper records a failed log row
+    // and returns ok=false — we just log to console.
+    if (donorEmail && (donor.email_opt_in == null || String(donor.email_opt_in) === 'all' || String(donor.email_opt_in) === 'receipts_only')) {
+      // Resolve project name for the first allocation (when split, take the first; the rest
+      // get aggregate language). Best-effort lookup — we don't fail the response on this.
+      let projectName: string | null = null;
+      const firstProject = allocations[0]?.project_id;
+      if (firstProject) {
+        try {
+          const pn = await db().execute({
+            sql: 'SELECT name FROM fr_projects WHERE id = ?',
+            args: [firstProject],
+          });
+          projectName = (pn.rows[0]?.name as string | null) || null;
+        } catch {}
+      }
+      // Owner / organization name for the receipt closing line.
+      let orgName = 'Our organization';
+      try {
+        const o = await db().execute({
+          sql: 'SELECT email_from FROM saas_users WHERE id = ?',
+          args: [session.ownerId],
+        });
+        const efrom = (o.rows[0]?.email_from as string | null) || '';
+        // Extract just the display name out of "Name <addr>" — fall back to default.
+        const m = efrom.match(/^([^<]+)<.+>$/);
+        if (m) orgName = m[1].trim();
+      } catch {}
+
+      const tpl = renderReceiptEmail({
+        donor_name: `${donorFirst} ${donorLast}`.trim() || 'Donor',
+        hebrew_name: (donor.hebrew_name as string | null) || null,
+        amount: totalAmount,
+        currency: 'USD',
+        paid_date: new Date().toISOString().slice(0, 10),
+        method: 'Credit card',
+        project_name: projectName,
+        transaction_ref: saleRes.xRefNum,
+        cc_last4: last4,
+        organization_name: orgName,
+      });
+      // Use first reserved payment as the link target for the log.
+      const linkPaymentId = reserved[0]?.paymentId || null;
+      sendFundraisingEmail({
+        ownerId: session.ownerId,
+        to: donorEmail,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        template: 'receipt',
+        donorId: body.donor_id,
+        paymentId: linkPaymentId,
+        projectId: allocations[0]?.project_id || null,
+      }).catch((err) => console.error('[sola/charge] receipt send failed:', err));
     }
 
     return NextResponse.json({
