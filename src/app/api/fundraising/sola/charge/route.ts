@@ -4,7 +4,7 @@ import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount } from '@/lib/fundraising-types';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
-import { loadSolaCredentials, solaSale, solaApproved, ccLast4, SolaError } from '@/lib/sola-client';
+import { loadSolaCredentials, solaSale, solaApproved, ccLast4, ccBrand, parseExp, SolaError } from '@/lib/sola-client';
 
 // POST /api/fundraising/sola/charge
 //
@@ -53,6 +53,12 @@ interface ChargeBody {
   street?: string | null;
   bill_first_name?: string | null;
   bill_last_name?: string | null;
+  /** If true, ask Cardknox to return a vault token (xCreateToken=1) and persist it as a fr_donor_cards row. */
+  save_card?: boolean;
+  /** If true (along with save_card), mark the new card as the donor's default. */
+  set_default?: boolean;
+  /** Optional cardholder name to store with the saved card (separate from billFirst/billLast on the txn). */
+  cardholder_name?: string | null;
 }
 
 // Normalise the request body into a single shape: a list of allocations.
@@ -226,6 +232,7 @@ export async function POST(request: Request) {
       billFirstName: body.bill_first_name || donorFirst,
       billLastName: body.bill_last_name || donorLast,
       email: donorEmail,
+      createToken: !!body.save_card,
     });
   } catch (e) {
     const msg = e instanceof SolaError ? e.message : (e as Error).message || 'Sola request failed';
@@ -261,6 +268,65 @@ export async function POST(request: Request) {
     for (const pid of uniquePledges) await recomputePledgeStatus(pid);
     await recomputeDonorTotals(body.donor_id);
 
+    // ----- Save card on file if requested + Cardknox returned a token -----
+    // This runs AFTER the charge so a failed token-store doesn't break a successful donation.
+    // Wrap in try/catch — saving the card is best-effort, never poison the response.
+    let savedCardId: string | null = null;
+    if (body.save_card && saleRes.xToken) {
+      try {
+        // If set_default is true, demote any existing default first.
+        if (body.set_default) {
+          await db().execute({
+            sql: "UPDATE fr_donor_cards SET is_default = 0 WHERE donor_id = ? AND is_default = 1",
+            args: [body.donor_id],
+          });
+        }
+        // Avoid duplicating: if a card with the same token already exists for this donor, reuse it.
+        const existing = await db().execute({
+          sql: 'SELECT id FROM fr_donor_cards WHERE donor_id = ? AND sola_token = ?',
+          args: [body.donor_id, saleRes.xToken],
+        });
+        if (existing.rows.length > 0) {
+          savedCardId = String(existing.rows[0].id);
+          await db().execute({
+            sql: `UPDATE fr_donor_cards
+                  SET last_used_at = datetime('now'), status = 'active'
+                      ${body.set_default ? ", is_default = 1" : ''}
+                  WHERE id = ?`,
+            args: [savedCardId],
+          });
+        } else {
+          const { month: expMonth, year: expYear } = parseExp(body.exp || saleRes.xExp);
+          const brand = ccBrand(saleRes.xMaskedCardNumber, saleRes.xCardType);
+          savedCardId = crypto.randomUUID();
+          await db().execute({
+            sql: `INSERT INTO fr_donor_cards
+                    (id, owner_id, donor_id, sola_token, cc_last4, cc_brand,
+                     exp_month, exp_year, cardholder_name, billing_zip, billing_street,
+                     is_default, status, last_used_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))`,
+            args: [
+              savedCardId,
+              session.ownerId,
+              body.donor_id,
+              saleRes.xToken,
+              last4,
+              brand,
+              expMonth,
+              expYear,
+              body.cardholder_name || holder,
+              body.zip || null,
+              body.street || null,
+              body.set_default ? 1 : 0,
+            ],
+          });
+        }
+      } catch (err) {
+        // Log but don't fail the response — the donation succeeded, just the card-save didn't.
+        console.error('[sola/charge] save_card failed:', err);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       status: 'paid',
@@ -268,6 +334,7 @@ export async function POST(request: Request) {
       transaction_ref: saleRes.xRefNum,
       cc_last4: last4,
       auth_code: saleRes.xAuthCode,
+      saved_card_id: savedCardId,
       payments: reserved.map((r) => ({ payment_id: r.paymentId, pledge_id: r.pledgeId })),
     });
   } else {

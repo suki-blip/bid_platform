@@ -43,6 +43,8 @@ export interface SolaResponse {
   xAvsResultCode: string | null;
   xAmount: string | null;
   xInvoice: string | null;
+  xToken: string | null;       // Cardknox vault token, returned when xCreateToken=1 was sent
+  xExp: string | null;         // MMYY echoed back — handy for storing alongside the token
   raw: Record<string, unknown>;
 }
 
@@ -100,6 +102,8 @@ async function postCardknox(url: string, body: Record<string, string>): Promise<
       xAvsResultCode: json.xAvsResultCode ? String(json.xAvsResultCode) : null,
       xAmount: json.xAmount ? String(json.xAmount) : null,
       xInvoice: json.xInvoice ? String(json.xInvoice) : null,
+      xToken: json.xToken ? String(json.xToken) : null,
+      xExp: json.xExp ? String(json.xExp) : null,
       raw: json,
     };
   } finally {
@@ -119,6 +123,8 @@ export interface SaleArgs {
   billFirstName?: string | null;
   billLastName?: string | null;
   email?: string | null;
+  /** When true, ask Cardknox to also return a vault token (xToken) so we can charge this card again later without re-collecting it. */
+  createToken?: boolean;
 }
 
 /**
@@ -144,10 +150,88 @@ export async function solaSale(creds: SolaCredentials, args: SaleArgs): Promise<
   if (args.billFirstName) body.xBillFirstName = args.billFirstName;
   if (args.billLastName) body.xBillLastName = args.billLastName;
   if (args.email) body.xEmail = args.email;
+  if (args.createToken) body.xCreateToken = '1';
   // Encourage AVS / CVV checks for fraud protection
   body.xAllowDuplicate = '1'; // donations: same donor can charge the same amount multiple times legitimately
 
   return postCardknox(TX_ENDPOINT, body);
+}
+
+export interface TokenSaleArgs {
+  amount: number;
+  /** Cardknox vault token (returned from a previous cc:sale with xCreateToken=1). */
+  token: string;
+  /** Optional MMYY — Cardknox stores the exp with the token, but we send it for accuracy if known. */
+  exp?: string | null;
+  invoice?: string | null;
+  description?: string | null;
+  street?: string | null;
+  zip?: string | null;
+  billFirstName?: string | null;
+  billLastName?: string | null;
+  email?: string | null;
+}
+
+/**
+ * Charge a previously-saved card using its Cardknox vault token.
+ *
+ * Cardknox interprets xCardNum as a token automatically when the value matches the vault
+ * format (starts with letters, 22+ chars). No CVV or re-tokenization needed. This is the
+ * primary path for:
+ *   - the daily auto-charge cron (recurring monthly pledges with a saved card)
+ *   - one-click "charge again" from the donor profile
+ */
+export async function solaTokenSale(creds: SolaCredentials, args: TokenSaleArgs): Promise<SolaResponse> {
+  const body: Record<string, string> = {
+    xKey: creds.xKey,
+    xVersion: '5.0.0',
+    xSoftwareName: creds.softwareName,
+    xSoftwareVersion: creds.softwareVersion,
+    xCommand: 'cc:sale',
+    xAmount: args.amount.toFixed(2),
+    xCardNum: args.token, // Cardknox detects the vault token automatically
+  };
+  if (args.exp) body.xExp = args.exp;
+  if (args.invoice) body.xInvoice = args.invoice;
+  if (args.description) body.xDescription = args.description;
+  if (args.street) body.xStreet = args.street;
+  if (args.zip) body.xZip = args.zip;
+  if (args.billFirstName) body.xBillFirstName = args.billFirstName;
+  if (args.billLastName) body.xBillLastName = args.billLastName;
+  if (args.email) body.xEmail = args.email;
+  body.xAllowDuplicate = '1';
+
+  return postCardknox(TX_ENDPOINT, body);
+}
+
+/**
+ * Detect the card brand from a masked card number ("1XXXXXXXXX4242" or "VISA-...4242").
+ * Cardknox returns xCardType as Visa | MasterCard | Amex | Discover | Other.
+ * If xCardType is available, prefer that; otherwise fall back to BIN heuristics.
+ */
+export function ccBrand(masked: string | null, xCardType: string | null): string | null {
+  if (xCardType) return xCardType;
+  if (!masked) return null;
+  const digits = String(masked).replace(/\D/g, '');
+  if (digits.startsWith('4')) return 'Visa';
+  if (/^5[1-5]/.test(digits) || /^2[2-7]/.test(digits)) return 'MasterCard';
+  if (/^3[47]/.test(digits)) return 'Amex';
+  if (/^6(011|5)/.test(digits)) return 'Discover';
+  return null;
+}
+
+/**
+ * Parse a Cardknox MMYY exp string into { month, year } (year as full 4-digit).
+ */
+export function parseExp(mmyy: string | null): { month: number | null; year: number | null } {
+  if (!mmyy) return { month: null, year: null };
+  const m = mmyy.match(/^(\d{2})(\d{2})$/);
+  if (!m) return { month: null, year: null };
+  const month = Number(m[1]);
+  const yy = Number(m[2]);
+  if (month < 1 || month > 12) return { month: null, year: null };
+  // Cardknox returns 2-digit year; we expand to 4-digit assuming 21st century.
+  return { month, year: 2000 + yy };
 }
 
 export interface ReportArgs {

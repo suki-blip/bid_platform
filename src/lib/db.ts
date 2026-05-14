@@ -577,6 +577,66 @@ async function initializeDatabase() {
   } catch {}
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_sola_sync_owner ON fr_sola_sync_log(owner_id, started_at DESC)'); } catch {}
 
+  // Saved cards (Cardknox tokens).
+  //   sola_token  — Cardknox xToken (vault reference). Returned by cc:sale with xCreateToken=1.
+  //                 We charge it later with xCardNum=<token> (no CVV, no exp re-entry).
+  //   cc_last4    — masked last-4 for display
+  //   cc_brand    — Visa, MasterCard, Discover, Amex
+  //   exp_month/year — for showing "exp 03/27" and detecting expiry
+  //   status      — 'active' | 'expired' | 'removed'. Removed cards are hidden from pickers but
+  //                 kept for audit (paid payments may reference them).
+  // Tokens are per-merchant: only the owner that originally tokenized the card can charge it.
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_donor_cards (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      donor_id TEXT NOT NULL REFERENCES fr_donors(id) ON DELETE CASCADE,
+      sola_token TEXT NOT NULL,
+      cc_last4 TEXT,
+      cc_brand TEXT,
+      exp_month INTEGER,
+      exp_year INTEGER,
+      cardholder_name TEXT,
+      billing_zip TEXT,
+      billing_street TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_donor_cards_donor ON fr_donor_cards(donor_id, status)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_donor_cards_owner ON fr_donor_cards(owner_id, status)'); } catch {}
+
+  // Auto-charge pledges: link a pledge to a saved card so the daily cron charges each
+  // installment automatically on its due_date. Distinct from collection_mode='automatic'
+  // (which means "donor pays externally via ACH/standing-order, no action needed from us").
+  //   auto_charge_card_id  — FK to fr_donor_cards. NULL = no auto-charge.
+  // Why a separate column (not a new collection_mode value)? Because user might want manual
+  // chasing semantics (one row per installment in Collections) AND auto-charge — they're
+  // orthogonal. When auto_charge_card_id is set, the cron tries the card; if it fails, the
+  // row is left for Collections to chase manually as a 'failed' installment.
+  try { await client.execute('ALTER TABLE fr_pledges ADD COLUMN auto_charge_card_id TEXT'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_pledges_auto_charge ON fr_pledges(auto_charge_card_id) WHERE auto_charge_card_id IS NOT NULL'); } catch {}
+
+  // Auto-charge attempt log — every cron run that touches a payment row writes a row here.
+  // Keeps the audit trail outside fr_pledge_payments (which only tracks the payment itself).
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_auto_charge_log (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      payment_id TEXT NOT NULL REFERENCES fr_pledge_payments(id) ON DELETE CASCADE,
+      card_id TEXT REFERENCES fr_donor_cards(id) ON DELETE SET NULL,
+      amount REAL NOT NULL,
+      result TEXT NOT NULL,            -- 'approved' | 'declined' | 'error'
+      gateway_ref TEXT,                -- xRefNum
+      gateway_error TEXT,              -- xError / xErrorCode / our own message
+      attempted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_auto_charge_log_payment ON fr_auto_charge_log(payment_id, attempted_at DESC)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_auto_charge_log_owner ON fr_auto_charge_log(owner_id, attempted_at DESC)'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

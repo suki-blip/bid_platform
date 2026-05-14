@@ -65,14 +65,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     body.collection_mode === 'automatic' ? 'automatic' : 'manual';
   const installmentsTotal = collectionMode === 'automatic' ? 1 : installmentsTotalRequested;
 
+  // Optional auto-charge: if the user picked a saved card, the daily cron will charge
+  // each installment on its due_date. Validate ownership before persisting.
+  let autoChargeCardId: string | null = null;
+  if (body.auto_charge_card_id) {
+    const cardRow = await db().execute({
+      sql: "SELECT id FROM fr_donor_cards WHERE id = ? AND donor_id = ? AND owner_id = ? AND status = 'active'",
+      args: [String(body.auto_charge_card_id), donorId, session.ownerId],
+    });
+    if (cardRow.rows.length === 0) {
+      return NextResponse.json({ error: 'Saved card not found or no longer active' }, { status: 400 });
+    }
+    autoChargeCardId = String(cardRow.rows[0].id);
+  }
+
   const pledgeId = crypto.randomUUID();
 
   const statements: { sql: string; args: (string | number | null)[] }[] = [
     {
       sql: `INSERT INTO fr_pledges
               (id, owner_id, donor_id, project_id, fundraiser_id, amount, currency, status,
-               pledge_date, due_date, installments_total, payment_plan, notes, collection_mode, payment_day)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
+               pledge_date, due_date, installments_total, payment_plan, notes, collection_mode,
+               payment_day, auto_charge_card_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         pledgeId,
         session.ownerId,
@@ -88,6 +103,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         body.notes || null,
         collectionMode,
         paymentDay,
+        autoChargeCardId,
       ],
     },
   ];

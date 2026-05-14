@@ -155,11 +155,49 @@ export default function PayPage() {
   const [chargeError, setChargeError] = useState("");
   const [chargeSuccess, setChargeSuccess] = useState<{ amount: number; transaction_ref: string | null; cc_last4: string | null; auth_code: string | null } | null>(null);
 
+  // Saved cards — populated when a donor is selected. The user can either pick a
+  // saved card (one-click charge, no card-entry) OR enter a new card and (optionally)
+  // tick "save this card for future charges".
+  interface SavedCard {
+    id: string;
+    cc_last4: string | null;
+    cc_brand: string | null;
+    exp_month: number | null;
+    exp_year: number | null;
+    is_default: boolean;
+    expired: boolean;
+  }
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+  // 'new' = enter a new card via iFields. Any other value = the saved card id to charge.
+  const [cardChoice, setCardChoice] = useState<"new" | string>("new");
+  const [saveCard, setSaveCard] = useState(true);
+
   useEffect(() => {
     fetch("/api/fundraising/sola/config")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setSolaConfig(d));
   }, []);
+
+  // Reload saved cards when the donor changes.
+  useEffect(() => {
+    if (!donorId) {
+      setSavedCards([]);
+      setCardChoice("new");
+      return;
+    }
+    fetch(`/api/fundraising/donors/${donorId}/cards`)
+      .then((r) => (r.ok ? r.json() : { cards: [] }))
+      .then((d) => {
+        const cards: SavedCard[] = Array.isArray(d.cards) ? d.cards : [];
+        // Filter out expired — we won't offer to charge them.
+        const usable = cards.filter((c) => !c.expired);
+        setSavedCards(usable);
+        // Default to the donor's default card if any, otherwise 'new'
+        const def = usable.find((c) => c.is_default);
+        setCardChoice(def ? def.id : usable.length > 0 ? usable[0].id : "new");
+      })
+      .catch(() => setSavedCards([]));
+  }, [donorId]);
 
   const selectedDonor = useMemo(() => donors.find((d) => d.id === donorId) || null, [donors, donorId]);
   const selectedPledge = useMemo(() => pledges.find((p) => p.id === pledgeId) || null, [pledges, pledgeId]);
@@ -404,29 +442,55 @@ export default function PayPage() {
       };
     }
 
-    if (!solaFormRef.current) {
-      setChargeError("Card form is not ready yet.");
-      return;
-    }
-
     setChargeBusy(true);
-    let tokens;
-    try {
-      tokens = await solaFormRef.current.collectTokens();
-    } catch (e) {
-      setChargeError((e as Error).message);
-      setChargeBusy(false);
-      return;
-    }
+
+    // Branch: charge a saved card (no iFields, no card entry) vs collect a new card.
+    const useSavedCard = cardChoice !== "new";
 
     try {
-      // Merge card token fields into the body.
+      if (useSavedCard) {
+        const r = await fetch("/api/fundraising/sola/charge-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, card_id: cardChoice }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) {
+          setChargeError(d.reason || d.error || "Charge failed");
+          setChargeBusy(false);
+          return;
+        }
+        setChargeSuccess({
+          amount: displayTotal,
+          transaction_ref: d.transaction_ref,
+          cc_last4: d.cc_last4,
+          auth_code: d.auth_code,
+        });
+        return;
+      }
+
+      // New card path — collect tokens from iFields.
+      if (!solaFormRef.current) {
+        setChargeError("Card form is not ready yet.");
+        setChargeBusy(false);
+        return;
+      }
+      let tokens;
+      try {
+        tokens = await solaFormRef.current.collectTokens();
+      } catch (e) {
+        setChargeError((e as Error).message);
+        setChargeBusy(false);
+        return;
+      }
+
       Object.assign(body, {
         sut_card: tokens.sut_card,
         sut_cvv: tokens.sut_cvv,
         exp: tokens.exp,
         zip: tokens.zip,
         street: tokens.street,
+        save_card: saveCard,
       });
 
       const r = await fetch("/api/fundraising/sola/charge", {
@@ -451,7 +515,7 @@ export default function PayPage() {
     } finally {
       setChargeBusy(false);
     }
-  }, [donorId, amount, mode, pledgeId, installmentId, projectId, notes, allocations]);
+  }, [donorId, amount, mode, pledgeId, installmentId, projectId, notes, allocations, cardChoice, saveCard]);
 
   async function cancelSession() {
     if (!session) return;
@@ -1253,15 +1317,94 @@ export default function PayPage() {
                     padding: 14,
                   }}
                 >
-                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.7, marginBottom: 10 }}>
-                    Enter card details — charges via Sola Payments
-                  </div>
-                  <SolaCardForm
-                    ifieldsKey={solaConfig.ifields_key}
-                    softwareName={solaConfig.software_name}
-                    disabled={chargeBusy}
-                    onReady={(h) => (solaFormRef.current = h)}
-                  />
+                  {/* Saved card picker — shows only if the donor has any usable cards on file */}
+                  {savedCards.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.7, marginBottom: 8 }}>
+                        Use saved card or enter new
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {savedCards.map((c) => (
+                          <label
+                            key={c.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "9px 12px",
+                              border: cardChoice === c.id ? "2px solid var(--cast-iron)" : "1px solid rgba(10,16,25,0.12)",
+                              borderRadius: 8,
+                              background: cardChoice === c.id ? "rgba(10,16,25,0.03)" : "#fff",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="radio"
+                              name="card-choice"
+                              checked={cardChoice === c.id}
+                              onChange={() => setCardChoice(c.id)}
+                            />
+                            <div style={{ flex: 1, fontSize: 13 }}>
+                              <strong>{c.cc_brand || "Card"}</strong> ending {c.cc_last4 || "????"}
+                              {c.exp_month && c.exp_year && (
+                                <span style={{ opacity: 0.6, marginLeft: 8, fontSize: 12 }}>
+                                  exp {String(c.exp_month).padStart(2, "0")}/{String(c.exp_year).slice(-2)}
+                                </span>
+                              )}
+                              {c.is_default && (
+                                <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, color: "var(--shed-green)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                          </label>
+                        ))}
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "9px 12px",
+                            border: cardChoice === "new" ? "2px solid var(--cast-iron)" : "1px dashed rgba(10,16,25,0.2)",
+                            borderRadius: 8,
+                            background: cardChoice === "new" ? "rgba(10,16,25,0.03)" : "transparent",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="card-choice"
+                            checked={cardChoice === "new"}
+                            onChange={() => setCardChoice("new")}
+                          />
+                          <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>+ Enter a new card</div>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {cardChoice === "new" && (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.7, marginBottom: 10 }}>
+                        Enter card details — charges via Sola Payments
+                      </div>
+                      <SolaCardForm
+                        ifieldsKey={solaConfig.ifields_key}
+                        softwareName={solaConfig.software_name}
+                        disabled={chargeBusy}
+                        onReady={(h) => (solaFormRef.current = h)}
+                      />
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={saveCard}
+                          onChange={(e) => setSaveCard(e.target.checked)}
+                        />
+                        <span>Save this card on file for future charges</span>
+                      </label>
+                    </>
+                  )}
+
                   {chargeError && (
                     <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 10 }}>{chargeError}</div>
                   )}

@@ -168,6 +168,31 @@ export default function DonorProfilePage() {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [editingPledge, setEditingPledge] = useState<Pledge | null>(null);
 
+  // Saved cards on file for this donor. Fetched separately from /donors/[id] so we can
+  // reload after delete / set-default without re-pulling the whole donor object.
+  interface SavedCard {
+    id: string;
+    cc_last4: string | null;
+    cc_brand: string | null;
+    exp_month: number | null;
+    exp_year: number | null;
+    cardholder_name: string | null;
+    is_default: boolean;
+    expired: boolean;
+    last_used_at: string | null;
+  }
+  const [cards, setCards] = useState<SavedCard[]>([]);
+  const loadCards = useCallback(() => {
+    if (!params?.id) return;
+    fetch(`/api/fundraising/donors/${params.id}/cards`)
+      .then((r) => (r.ok ? r.json() : { cards: [] }))
+      .then((d) => setCards(Array.isArray(d.cards) ? d.cards : []))
+      .catch(() => setCards([]));
+  }, [params]);
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
+
   function loadSchedule() {
     if (!params?.id) return;
     fetch(`/api/fundraising/followups?donor_id=${params.id}&status=all`)
@@ -1009,6 +1034,91 @@ export default function DonorProfilePage() {
               </ul>
               );
             })()}
+          </Panel>
+
+          <div style={{ height: 14 }} />
+
+          <Panel title="Saved cards">
+            {cards.length === 0 ? (
+              <Empty>No cards on file. A card gets saved here when the donor opts in during a charge, or when an auto-charge pledge is set up.</Empty>
+            ) : (
+              <ul style={listStyle}>
+                {cards.map((c) => (
+                  <li
+                    key={c.id}
+                    style={{ ...rowStyle, padding: "10px 0", borderBottom: "1px solid rgba(10,16,25,0.06)" }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>
+                        {c.cc_brand || "Card"} ending {c.cc_last4 || "????"}
+                        {c.is_default && (
+                          <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, color: "var(--shed-green)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Default
+                          </span>
+                        )}
+                        {c.expired && (
+                          <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, color: "var(--cone-orange)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Expired
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, opacity: 0.6 }}>
+                        {c.cardholder_name ? `${c.cardholder_name} · ` : ""}
+                        {c.exp_month && c.exp_year && `exp ${String(c.exp_month).padStart(2, "0")}/${String(c.exp_year).slice(-2)}`}
+                        {c.last_used_at && ` · used ${fmtDate(c.last_used_at)}`}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {!c.is_default && !c.expired && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetch(`/api/fundraising/donors/${params.id}/cards/${c.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ is_default: true }),
+                            });
+                            loadCards();
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            background: "transparent",
+                            color: "var(--blueprint)",
+                            border: "1px solid rgba(28,93,142,0.3)",
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Set default
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm(`Remove ${c.cc_brand || "card"} ending ${c.cc_last4 || "????"}? Any pledges set to auto-charge with this card will fall back to manual collection.`)) return;
+                          await fetch(`/api/fundraising/donors/${params.id}/cards/${c.id}`, { method: "DELETE" });
+                          loadCards();
+                        }}
+                        style={{
+                          padding: "4px 10px",
+                          background: "transparent",
+                          color: "var(--cone-orange)",
+                          border: "1px solid rgba(232,93,31,0.3)",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Panel>
 
           <div style={{ height: 14 }} />

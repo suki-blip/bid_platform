@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PAYMENT_METHODS, paymentMethodLabel } from "@/lib/fundraising-types";
 
 // Standalone modal for creating a new pledge (promise only — no money changes hands).
@@ -42,6 +42,31 @@ export default function PledgeModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Saved cards on file for auto-charge. Loaded when the modal opens. If the donor
+  // has any non-expired card, the user can tick "auto-charge on each due date" and
+  // pick which card to use.
+  interface SavedCard {
+    id: string;
+    cc_last4: string | null;
+    cc_brand: string | null;
+    exp_month: number | null;
+    exp_year: number | null;
+    is_default: boolean;
+    expired: boolean;
+  }
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+  const [autoChargeCardId, setAutoChargeCardId] = useState<string>("");
+
+  useEffect(() => {
+    fetch(`/api/fundraising/donors/${donorId}/cards`)
+      .then((r) => (r.ok ? r.json() : { cards: [] }))
+      .then((d) => {
+        const cards: SavedCard[] = Array.isArray(d.cards) ? d.cards : [];
+        setSavedCards(cards.filter((c) => !c.expired));
+      })
+      .catch(() => setSavedCards([]));
+  }, [donorId]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -59,6 +84,7 @@ export default function PledgeModal({
         default_method: defaultMethod,
         collection_mode: collectionMode,
         notes: notes || null,
+        auto_charge_card_id: autoChargeCardId || null,
       }),
     });
     if (!res.ok) {
@@ -222,6 +248,33 @@ export default function PledgeModal({
                   </div>
                 </div>
               </label>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-charge on due date — only offered if the donor has at least one saved card on file. */}
+        {savedCards.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.65, display: "block", marginBottom: 6 }}>
+              Auto-charge on each due date (optional)
+            </label>
+            <select
+              value={autoChargeCardId}
+              onChange={(e) => setAutoChargeCardId(e.target.value)}
+              style={input}
+            >
+              <option value="">— Don&apos;t auto-charge (manual collection) —</option>
+              {savedCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.cc_brand || "Card"} ending {c.cc_last4 || "????"}
+                  {c.exp_month && c.exp_year && ` · exp ${String(c.exp_month).padStart(2, "0")}/${String(c.exp_year).slice(-2)}`}
+                  {c.is_default ? " · default" : ""}
+                </option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4, lineHeight: 1.4 }}>
+              When set, the system will charge this card automatically on each installment&apos;s
+              due date. Failed charges fall back to manual Collections.
             </div>
           </div>
         )}
