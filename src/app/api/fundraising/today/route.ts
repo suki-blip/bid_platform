@@ -29,7 +29,7 @@ export async function GET() {
     await Promise.all([
       db().execute({
         sql: `SELECT f.id, f.title, f.due_at, f.kind, f.priority, f.donor_id,
-                     d.first_name AS donor_first, d.last_name AS donor_last
+                     d.first_name AS donor_first, d.last_name AS donor_last, d.hebrew_name AS donor_hebrew
               FROM fr_followups f
               LEFT JOIN fr_donors d ON d.id = f.donor_id
               WHERE f.owner_id = ?
@@ -44,7 +44,7 @@ export async function GET() {
       }),
       db().execute({
         sql: `SELECT f.id, f.title, f.due_at, f.kind, f.priority, f.donor_id,
-                     d.first_name AS donor_first, d.last_name AS donor_last
+                     d.first_name AS donor_first, d.last_name AS donor_last, d.hebrew_name AS donor_hebrew
               FROM fr_followups f
               LEFT JOIN fr_donors d ON d.id = f.donor_id
               WHERE f.owner_id = ?
@@ -59,7 +59,7 @@ export async function GET() {
       }),
       db().execute({
         sql: `SELECT pp.id, pp.amount, pp.method, pp.due_date, pp.installment_number, pp.status,
-                     d.id AS donor_id, d.first_name, d.last_name,
+                     d.id AS donor_id, d.first_name, d.last_name, d.hebrew_name,
                      (SELECT phone FROM fr_donor_phones WHERE donor_id = d.id ORDER BY is_primary DESC LIMIT 1) AS phone,
                      prj.name AS project_name
               FROM fr_pledge_payments pp
@@ -86,7 +86,7 @@ export async function GET() {
       // Yahrzeit field is free-text Hebrew date — recurrence isn't computable from this column alone,
       // so we just surface donors who have one on file. Renamed below to match.
       db().execute({
-        sql: `SELECT id, first_name, last_name, yahrzeit
+        sql: `SELECT id, first_name, last_name, hebrew_name, yahrzeit
               FROM fr_donors
               WHERE owner_id = ?
                 AND yahrzeit IS NOT NULL
@@ -97,7 +97,7 @@ export async function GET() {
       }),
       db().execute({
         sql: `SELECT e.id, e.subject, e.to_email, e.send_at, e.donor_id,
-                     d.first_name AS donor_first, d.last_name AS donor_last
+                     d.first_name AS donor_first, d.last_name AS donor_last, d.hebrew_name AS donor_hebrew
               FROM fr_email_queue e
               LEFT JOIN fr_donors d ON d.id = e.donor_id
               WHERE e.owner_id = ?
@@ -141,6 +141,7 @@ export async function GET() {
       priority: String(r.priority),
       donor_id: r.donor_id ? String(r.donor_id) : null,
       donor_name: r.donor_first ? `${r.donor_first}${r.donor_last ? ' ' + r.donor_last : ''}` : null,
+      hebrew_name: r.donor_hebrew ? String(r.donor_hebrew) : null,
     })),
     overdueFollowups: overdueFollowups.rows.map((r) => ({
       id: String(r.id),
@@ -150,6 +151,7 @@ export async function GET() {
       priority: String(r.priority),
       donor_id: r.donor_id ? String(r.donor_id) : null,
       donor_name: r.donor_first ? `${r.donor_first}${r.donor_last ? ' ' + r.donor_last : ''}` : null,
+      hebrew_name: r.donor_hebrew ? String(r.donor_hebrew) : null,
     })),
     overduePayments: overduePayments.rows.map((r) => ({
       id: String(r.id),
@@ -160,6 +162,7 @@ export async function GET() {
       status: String(r.status),
       donor_id: String(r.donor_id),
       donor_name: `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}`,
+      hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
       phone: r.phone ? String(r.phone) : null,
       project_name: r.project_name ? String(r.project_name) : null,
     })),
@@ -172,6 +175,7 @@ export async function GET() {
     yahrzeitsThisWeek: yahrzeitsOnFile.rows.map((r) => ({
       id: String(r.id),
       donor_name: `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}`,
+      hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
       yahrzeit: String(r.yahrzeit),
     })),
     emailsDueToday: emailsDueToday.rows.map((r) => ({
@@ -181,6 +185,7 @@ export async function GET() {
       send_at: String(r.send_at),
       donor_id: r.donor_id ? String(r.donor_id) : null,
       donor_name: r.donor_first ? `${r.donor_first}${r.donor_last ? ' ' + r.donor_last : ''}` : null,
+      hebrew_name: r.donor_hebrew ? String(r.donor_hebrew) : null,
     })),
     staleDonors: stale.rows.map((r) => ({
       id: String(r.id),

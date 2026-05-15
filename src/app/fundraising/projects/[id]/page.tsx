@@ -52,6 +52,7 @@ interface Payment {
   donor_id: string;
   first_name: string;
   last_name: string | null;
+  hebrew_name: string | null;
   amount: number;
   method: string;
   status: string;
@@ -481,6 +482,9 @@ export default function ProjectDetailPage() {
                     <Link href={`/fundraising/donors/${p.donor_id}`} style={{ color: "var(--cast-iron)", textDecoration: "none", fontWeight: 700, fontSize: 13 }}>
                       {p.first_name} {p.last_name || ""}
                     </Link>
+                    {p.hebrew_name && (
+                      <div style={{ fontSize: 11, opacity: 0.6, direction: "rtl", textAlign: "left", fontFamily: "'Frank Ruhl Libre', 'David', serif" }}>{p.hebrew_name}</div>
+                    )}
                     <div style={{ fontSize: 11, opacity: 0.6 }}>
                       {fmtDate(p.pledge_date)} · {p.installments_total} pmt · {p.status}
                     </div>
@@ -516,6 +520,9 @@ export default function ProjectDetailPage() {
                     <Link href={`/fundraising/donors/${pay.donor_id}`} style={{ color: "var(--cast-iron)", textDecoration: "none", fontWeight: 700, fontSize: 13 }}>
                       {pay.first_name} {pay.last_name || ""}
                     </Link>
+                    {pay.hebrew_name && (
+                      <div style={{ fontSize: 11, opacity: 0.6, direction: "rtl", textAlign: "left", fontFamily: "'Frank Ruhl Libre', 'David', serif" }}>{pay.hebrew_name}</div>
+                    )}
                     <div style={{ fontSize: 11, opacity: 0.6 }}>
                       {pay.method.replace("_", " ")} · #{pay.installment_number} ·{" "}
                       {pay.status === "paid" ? `paid ${fmtDate(pay.paid_date)}` : `due ${fmtDate(pay.due_date)}`}

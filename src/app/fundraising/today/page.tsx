@@ -14,12 +14,12 @@ interface TodayData {
     dayOfWeek: string;
     holidays: string[];
   };
-  todayFollowups: Array<{ id: string; title: string; due_at: string; kind: string; priority: string; donor_id: string | null; donor_name: string | null }>;
-  overdueFollowups: Array<{ id: string; title: string; due_at: string; kind: string; priority: string; donor_id: string | null; donor_name: string | null }>;
-  overduePayments: Array<{ id: string; amount: number; method: string; due_date: string; donor_id: string; donor_name: string; phone: string | null; project_name: string | null }>;
+  todayFollowups: Array<{ id: string; title: string; due_at: string; kind: string; priority: string; donor_id: string | null; donor_name: string | null; hebrew_name: string | null }>;
+  overdueFollowups: Array<{ id: string; title: string; due_at: string; kind: string; priority: string; donor_id: string | null; donor_name: string | null; hebrew_name: string | null }>;
+  overduePayments: Array<{ id: string; amount: number; method: string; due_date: string; donor_id: string; donor_name: string; hebrew_name: string | null; phone: string | null; project_name: string | null }>;
   todayBirthdays: Array<{ id: string; donor_name: string; hebrew_name: string | null; birthday: string }>;
-  yahrzeitsThisWeek: Array<{ id: string; donor_name: string; yahrzeit: string }>;
-  emailsDueToday: Array<{ id: string; subject: string; to_email: string; send_at: string; donor_id: string | null; donor_name: string | null }>;
+  yahrzeitsThisWeek: Array<{ id: string; donor_name: string; hebrew_name: string | null; yahrzeit: string }>;
+  emailsDueToday: Array<{ id: string; subject: string; to_email: string; send_at: string; donor_id: string | null; donor_name: string | null; hebrew_name: string | null }>;
   staleDonors: Array<{ id: string; donor_name: string; hebrew_name: string | null; total_paid: number; last_contact_at: string | null }>;
 }
 
@@ -199,6 +199,7 @@ export default function TodayPage() {
                         {f.donor_name && (
                           <button onClick={() => f.donor_id && setPreviewDonorId(f.donor_id)} style={inlineLinkBtn}>
                             {f.donor_name}
+                            {f.hebrew_name && <span style={hebrewInline}> · {f.hebrew_name}</span>}
                           </button>
                         )}
                         {f.donor_name ? " · " : ""}
@@ -229,6 +230,7 @@ export default function TodayPage() {
                       <div style={{ fontSize: 11, opacity: 0.65 }}>
                         <button onClick={() => setPreviewDonorId(p.donor_id)} style={inlineLinkBtn}>
                           {p.donor_name}
+                          {p.hebrew_name && <span style={hebrewInline}> · {p.hebrew_name}</span>}
                         </button>
                         {" · "}
                         <span style={{ color: "var(--cone-orange)", fontWeight: 700 }}>
@@ -276,6 +278,7 @@ export default function TodayPage() {
                         {f.donor_name && (
                           <button onClick={() => f.donor_id && setPreviewDonorId(f.donor_id)} style={inlineLinkBtn}>
                             {f.donor_name}
+                            {f.hebrew_name && <span style={hebrewInline}> · {f.hebrew_name}</span>}
                           </button>
                         )}
                         {" · "}
@@ -314,6 +317,7 @@ export default function TodayPage() {
                             {" · "}
                             <button onClick={() => e.donor_id && setPreviewDonorId(e.donor_id)} style={inlineLinkBtn}>
                               {e.donor_name}
+                              {e.hebrew_name && <span style={hebrewInline}> · {e.hebrew_name}</span>}
                             </button>
                           </>
                         )}
@@ -362,6 +366,9 @@ export default function TodayPage() {
                       <button onClick={() => setPreviewDonorId(s.id)} style={inlineLinkBtn}>
                         <span style={{ fontSize: 13, fontWeight: 700 }}>{s.donor_name}</span>
                       </button>
+                      {s.hebrew_name && (
+                        <div style={{ fontSize: 11, opacity: 0.6, direction: "rtl", textAlign: "left", fontFamily: "'Frank Ruhl Libre', 'David', serif" }}>{s.hebrew_name}</div>
+                      )}
                       <div style={{ fontSize: 11, opacity: 0.6 }}>
                         {fmtMoney(s.total_paid)} lifetime ·{" "}
                         {s.last_contact_at
@@ -388,6 +395,9 @@ export default function TodayPage() {
                       <button onClick={() => setPreviewDonorId(y.id)} style={inlineLinkBtn}>
                         <span style={{ fontSize: 13, fontWeight: 700 }}>{y.donor_name}</span>
                       </button>
+                      {y.hebrew_name && (
+                        <div style={{ fontSize: 11, opacity: 0.6, direction: "rtl", textAlign: "left", fontFamily: "'Frank Ruhl Libre', 'David', serif" }}>{y.hebrew_name}</div>
+                      )}
                       <div style={{ fontSize: 11, opacity: 0.6 }}>{y.yahrzeit}</div>
                     </div>
                   </li>
@@ -488,6 +498,14 @@ const inlineLinkBtn: React.CSSProperties = {
   textDecoration: "underline",
   textDecorationColor: "rgba(10,16,25,0.25)",
   textUnderlineOffset: 3,
+};
+// Inline Hebrew-name annotation used in compact rows. Stays on the same line as the English
+// name so we don't break the existing "donor · meta · meta" sentence layout, but uses RTL
+// direction + the Hebrew font so it reads correctly.
+const hebrewInline: React.CSSProperties = {
+  direction: "rtl",
+  fontFamily: "'Frank Ruhl Libre', 'David', serif",
+  opacity: 0.75,
 };
 const miniBtn: React.CSSProperties = {
   padding: "5px 10px",

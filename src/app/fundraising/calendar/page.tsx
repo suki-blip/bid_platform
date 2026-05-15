@@ -15,6 +15,7 @@ interface CalendarEvent {
   title: string;
   donor_id: string | null;
   donor_name: string | null;
+  hebrew_name: string | null;
   status: string | null;
   priority: string | null;
   amount: number | null;
@@ -414,6 +415,9 @@ export default function CalendarPage() {
                                 style={{ fontSize: 12, color: "var(--cast-iron)", textDecoration: "underline", textDecorationColor: "rgba(10,16,25,0.25)", textUnderlineOffset: 3 }}
                               >
                                 → {e.donor_name}
+                                {e.hebrew_name && (
+                                  <span style={{ direction: "rtl", fontFamily: "'Frank Ruhl Libre', 'David', serif", opacity: 0.75 }}> · {e.hebrew_name}</span>
+                                )}
                               </Link>
                             )}
                             {e.project_name && (
@@ -495,6 +499,9 @@ export default function CalendarPage() {
                                 style={{ fontSize: 11, color: "var(--cast-iron)", textDecoration: "none", opacity: 0.7 }}
                               >
                                 → {e.donor_name}
+                                {e.hebrew_name && (
+                                  <span style={{ direction: "rtl", fontFamily: "'Frank Ruhl Libre', 'David', serif" }}> · {e.hebrew_name}</span>
+                                )}
                               </Link>
                             )}
                             {e.project_name && (

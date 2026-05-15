@@ -10,6 +10,7 @@ interface CalendarEvent {
   title: string;
   donor_id: string | null;
   donor_name: string | null;
+  hebrew_name: string | null;
   status: string | null;
   priority: string | null;
   amount: number | null;
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
   const followupRes = await db().execute({
     sql: `SELECT f.id, f.title, f.due_at, f.kind, f.priority, f.status,
                  f.donor_id,
-                 d.first_name, d.last_name,
+                 d.first_name, d.last_name, d.hebrew_name,
                  prj.name AS project_name
           FROM fr_followups f
           LEFT JOIN fr_donors d ON d.id = f.donor_id
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
       title: String(r.title),
       donor_id: r.donor_id ? String(r.donor_id) : null,
       donor_name: r.first_name ? `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}` : null,
+      hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
       status: String(r.status),
       priority: String(r.priority),
       amount: null,
@@ -78,7 +80,7 @@ export async function GET(request: NextRequest) {
 
   const paymentRes = await db().execute({
     sql: `SELECT pp.id, pp.amount, pp.method, pp.status, pp.due_date, pp.installment_number,
-                 d.id AS donor_id, d.first_name, d.last_name,
+                 d.id AS donor_id, d.first_name, d.last_name, d.hebrew_name,
                  prj.name AS project_name
           FROM fr_pledge_payments pp
           JOIN fr_donors d ON d.id = pp.donor_id
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest) {
       title: `Payment due (${String(r.method).replace('_', ' ')})`,
       donor_id: String(r.donor_id),
       donor_name: `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}`,
+      hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
       status: String(r.status),
       priority: null,
       amount: Number(r.amount),
@@ -113,7 +116,7 @@ export async function GET(request: NextRequest) {
   const donorArgs = session.role === 'fundraiser' ? [session.ownerId, session.fundraiserId!] : [session.ownerId];
 
   const milestoneRes = await db().execute({
-    sql: `SELECT id, first_name, last_name, birthday, anniversary, yahrzeit
+    sql: `SELECT id, first_name, last_name, hebrew_name, birthday, anniversary, yahrzeit
           FROM fr_donors
           WHERE owner_id = ? AND (birthday IS NOT NULL OR anniversary IS NOT NULL OR yahrzeit IS NOT NULL)${fundraiserDonorFilter}`,
     args: donorArgs,
@@ -121,6 +124,7 @@ export async function GET(request: NextRequest) {
 
   for (const r of milestoneRes.rows) {
     const name = `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}`;
+    const hebrewName = r.hebrew_name ? String(r.hebrew_name) : null;
     for (let yr = fromYear; yr <= toYear; yr++) {
       if (r.birthday) {
         const md = String(r.birthday).slice(5, 10); // MM-DD
@@ -135,6 +139,7 @@ export async function GET(request: NextRequest) {
               title: `${name}'s birthday`,
               donor_id: String(r.id),
               donor_name: name,
+              hebrew_name: hebrewName,
               status: null,
               priority: null,
               amount: null,
@@ -158,6 +163,7 @@ export async function GET(request: NextRequest) {
               title: `${name}'s anniversary`,
               donor_id: String(r.id),
               donor_name: name,
+              hebrew_name: hebrewName,
               status: null,
               priority: null,
               amount: null,

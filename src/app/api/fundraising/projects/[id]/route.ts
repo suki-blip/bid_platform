@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       args: [id, ...fundraiserArgs],
     }),
     db().execute({
-      sql: `SELECT pp.*, d.first_name, d.last_name
+      sql: `SELECT pp.*, d.first_name, d.last_name, d.hebrew_name
             FROM fr_pledge_payments pp
             JOIN fr_donors d ON d.id = pp.donor_id
             WHERE pp.project_id = ?${fundraiserFilter}
