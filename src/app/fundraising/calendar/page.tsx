@@ -294,14 +294,16 @@ export default function CalendarPage() {
                   {day.holidays.length > 0 && (
                     <div
                       style={{
-                        fontSize: 9,
+                        fontSize: 10,
                         fontWeight: 600,
-                        fontStyle: "italic",
-                        color: isSelected ? "rgba(255,255,255,0.75)" : "rgba(122,79,0,0.85)",
+                        color: isSelected ? "rgba(255,255,255,0.85)" : "rgba(122,79,0,0.9)",
                         marginTop: 2,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        direction: "rtl",
+                        textAlign: "right",
+                        fontFamily: "'Frank Ruhl Libre', 'David', serif",
                       }}
                     >
                       {day.holidays[0]}
@@ -449,11 +451,30 @@ export default function CalendarPage() {
                 <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "var(--font-bricolage), sans-serif", letterSpacing: "-0.01em", marginTop: 2 }}>
                   {new Date(selectedDay.iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                 </div>
-                <div style={{ fontSize: 13, color: "var(--blueprint)", fontWeight: 600, direction: "rtl", textAlign: "left" }}>
+                <div
+                  style={{
+                    fontSize: 15,
+                    color: "var(--blueprint)",
+                    fontWeight: 600,
+                    direction: "rtl",
+                    textAlign: "left",
+                    fontFamily: "'Frank Ruhl Libre', 'David', serif",
+                  }}
+                >
                   {selectedDay.hebrew} {selectedDay.hebrewMonth}
                 </div>
                 {selectedDay.holidays.length > 0 && (
-                  <div style={{ fontSize: 11, color: "var(--cone-orange)", fontWeight: 700, marginTop: 4 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--cone-orange)",
+                      fontWeight: 700,
+                      marginTop: 4,
+                      direction: "rtl",
+                      textAlign: "left",
+                      fontFamily: "'Frank Ruhl Libre', 'David', serif",
+                    }}
+                  >
                     {selectedDay.holidays.join(" · ")}
                   </div>
                 )}

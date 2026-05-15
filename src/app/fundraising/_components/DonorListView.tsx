@@ -12,6 +12,8 @@ interface DonorRow {
   first_name: string;
   last_name: string | null;
   hebrew_name: string | null;
+  hebrew_first_name: string | null;
+  hebrew_last_name: string | null;
   email: string | null;
   organization: string | null;
   total_pledged: number;
@@ -26,6 +28,22 @@ interface DonorRow {
   assigned_name: string | null;
   financial_rating: number | null;
   giving_rating: number | null;
+}
+
+// Pick the best Hebrew display string for a donor row. Some donors only set the structured
+// hebrew_first_name + hebrew_last_name fields (the donor-edit form has both inputs); legacy
+// donors use the combined hebrew_name field; some have both. Order of preference:
+//   1. structured first + last (joined with a space)
+//   2. just one of the structured fields if the other is empty
+//   3. the legacy combined hebrew_name
+//   4. null (don't render anything)
+function donorHebrewDisplay(d: DonorRow): string | null {
+  const fn = (d.hebrew_first_name || "").trim();
+  const ln = (d.hebrew_last_name || "").trim();
+  const structured = [fn, ln].filter(Boolean).join(" ");
+  if (structured) return structured;
+  const legacy = (d.hebrew_name || "").trim();
+  return legacy || null;
 }
 
 interface SourceRow {
@@ -494,19 +512,23 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
                     <span style={{ color: "var(--cast-iron)", fontWeight: 600 }}>
                       {d.first_name} {d.last_name || ""}
                     </span>
-                    {d.hebrew_name && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          opacity: 0.55,
-                          direction: "rtl",
-                          textAlign: "left",
-                          fontFamily: "'Frank Ruhl Libre', 'David', serif",
-                        }}
-                      >
-                        {d.hebrew_name}
-                      </div>
-                    )}
+                    {(() => {
+                      const heb = donorHebrewDisplay(d);
+                      return heb ? (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            opacity: 0.7,
+                            direction: "rtl",
+                            textAlign: "left",
+                            fontFamily: "'Frank Ruhl Libre', 'David', serif",
+                            marginTop: 1,
+                          }}
+                        >
+                          {heb}
+                        </div>
+                      ) : null;
+                    })()}
                   </td>
                   <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>

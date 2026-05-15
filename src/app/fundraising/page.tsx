@@ -179,44 +179,45 @@ export default function FundraisingDashboard() {
           >
             {today.dayOfWeek} · {today.gregorian}
           </div>
+          {/* Primary line: Hebrew date in Hebrew letters (gematriya). The English version
+              is kept as a smaller helper below for users who don't read Hebrew fluently. */}
           <h1
             style={{
-              fontFamily: "var(--font-bricolage), sans-serif",
-              fontSize: 34,
+              fontFamily: "'Frank Ruhl Libre', 'David', serif",
+              fontSize: 36,
               fontWeight: 800,
-              letterSpacing: "-0.025em",
+              letterSpacing: "-0.01em",
               margin: 0,
               lineHeight: 1.05,
-            }}
-          >
-            {today.hebrewEn}
-          </h1>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 600,
-              marginTop: 2,
               direction: "rtl",
               textAlign: "left",
-              fontFamily: "'Frank Ruhl Libre', 'David', serif",
-              color: "rgba(10,16,25,0.75)",
             }}
           >
             {today.hebrew}
+          </h1>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 500,
+              marginTop: 4,
+              color: "rgba(10,16,25,0.55)",
+            }}
+          >
+            {today.hebrewEn}
           </div>
           {today.holidays.length > 0 && (
             <div
               style={{
                 marginTop: 10,
                 display: "inline-block",
-                fontSize: 11,
+                fontSize: 14,
                 fontWeight: 700,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
                 color: "#7a4f00",
                 background: "rgba(240,168,48,0.18)",
-                padding: "3px 8px",
-                borderRadius: 3,
+                padding: "4px 10px",
+                borderRadius: 4,
+                direction: "rtl",
+                fontFamily: "'Frank Ruhl Libre', 'David', serif",
               }}
             >
               {today.holidays.join(" · ")}

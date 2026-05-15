@@ -67,7 +67,9 @@ export async function GET(request: NextRequest) {
 
   const rowsRes = await db().execute({
     sql: `SELECT
-            d.id, d.status, d.first_name, d.last_name, d.hebrew_name, d.email, d.organization,
+            d.id, d.status, d.first_name, d.last_name,
+            d.hebrew_name, d.hebrew_first_name, d.hebrew_last_name,
+            d.email, d.organization,
             d.total_pledged, d.total_paid, d.last_contact_at, d.next_followup_at,
             d.created_at, d.assigned_to, d.tags, d.financial_rating, d.giving_rating,
             s.name AS source_name,
@@ -90,7 +92,12 @@ export async function GET(request: NextRequest) {
       status: String(r.status),
       first_name: String(r.first_name),
       last_name: r.last_name ? String(r.last_name) : null,
+      // The donor profile lets users fill in either a combined `hebrew_name` (legacy) OR
+      // separate `hebrew_first_name`/`hebrew_last_name` fields. We surface all three so the
+      // list view can prefer the structured pair and fall back to the legacy combined field.
       hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
+      hebrew_first_name: r.hebrew_first_name ? String(r.hebrew_first_name) : null,
+      hebrew_last_name: r.hebrew_last_name ? String(r.hebrew_last_name) : null,
       email: r.email ? String(r.email) : null,
       organization: r.organization ? String(r.organization) : null,
       total_pledged: Number(r.total_pledged || 0),
