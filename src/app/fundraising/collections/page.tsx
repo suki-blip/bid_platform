@@ -409,7 +409,7 @@ export default function CollectionsPage() {
                     onClick={(e) => { e.stopPropagation(); setChargingItem(item); }}
                     style={{
                       padding: "5px 10px",
-                      background: "var(--blueprint)",
+                      background: item.status === "failed" || item.status === "bounced" ? "var(--cone-orange)" : "var(--blueprint)",
                       color: "#fff",
                       border: "none",
                       borderRadius: 6,
@@ -417,9 +417,13 @@ export default function CollectionsPage() {
                       fontSize: 11,
                       fontWeight: 700,
                     }}
-                    title="Charge a card now via Sola"
+                    title={
+                      item.status === "failed" || item.status === "bounced"
+                        ? "Retry this charge — uses the donor's saved card if available, otherwise asks for new card details"
+                        : "Charge a card now via Sola"
+                    }
                   >
-                    💳 Charge
+                    {item.status === "failed" || item.status === "bounced" ? "↻ Retry" : "💳 Charge"}
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); markPaid(item.id); }} style={actionBtn} title="Mark paid">
                     ✓ Paid
@@ -453,6 +457,7 @@ export default function CollectionsPage() {
           description={`${chargingItem.project_name || "General"} · installment #${chargingItem.installment_number}`}
           donorLabel={chargingItem.donor_name}
           pledgeLabel={`${fmtMoney(chargingItem.amount)} due ${fmtDate(chargingItem.due_date)} · ${chargingItem.project_name || "General"}`}
+          isRetry={chargingItem.status === "failed" || chargingItem.status === "bounced"}
           onClose={() => setChargingItem(null)}
           onCharged={() => {
             setChargingItem(null);
