@@ -60,6 +60,9 @@ interface ChargeBody {
   set_default?: boolean;
   /** Optional cardholder name to store with the saved card (separate from billFirst/billLast on the txn). */
   cardholder_name?: string | null;
+  /** When true, skip the auto-receipt email after a successful charge. Useful when the manager
+   *  wants to record an internal/test transaction or send a custom receipt themselves later. */
+  skip_receipt?: boolean;
 }
 
 // Normalise the request body into a single shape: a list of allocations.
@@ -334,7 +337,7 @@ export async function POST(request: Request) {
     // before reaching Resend. Awaiting adds ~500ms to the response but guarantees the
     // receipt actually goes out. If the send fails the donation still succeeds (we just
     // log the error and the user can manually re-send the receipt from the Payments page).
-    if (donorEmail && (donor.email_opt_in == null || String(donor.email_opt_in) === 'all' || String(donor.email_opt_in) === 'receipts_only')) {
+    if (!body.skip_receipt && donorEmail && (donor.email_opt_in == null || String(donor.email_opt_in) === 'all' || String(donor.email_opt_in) === 'receipts_only')) {
       // Resolve project name for the first allocation (when split, take the first; the rest
       // get aggregate language). Best-effort lookup — we don't fail the response on this.
       let projectName: string | null = null;

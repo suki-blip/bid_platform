@@ -37,6 +37,8 @@ interface ChargeTokenBody {
   amount?: number;
   allocations?: Allocation[];
   notes?: string | null;
+  /** When true, skip the auto-receipt email after a successful charge. */
+  skip_receipt?: boolean;
 }
 
 function normaliseAllocations(body: ChargeTokenBody): Allocation[] | { error: string } {
@@ -234,7 +236,7 @@ export async function POST(request: Request) {
     // Auto-send receipt (best-effort, fire-and-forget).
     const donorEmailVal = (donor.email as string | null) || null;
     const optIn = (donor.email_opt_in as string | null) || 'all';
-    if (donorEmailVal && (optIn === 'all' || optIn === 'receipts_only')) {
+    if (!body.skip_receipt && donorEmailVal && (optIn === 'all' || optIn === 'receipts_only')) {
       let projectName: string | null = null;
       const firstProj = allocations[0]?.project_id;
       if (firstProj) {

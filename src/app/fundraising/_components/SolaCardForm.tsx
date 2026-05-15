@@ -171,7 +171,7 @@ export default function SolaCardForm({ ifieldsKey, softwareName, disabled, onRea
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: disabled ? 0.55 : 1, pointerEvents: disabled ? "none" : "auto" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, opacity: disabled ? 0.55 : 1, pointerEvents: disabled ? "none" : "auto" }}>
       <div>
         <label style={labelStyle}>Card number</label>
         {/* Cardknox iFields markup (current /latest/ schema):
@@ -259,40 +259,46 @@ export default function SolaCardForm({ ifieldsKey, softwareName, disabled, onRea
 }
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 700,
   textTransform: "uppercase",
   letterSpacing: "0.06em",
-  opacity: 0.65,
+  opacity: 0.6,
   display: "block",
-  marginBottom: 5,
+  marginBottom: 3,
 };
 
 const plainInputCss: React.CSSProperties = {
-  padding: "10px 12px",
+  padding: "7px 10px",
   border: "1px solid rgba(10,16,25,0.14)",
-  borderRadius: 8,
-  fontSize: 14,
+  borderRadius: 6,
+  fontSize: 13,
   width: "100%",
   outline: "none",
   background: "#fff",
+  boxSizing: "border-box",
 };
 
-// The iFields container styles. The iframe Cardknox renders inherits some of these
-// via the data attributes, but mostly we just need to size the box correctly.
+// The iFields container styles. Cardknox renders an iframe inside this element; we set
+// a fixed height (not minHeight) so the iframe is a tight, predictable size — without it,
+// the rendered field was very tall on some browsers because the iframe filled its parent.
 const ifieldsCardCss: React.CSSProperties = {
-  padding: "10px 12px",
   border: "1px solid rgba(10,16,25,0.14)",
-  borderRadius: 8,
+  borderRadius: 6,
   background: "#fff",
-  minHeight: 40,
+  width: "100%",
+  height: 34,
+  boxSizing: "border-box",
+  display: "block",
 };
 const ifieldsCvvCss: React.CSSProperties = {
-  padding: "10px 12px",
   border: "1px solid rgba(10,16,25,0.14)",
-  borderRadius: 8,
+  borderRadius: 6,
   background: "#fff",
-  minHeight: 40,
+  width: "100%",
+  height: 34,
+  boxSizing: "border-box",
+  display: "block",
 };
 const errorBox: React.CSSProperties = {
   padding: 14,

@@ -78,6 +78,9 @@ export default function CardChargeModal({
   // 'new' → collect a new card via iFields. Any other value → saved card id (one-click charge).
   const [cardChoice, setCardChoice] = useState<"new" | string>("new");
   const [saveCard, setSaveCard] = useState(true);
+  // Optionally suppress the auto-receipt email — useful when retrying internal/test charges
+  // or when the manager wants to send a custom receipt themselves later.
+  const [skipReceipt, setSkipReceipt] = useState(false);
 
   useEffect(() => {
     fetch("/api/fundraising/sola/config")
@@ -124,6 +127,7 @@ export default function CardChargeModal({
           card_id: cardChoice,
           amount,
           notes: description || null,
+          skip_receipt: skipReceipt,
         };
         if (pledgeId) {
           body.mode = "existing_pledge";
@@ -176,6 +180,7 @@ export default function CardChargeModal({
         zip: tokens.zip,
         street: tokens.street,
         save_card: saveCard,
+        skip_receipt: skipReceipt,
       };
       if (pledgeId) {
         body.mode = "existing_pledge";
@@ -351,6 +356,17 @@ export default function CardChargeModal({
           ) : (
             <div style={{ fontSize: 12, opacity: 0.6, padding: 12 }}>Loading secure card fields…</div>
           ))}
+
+        {/* Skip-receipt toggle (visible for both saved-card and new-card paths). */}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, cursor: "pointer" }}>
+          <input type="checkbox" checked={skipReceipt} onChange={(e) => setSkipReceipt(e.target.checked)} />
+          <span>
+            Don&apos;t send receipt email
+            <span style={{ opacity: 0.55, marginLeft: 6, fontSize: 11 }}>
+              (you can send one manually from the Payments page)
+            </span>
+          </span>
+        </label>
 
         {error && <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 10 }}>{error}</div>}
 

@@ -177,6 +177,10 @@ export default function PayPage() {
   // 'new' = enter a new card via iFields. Any other value = the saved card id to charge.
   const [cardChoice, setCardChoice] = useState<"new" | string>("new");
   const [saveCard, setSaveCard] = useState(true);
+  // When checked, the auto-receipt email is suppressed. Use cases:
+  //   - Recording an internal/test transaction the donor shouldn't be notified about
+  //   - The manager wants to send a custom receipt themselves via the Resend receipt button later
+  const [skipReceipt, setSkipReceipt] = useState(false);
 
   // Charge mode (for credit-card payments only):
   //   'now'       — single charge, immediate (legacy default; nothing new persists).
@@ -527,7 +531,7 @@ export default function PayPage() {
           const r = await fetch("/api/fundraising/sola/charge-token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...body, card_id: cardChoice }),
+            body: JSON.stringify({ ...body, card_id: cardChoice, skip_receipt: skipReceipt }),
           });
           const d = await r.json();
           if (!r.ok || !d.ok) {
@@ -564,6 +568,7 @@ export default function PayPage() {
           zip: tokens.zip,
           street: tokens.street,
           save_card: saveCard,
+          skip_receipt: skipReceipt,
         });
         const r = await fetch("/api/fundraising/sola/charge", {
           method: "POST",
@@ -682,6 +687,7 @@ export default function PayPage() {
             amount: amt,
             notes: notes.trim() || null,
             card_id: cardChoice,
+            skip_receipt: skipReceipt,
           }),
         });
         firstChargeResult = await r.json();
@@ -721,6 +727,7 @@ export default function PayPage() {
             street: tokens.street,
             save_card: true,
             set_default: false,
+            skip_receipt: skipReceipt,
           }),
         });
         firstChargeResult = await r.json();
@@ -1847,6 +1854,23 @@ export default function PayPage() {
                       </label>
                     </>
                   )}
+
+                  {/* Skip-receipt toggle — applies to every charge mode + every card source.
+                      Visible once for the whole credit_card section so the user sees it
+                      regardless of whether they picked a saved card or are entering a new one. */}
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={skipReceipt}
+                      onChange={(e) => setSkipReceipt(e.target.checked)}
+                    />
+                    <span>
+                      Don&apos;t send receipt email to donor
+                      <span style={{ opacity: 0.55, marginLeft: 6, fontSize: 11 }}>
+                        (you can still send one manually from the Payments page)
+                      </span>
+                    </span>
+                  </label>
 
                   {chargeError && (
                     <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 10 }}>{chargeError}</div>
