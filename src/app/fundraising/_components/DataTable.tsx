@@ -18,14 +18,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 //
 // Optionally:
 //   - onRowClick(row): make rows clickable
-//   - storageKey: persist filters + sort across refresh (per-table localStorage)
+//   - storageKey: persist filters + sort across refresh (per-table sessionStorage)
 //   - emptyMessage: shown when no rows match
 //
 // Performance: filtering and sorting are O(N) per render; we memoize. For lists > 5k rows,
 // consider virtualization — but that's not on the table here yet.
 
 export interface DataTableColumn<T> {
-  /** Unique column id (used in URL, localStorage, React keys). */
+  /** Unique column id (used in URL, sessionStorage, React keys). */
   key: string;
   /** Header text (or any node). */
   header: React.ReactNode;
@@ -54,7 +54,12 @@ export interface DataTableProps<T> {
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
   emptyMessage?: React.ReactNode;
-  /** When set, sort + filter state is persisted in localStorage under this key. */
+  /**
+   * When set, sort + filter state is persisted in sessionStorage under this key.
+   * We use sessionStorage (not localStorage) so filters clear when the tab is closed.
+   * This avoids the "I added new data but can't see it" trap when a sticky filter
+   * survives between visits and silently hides freshly-created rows.
+   */
   storageKey?: string;
   /** Optional footer node rendered below the table (e.g. summary row). */
   footer?: React.ReactNode;
@@ -101,11 +106,11 @@ export default function DataTable<T>({
   storageKey,
   footer,
 }: DataTableProps<T>) {
-  // Sort + filter state. Lazy-load from localStorage if a storageKey is set.
+  // Sort + filter state. Lazy-load from sessionStorage if a storageKey is set.
   const [sort, setSort] = useState<SortState | null>(() => {
     if (typeof window === "undefined" || !storageKey) return null;
     try {
-      const raw = localStorage.getItem(`dt:${storageKey}:sort`);
+      const raw = sessionStorage.getItem(`dt:${storageKey}:sort`);
       return raw ? (JSON.parse(raw) as SortState) : null;
     } catch {
       return null;
@@ -114,7 +119,7 @@ export default function DataTable<T>({
   const [filters, setFilters] = useState<FilterMap>(() => {
     if (typeof window === "undefined" || !storageKey) return {};
     try {
-      const raw = localStorage.getItem(`dt:${storageKey}:filters`);
+      const raw = sessionStorage.getItem(`dt:${storageKey}:filters`);
       if (!raw) return {};
       const parsed = JSON.parse(raw) as Record<string, string[] | null>;
       const map: FilterMap = {};
@@ -134,16 +139,16 @@ export default function DataTable<T>({
   useEffect(() => {
     if (typeof window === "undefined" || !storageKey) return;
     try {
-      if (sort) localStorage.setItem(`dt:${storageKey}:sort`, JSON.stringify(sort));
-      else localStorage.removeItem(`dt:${storageKey}:sort`);
+      if (sort) sessionStorage.setItem(`dt:${storageKey}:sort`, JSON.stringify(sort));
+      else sessionStorage.removeItem(`dt:${storageKey}:sort`);
       const serialised: Record<string, string[] | null> = {};
       for (const k of Object.keys(filters)) {
         serialised[k] = filters[k] === null ? null : Array.from(filters[k] as Set<string>);
       }
       if (Object.keys(serialised).length > 0) {
-        localStorage.setItem(`dt:${storageKey}:filters`, JSON.stringify(serialised));
+        sessionStorage.setItem(`dt:${storageKey}:filters`, JSON.stringify(serialised));
       } else {
-        localStorage.removeItem(`dt:${storageKey}:filters`);
+        sessionStorage.removeItem(`dt:${storageKey}:filters`);
       }
     } catch {
       // ignore quota / privacy errors
