@@ -330,8 +330,14 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
 
       <CommandPalette />
 
+      {/* Toast container — managed by src/lib/use-toast.ts. Components call toast.success()/
+          .error()/.info() which toggles opacity + writes text into this node. The
+          transition is short enough to feel responsive (~180ms) but long enough to be
+          visible. zIndex 100 keeps it above modals (z 80) but below the menu (no overlap). */}
       <div
         id="fr-toast"
+        role="status"
+        aria-live="polite"
         style={{
           position: "fixed",
           bottom: 24,
@@ -339,14 +345,16 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
           transform: "translateX(-50%) translateY(12px)",
           background: "var(--cast-iron)",
           color: "#fff",
-          padding: "10px 16px",
+          padding: "12px 20px",
           borderRadius: 8,
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: 600,
           opacity: 0,
-          transition: "all var(--dur-base) var(--ease-out)",
+          transition: "opacity 180ms ease-out, transform 180ms ease-out, background 0s",
           pointerEvents: "none",
           zIndex: 100,
+          boxShadow: "0 8px 28px rgba(10,16,25,0.18)",
+          maxWidth: "min(560px, 92vw)",
         }}
       />
     </div>
