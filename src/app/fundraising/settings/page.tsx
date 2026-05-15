@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import HelpIndex from "../_components/HelpIndex";
 
 export default function SettingsPage() {
   const [leadDays, setLeadDays] = useState(7);
@@ -217,6 +218,11 @@ export default function SettingsPage() {
     setRunning(false);
   }
 
+  // Tab toggle between "Settings" (gateway/email/sola/etc.) and "Help" (Hebrew user guide).
+  // Help is positioned first because new users need the guide more often than config —
+  // but they share a URL so it's a tab switch, not two separate routes.
+  const [tab, setTab] = useState<"settings" | "help">("settings");
+
   return (
     <div style={{ maxWidth: 880, margin: "0 auto" }}>
       <h1
@@ -231,6 +237,58 @@ export default function SettingsPage() {
         Settings
       </h1>
 
+      {/* Tabs */}
+      <div
+        style={{
+          display: "flex",
+          gap: 0,
+          marginBottom: 22,
+          borderBottom: "1px solid rgba(10,16,25,0.08)",
+        }}
+      >
+        <button
+          onClick={() => setTab("settings")}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            background: "transparent",
+            borderBottom: tab === "settings" ? "2px solid var(--cast-iron)" : "2px solid transparent",
+            marginBottom: -1,
+            fontSize: 14,
+            fontWeight: tab === "settings" ? 700 : 500,
+            color: tab === "settings" ? "var(--cast-iron)" : "rgba(10,16,25,0.55)",
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          הגדרות מערכת
+        </button>
+        <button
+          onClick={() => setTab("help")}
+          style={{
+            padding: "10px 18px",
+            border: "none",
+            background: "transparent",
+            borderBottom: tab === "help" ? "2px solid var(--cast-iron)" : "2px solid transparent",
+            marginBottom: -1,
+            fontSize: 14,
+            fontWeight: tab === "help" ? 700 : 500,
+            color: tab === "help" ? "var(--cast-iron)" : "rgba(10,16,25,0.55)",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          📖 מדריך שימוש
+        </button>
+      </div>
+
+      {tab === "help" && <HelpIndex />}
+
+      {tab === "settings" && (
+      <>
       <Section
         title="Payment gateway"
         subtitle="Where the system sends donors when they click 'Continue to payment' on the Payment page."
@@ -644,6 +702,8 @@ Header: x-cron-secret: <CRON_SECRET env var>`}
           for the signed-in manager&apos;s org.
         </div>
       </Section>
+      </>
+      )}
     </div>
   );
 }
