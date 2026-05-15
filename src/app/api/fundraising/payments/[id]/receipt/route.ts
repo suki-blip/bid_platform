@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
-import { sendFundraisingEmail, renderReceiptEmail } from '@/lib/fundraising-email';
+import { sendFundraisingEmail, resolveReceiptEmail } from '@/lib/fundraising-email';
 import { fmtMethod } from '@/lib/fundraising-format';
 
 // POST /api/fundraising/payments/[id]/receipt
@@ -55,8 +55,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const m = efrom.match(/^([^<]+)<.+>$/);
   if (m) orgName = m[1].trim();
 
-  const tpl = renderReceiptEmail({
+  // resolveReceiptEmail picks the owner's saved receipt template if any, otherwise falls
+  // back to the built-in HTML. Either way the return shape (subject/html/text) is the same.
+  const tpl = await resolveReceiptEmail(session.ownerId, {
     donor_name: `${String(p.first_name || '')} ${String(p.last_name || '')}`.trim() || 'Donor',
+    first_name: (p.first_name as string | null) || null,
+    last_name: (p.last_name as string | null) || null,
     hebrew_name: (p.hebrew_name as string | null) || null,
     amount: Number(p.amount),
     currency: 'USD',

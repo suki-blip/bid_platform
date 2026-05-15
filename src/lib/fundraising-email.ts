@@ -10,6 +10,7 @@
 import { Resend } from 'resend';
 import crypto from 'crypto';
 import { db } from './db';
+import { loadDefaultReceiptTemplate, renderTemplate, type TemplateContext } from './fundraising-email-templates';
 
 export interface OwnerEmailConfig {
   api_key: string;
@@ -153,8 +154,15 @@ async function writeLog(
 }
 
 // ----- Receipt template -----
+//
+// Two-layer design:
+//   1. If the owner has saved a custom receipt template in the Email Templates UI
+//      (fr_email_templates, kind='receipt', is_default=1), we use it — variable interpolation
+//      against the donor/payment context. Call `resolveReceiptEmail()` to get this behaviour.
+//   2. If no custom template exists, fall back to the built-in HTML in renderReceiptEmail()
+//      below — same output every existing owner has been getting until now.
 
-export function renderReceiptEmail(args: {
+export interface ReceiptRenderArgs {
   donor_name: string;
   hebrew_name?: string | null;
   amount: number;
@@ -165,7 +173,42 @@ export function renderReceiptEmail(args: {
   transaction_ref: string | null;
   cc_last4: string | null;
   organization_name: string;
-}): { subject: string; html: string; text: string } {
+  receipt_number?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+}
+
+// Public API: prefer the user's saved template, otherwise built-in.
+export async function resolveReceiptEmail(
+  ownerId: string,
+  args: ReceiptRenderArgs,
+): Promise<{ subject: string; html: string; text?: string }> {
+  const tpl = await loadDefaultReceiptTemplate(ownerId).catch(() => null);
+  if (tpl) {
+    const fmtAmt = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: args.currency || 'USD',
+    }).format(args.amount);
+    const ctx: TemplateContext = {
+      first_name: args.first_name || args.donor_name.split(' ')[0] || '',
+      last_name: args.last_name || args.donor_name.split(' ').slice(1).join(' ') || '',
+      full_name: args.donor_name,
+      hebrew_name: args.hebrew_name || '',
+      amount: fmtAmt,
+      paid_date: args.paid_date,
+      method: args.method,
+      cc_last4: args.cc_last4 || '',
+      project_name: args.project_name || '',
+      transaction_ref: args.transaction_ref || '',
+      receipt_number: args.receipt_number || '',
+      organization_name: args.organization_name,
+    };
+    return renderTemplate(tpl, ctx);
+  }
+  return renderReceiptEmail(args);
+}
+
+export function renderReceiptEmail(args: ReceiptRenderArgs): { subject: string; html: string; text: string } {
   const fmtAmt = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: args.currency || 'USD',

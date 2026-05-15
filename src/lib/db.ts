@@ -713,6 +713,45 @@ async function initializeDatabase() {
   // 'receipts_only' = will get auto receipts but no bulk campaigns. 'none' = no email at all.
   try { await client.execute("ALTER TABLE fr_donors ADD COLUMN email_opt_in TEXT NOT NULL DEFAULT 'all'"); } catch {}
 
+  // Email templates — user-editable subject + HTML body for the emails we send.
+  //
+  //   kind:
+  //     'receipt'   — used by /api/fundraising/sola/charge (and friends) when emailing the
+  //                   donor after a successful charge. There's at most ONE active receipt
+  //                   template per owner; if none exists we fall back to renderReceiptEmail's
+  //                   built-in HTML so existing accounts keep getting receipts unchanged.
+  //     'campaign'  — manager-saved templates the campaign email-blast UI can load into
+  //                   the compose form. Many per owner, named.
+  //     'thank_you' / 'custom' — generic buckets the UI can route to.
+  //
+  //   Variables: standard moustache-style {{first_name}}, {{last_name}}, {{full_name}},
+  //   {{hebrew_name}}, {{amount}}, {{paid_date}}, {{method}}, {{project_name}},
+  //   {{transaction_ref}}, {{organization_name}}, {{receipt_number}}. Receipt-specific
+  //   variables are populated by the receipt-render path; campaign blasts only resolve the
+  //   donor-related ones.
+  //
+  //   The body_text column is optional plain-text — Resend derives a sensible default from
+  //   the HTML if we don't supply one.
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_email_templates (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body_html TEXT NOT NULL,
+      body_text TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_templates_owner ON fr_email_templates(owner_id, kind)'); } catch {}
+  // At most one default-receipt-template per owner — the receipt-send path picks this row.
+  // SQLite partial unique indexes work here; we keep the column-level constraint loose so
+  // the user can toggle defaults via UPDATE without hitting a transient unique violation.
+  try { await client.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_fr_email_templates_owner_kind_default ON fr_email_templates(owner_id, kind) WHERE is_default = 1"); } catch {}
+
   // Recycle Bin (סל מחזור) — 30-day soft-delete for donors, pledges, and payments.
   //
   // Design: we keep the soft-delete data in a single table rather than threading

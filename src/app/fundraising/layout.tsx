@@ -24,6 +24,7 @@ const NAV: { href: string; label: string; managerOnly?: boolean }[] = [
   { href: "/fundraising/reports", label: "Reports" },
   { href: "/fundraising/team", label: "Team", managerOnly: true },
   { href: "/fundraising/import", label: "Import", managerOnly: true },
+  { href: "/fundraising/email-templates", label: "Emails", managerOnly: true },
   { href: "/fundraising/trash", label: "Recycle Bin", managerOnly: true },
   { href: "/fundraising/settings", label: "Settings", managerOnly: true },
 ];

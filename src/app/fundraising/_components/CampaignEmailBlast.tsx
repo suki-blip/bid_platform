@@ -1,6 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+interface SavedTemplate {
+  id: string;
+  kind: string;
+  name: string;
+  subject: string;
+  body_html: string;
+}
 
 // Inline "Send email" panel for a campaign detail page. Manager picks a recipient set,
 // types subject + HTML body (with personalisation tokens like {{first_name}}), and the
@@ -31,6 +39,34 @@ export default function CampaignEmailBlast({ projectId, projectName }: { project
   const [html, setHtml] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ sent: number; failed: number; total: number; errors?: string[] } | null>(null);
+  // Saved templates the user can pick from. We fetch only campaign/thank_you/custom kinds
+  // because the receipt kind shouldn't be loaded into a manual blast.
+  const [templates, setTemplates] = useState<SavedTemplate[]>([]);
+  const [pickedTemplateId, setPickedTemplateId] = useState<string>("");
+
+  useEffect(() => {
+    if (!open) return;
+    // Load every template, then filter out receipt-kind entries — those aren't suited for
+    // a one-off campaign blast.
+    fetch("/api/fundraising/email-templates")
+      .then((r) => (r.ok ? r.json() : { templates: [] }))
+      .then((d) => {
+        const list: SavedTemplate[] = Array.isArray(d.templates) ? d.templates : [];
+        setTemplates(list.filter((t) => t.kind !== "receipt"));
+      });
+  }, [open]);
+
+  function applyTemplate(id: string) {
+    setPickedTemplateId(id);
+    if (!id) return;
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    // Overwriting the current draft is intentional — the picker is meant for loading a
+    // saved starting point, not appending. If the user already typed something, they can
+    // simply not pick a template.
+    setSubject(t.subject);
+    setHtml(t.body_html);
+  }
 
   async function send() {
     if (!confirm(`Send "${subject || "(no subject)"}" to recipient group: ${recipients}? This will go out immediately.`)) return;
@@ -120,6 +156,27 @@ export default function CampaignEmailBlast({ projectId, projectName }: { project
           ))}
         </div>
       </div>
+
+      {templates.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelCss}>Start from a saved template (optional)</label>
+          <select
+            value={pickedTemplateId}
+            onChange={(e) => applyTemplate(e.target.value)}
+            style={inputCss}
+          >
+            <option value="">— blank —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                [{t.kind}] {t.name}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
+            Manage templates in the <a href="/fundraising/email-templates" style={{ color: "var(--cast-iron)", textDecoration: "underline" }}>Emails</a> tab.
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 10 }}>
         <label style={labelCss}>Subject</label>

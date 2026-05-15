@@ -5,7 +5,7 @@ import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount } from '@/lib/fundraising-types';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { loadSolaCredentials, solaTokenSale, solaApproved, ccLast4, SolaError } from '@/lib/sola-client';
-import { sendFundraisingEmail, renderReceiptEmail } from '@/lib/fundraising-email';
+import { sendFundraisingEmail, resolveReceiptEmail } from '@/lib/fundraising-email';
 
 // POST /api/fundraising/sola/charge-token
 //
@@ -259,8 +259,10 @@ export async function POST(request: Request) {
         if (m) orgName = m[1].trim();
       } catch {}
 
-      const tpl = renderReceiptEmail({
+      const tpl = await resolveReceiptEmail(session.ownerId, {
         donor_name: `${String(donor.first_name || '')} ${String(donor.last_name || '')}`.trim() || 'Donor',
+        first_name: (donor.first_name as string | null) || null,
+        last_name: (donor.last_name as string | null) || null,
         hebrew_name: (donor.hebrew_name as string | null) || null,
         amount: totalAmount,
         currency: 'USD',
