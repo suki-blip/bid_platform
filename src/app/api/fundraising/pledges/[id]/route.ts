@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
+import { softDeletePledge } from '@/lib/fundraising-recycle-bin';
 import { PLEDGE_STATUSES, inEnum, isIsoDate, isPositiveAmount } from '@/lib/fundraising-types';
 
 async function loadPledge(pledgeId: string, ownerId: string) {
@@ -131,11 +132,20 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const projectIdParam = url.searchParams.get('project_id') || null;
   const donorId = String(pledge.donor_id);
 
-  // ---------- delete: simple CASCADE ----------
+  // ---------- delete: snapshot + CASCADE (recycle bin) ----------
+  // The 'move' and 'standalone' branches below are reorganizations (no data is destroyed),
+  // so they intentionally do NOT go through the recycle bin — only the destructive 'delete'
+  // action snapshots the pledge + its payments before the hard-DELETE.
   if (action === 'delete') {
-    await db().execute({ sql: 'DELETE FROM fr_pledges WHERE id = ?', args: [id] });
-    await recomputeDonorTotals(donorId);
-    return NextResponse.json({ ok: true, action: 'delete' });
+    const result = await softDeletePledge({
+      pledgeId: id,
+      ownerId: session.ownerId,
+      deletedBy: session.fundraiserId || null,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error || 'Could not delete pledge' }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, action: 'delete', recycle_id: result.recycle_id });
   }
 
   // ---------- move: re-attribute all payments to a target pledge ----------

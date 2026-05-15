@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
+import { softDeletePayment } from '@/lib/fundraising-recycle-bin';
 import {
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
@@ -135,8 +136,15 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const payment = await loadPaymentScoped(id, session.ownerId);
   if (!payment) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  await db().execute({ sql: 'DELETE FROM fr_pledge_payments WHERE id = ?', args: [id] });
-  await recomputePledgeStatus(String(payment.pledge_id));
-  await recomputeDonorTotals(String(payment.donor_id));
-  return NextResponse.json({ ok: true });
+  // Soft-delete via Recycle Bin (30-day restore window). softDeletePayment internally
+  // re-runs recomputePledgeStatus + recomputeDonorTotals after the hard-DELETE.
+  const result = await softDeletePayment({
+    paymentId: id,
+    ownerId: session.ownerId,
+    deletedBy: session.fundraiserId || null,
+  });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error || 'Could not delete payment' }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, recycle_id: result.recycle_id });
 }

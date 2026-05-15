@@ -713,6 +713,35 @@ async function initializeDatabase() {
   // 'receipts_only' = will get auto receipts but no bulk campaigns. 'none' = no email at all.
   try { await client.execute("ALTER TABLE fr_donors ADD COLUMN email_opt_in TEXT NOT NULL DEFAULT 'all'"); } catch {}
 
+  // Recycle Bin (סל מחזור) — 30-day soft-delete for donors, pledges, and payments.
+  //
+  // Design: we keep the soft-delete data in a single table rather than threading
+  // `deleted_at IS NULL` into ~30 existing SELECT queries. When a record is deleted,
+  // the API captures the row + all its dependent rows as a JSON snapshot, writes it
+  // here, then runs the normal hard-DELETE (FK CASCADE handles the rest of the tree).
+  //
+  // Restore re-INSERTs from the snapshot. A daily cron purges entries older than 30d.
+  //
+  //   entity_type   — 'donor' | 'pledge' | 'payment'
+  //   entity_id     — the original record's UUID (used in restore for ID re-use)
+  //   summary       — short human label for the trash UI ("John Doe", "$500 pledge to X", ...)
+  //   snapshot      — JSON with the row and all dependents needed to rebuild
+  //   deleted_at    — purge clock starts here; 30d later the row is hard-removed
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_recycle_bin (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      snapshot TEXT NOT NULL,
+      deleted_by TEXT,
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_recycle_bin_owner ON fr_recycle_bin(owner_id, deleted_at DESC)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_recycle_bin_entity ON fr_recycle_bin(entity_type, entity_id)'); } catch {}
+
   // Re-seed default templates in English (v2)
   try { await client.execute("DELETE FROM bid_templates WHERE is_default = 1"); } catch {}
   try { await client.execute(`CREATE TABLE IF NOT EXISTS vendor_response_files (

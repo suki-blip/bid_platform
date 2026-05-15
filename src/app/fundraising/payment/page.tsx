@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
 import { paymentMethodLabel, methodIsCheckLike, PAYMENT_METHODS } from "@/lib/fundraising-types";
 import SolaCardForm, { type SolaCardFormHandle } from "../_components/SolaCardForm";
@@ -89,7 +89,18 @@ function newAllocationRow(type: "existing_pledge" | "new_donation" = "new_donati
   return { id: Math.random().toString(36).slice(2), type, amount: "" };
 }
 
+// Next.js requires components calling useSearchParams() to be wrapped in a Suspense boundary
+// so the SSR/prerender pass has something to fall back to while the URL is being read. We keep
+// the existing PayPage implementation as PayPageInner and re-export a thin wrapper as default.
 export default function PayPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 32, opacity: 0.6 }}>Loading payment…</div>}>
+      <PayPageInner />
+    </Suspense>
+  );
+}
+
+function PayPageInner() {
   // Step 1: select donor.
   // We load the full donor list once on mount and filter client-side as the manager types.
   // The list scrolls and is always visible — picking a donor just selects from this list.

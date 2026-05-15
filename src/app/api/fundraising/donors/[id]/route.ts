@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
+import { softDeleteDonor } from '@/lib/fundraising-recycle-bin';
 
 async function loadDonorScoped(donorId: string, ownerId: string, fundraiserId: string | null) {
   const sql = fundraiserId
@@ -183,9 +184,16 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   await dbReady();
   const { id } = await params;
 
-  await db().execute({
-    sql: 'DELETE FROM fr_donors WHERE id = ? AND owner_id = ?',
-    args: [id, session.ownerId],
+  // Soft-delete: snapshots the donor + its full sub-tree (phones, addresses, cards, pledges,
+  // payments, prospects, followups...) into fr_recycle_bin, then runs the normal hard-DELETE.
+  // Restore is available for 30 days via the Recycle Bin UI.
+  const result = await softDeleteDonor({
+    donorId: id,
+    ownerId: session.ownerId,
+    deletedBy: session.fundraiserId || null,
   });
-  return NextResponse.json({ ok: true });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error || 'Could not delete donor' }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, recycle_id: result.recycle_id });
 }
