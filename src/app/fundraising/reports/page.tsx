@@ -25,6 +25,15 @@ interface ReportData {
     total: number;
     count: number;
   }[];
+  lapsed_donors: {
+    id: string;
+    name: string;
+    hebrew_name: string | null;
+    organization: string | null;
+    total_paid: number;
+    last_payment_date: string | null;
+    last_contact_at: string | null;
+  }[];
   detail: Record<string, unknown>[];
   pledges_detail: {
     id: string;
@@ -325,6 +334,48 @@ export default function ReportsPage() {
               )}
             </Panel>
           </div>
+
+          {/* Lapsed donors — gave in the past but no payment in the last 12 months. The
+              re-engagement target list. Sorted by lifetime total so the most valuable
+              lapsed donors appear first. */}
+          {data.lapsed_donors && data.lapsed_donors.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <Panel title={`Lapsed donors (${data.lapsed_donors.length}) — no payment in 12+ months`}>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {data.lapsed_donors.map((d) => (
+                    <li
+                      key={d.id}
+                      style={{
+                        padding: "8px 0",
+                        borderBottom: "1px solid rgba(10,16,25,0.06)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Link href={`/fundraising/donors/${d.id}`} style={{ color: "var(--cast-iron)", textDecoration: "none", fontWeight: 700, fontSize: 13 }}>
+                          {d.name}
+                        </Link>
+                        {d.hebrew_name && (
+                          <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.55, fontFamily: "'Frank Ruhl Libre', serif", direction: "rtl" }}>
+                            {d.hebrew_name}
+                          </span>
+                        )}
+                        {d.organization && <div style={{ fontSize: 11, opacity: 0.55 }}>{d.organization}</div>}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "var(--cone-orange)" }}>{fmtMoney(d.total_paid)}</div>
+                        <div style={{ fontSize: 11, opacity: 0.6 }}>
+                          last: {d.last_payment_date || "—"}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+            </div>
+          )}
 
           {/* Pledges detail — every real (non-standalone) pledge matching the filters.
               Shows the bigger picture beyond just paid payments: which commitments exist,

@@ -231,6 +231,35 @@ export async function GET(request: NextRequest) {
   const outRow = outstanding.rows[0];
   const outstandingAmount = Number(outRow?.total_pledged || 0) - Number(outRow?.already_paid || 0);
 
+  // Lapsed donors — gave in the past but no payment in the last 365 days. The reports
+  // page renders a "Lapsed donors" panel showing the top 25 by lifetime giving so the
+  // manager can build a re-engagement list. Ranked by total lifetime paid amount so the
+  // most-valuable lapsed donors surface first.
+  const lapsedWhere = session.role === 'fundraiser'
+    ? 'd.owner_id = ? AND d.assigned_to = ?'
+    : 'd.owner_id = ?';
+  const lapsedArgs = session.role === 'fundraiser'
+    ? [session.ownerId, session.fundraiserId!]
+    : [session.ownerId];
+  const lapsed = await db().execute({
+    sql: `SELECT d.id, d.first_name, d.last_name, d.hebrew_name, d.organization,
+                 d.total_paid, d.last_contact_at,
+                 (SELECT MAX(paid_date) FROM fr_pledge_payments
+                  WHERE donor_id = d.id AND status = 'paid') AS last_payment_date
+          FROM fr_donors d
+          WHERE ${lapsedWhere}
+            AND d.status = 'donor'
+            AND d.total_paid > 0
+            AND COALESCE(
+              (SELECT MAX(paid_date) FROM fr_pledge_payments
+               WHERE donor_id = d.id AND status = 'paid'),
+              '0000-00-00'
+            ) < date('now', '-365 days')
+          ORDER BY d.total_paid DESC
+          LIMIT 25`,
+    args: lapsedArgs,
+  });
+
   return NextResponse.json({
     summary: {
       total: Number(summary.rows[0]?.total || 0),
@@ -251,6 +280,15 @@ export async function GET(request: NextRequest) {
       organization: r.organization,
       total: Number(r.total),
       count: Number(r.count),
+    })),
+    lapsed_donors: lapsed.rows.map((r) => ({
+      id: String(r.id),
+      name: `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}`,
+      hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
+      organization: r.organization ? String(r.organization) : null,
+      total_paid: Number(r.total_paid || 0),
+      last_payment_date: r.last_payment_date ? String(r.last_payment_date) : null,
+      last_contact_at: r.last_contact_at ? String(r.last_contact_at) : null,
     })),
     detail: detail.rows,
     pledges_detail: pledgesDetail.rows.map((r) => {

@@ -713,6 +713,40 @@ async function initializeDatabase() {
   // 'receipts_only' = will get auto receipts but no bulk campaigns. 'none' = no email at all.
   try { await client.execute("ALTER TABLE fr_donors ADD COLUMN email_opt_in TEXT NOT NULL DEFAULT 'all'"); } catch {}
 
+  // Audit log — who edited what when. Required for any multi-user fundraising org so
+  // edits to donor data / pledges / payments are accountable. Writes happen from a small
+  // helper in src/lib/fundraising-audit.ts; reads happen from the /fundraising/audit-log
+  // page (manager-only).
+  //
+  // The log doesn't try to be a full event-sourcing system — it just snapshots a JSON
+  // before/after diff per significant write. Tracked actions:
+  //   donor.create | donor.update | donor.delete | donor.restore
+  //   pledge.create | pledge.update | pledge.delete | pledge.restore
+  //   payment.create | payment.update | payment.delete | payment.charge_success | payment.charge_failed
+  //   blast.send  (campaign blast — captures recipient count + subject)
+  //   template.create | template.update | template.delete
+  //
+  // We retain entries indefinitely (no auto-purge) because the audit log doubles as a
+  // change history for the donor profile. If size becomes an issue later we can purge
+  // entries older than N months.
+  try {
+    await client.execute(`CREATE TABLE IF NOT EXISTS fr_audit_log (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      actor_id TEXT,                  -- saas_users.id or team_members.id (audited as text)
+      actor_label TEXT,               -- denormalized display name at time of action
+      entity_type TEXT NOT NULL,      -- 'donor' | 'pledge' | 'payment' | 'blast' | 'template'
+      entity_id TEXT,                 -- the affected entity's UUID (nullable for bulk events)
+      action TEXT NOT NULL,           -- '.create' / '.update' / '.delete' / etc.
+      summary TEXT,                   -- short human-readable summary of the change
+      diff_json TEXT,                 -- optional JSON: { before: {...}, after: {...} }
+      at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_audit_log_owner_at ON fr_audit_log(owner_id, at DESC)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_audit_log_entity ON fr_audit_log(entity_type, entity_id)'); } catch {}
+  try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_audit_log_actor ON fr_audit_log(owner_id, actor_id, at DESC)'); } catch {}
+
   // Email templates — user-editable subject + HTML body for the emails we send.
   //
   //   kind:

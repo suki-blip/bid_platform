@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { softDeleteDonor } from '@/lib/fundraising-recycle-bin';
+import { writeAudit } from '@/lib/fundraising-audit';
 
 async function loadDonorScoped(donorId: string, ownerId: string, fundraiserId: string | null) {
   const sql = fundraiserId
@@ -174,6 +175,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   args.push(id);
   await db().execute({ sql: `UPDATE fr_donors SET ${sets.join(', ')} WHERE id = ?`, args });
+
+  // Audit log — record which fields changed. We capture only the modified keys (not the
+  // entire row) so the diff is small and easy to read in the audit-log UI.
+  await writeAudit({
+    ownerId: session.ownerId,
+    actorId: session.actorId,
+    actorLabel: session.name,
+    entityType: 'donor',
+    entityId: id,
+    action: 'update',
+    summary: `Updated ${donor.first_name || ''} ${donor.last_name || ''}`.trim(),
+    diff: { after: { changed_fields: sets.map((s) => s.split(' ')[0]) } },
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -183,6 +198,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!session.isManager) return NextResponse.json({ error: 'Only managers can delete donors' }, { status: 403 });
   await dbReady();
   const { id } = await params;
+
+  // Load the donor first so the audit summary has the human-readable name. Loading is
+  // cheap (single row) and gives us a clean log entry even after the row's gone.
+  const donor = await loadDonorScoped(id, session.ownerId, null);
+  if (!donor) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Soft-delete: snapshots the donor + its full sub-tree (phones, addresses, cards, pledges,
   // payments, prospects, followups...) into fr_recycle_bin, then runs the normal hard-DELETE.
@@ -195,5 +215,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!result.ok) {
     return NextResponse.json({ error: result.error || 'Could not delete donor' }, { status: 404 });
   }
+  await writeAudit({
+    ownerId: session.ownerId,
+    actorId: session.actorId,
+    actorLabel: session.name,
+    entityType: 'donor',
+    entityId: id,
+    action: 'delete',
+    summary: `Deleted donor ${donor.first_name || ''} ${donor.last_name || ''}`.trim(),
+  });
   return NextResponse.json({ ok: true, recycle_id: result.recycle_id });
 }

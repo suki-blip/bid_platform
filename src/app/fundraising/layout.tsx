@@ -31,6 +31,7 @@ const NAV: NavItem[] = [
   { href: "/fundraising/import", label: "Import", managerOnly: true },
   // Admin-y links live under the user dropdown instead of the main nav.
   { href: "/fundraising/email-templates", label: "Emails", managerOnly: true, inUserMenu: true },
+  { href: "/fundraising/audit-log", label: "Audit Log", managerOnly: true, inUserMenu: true },
   { href: "/fundraising/trash", label: "Recycle Bin", managerOnly: true, inUserMenu: true },
   { href: "/fundraising/settings", label: "Settings", managerOnly: true, inUserMenu: true },
 ];

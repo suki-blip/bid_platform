@@ -3,6 +3,7 @@ import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { softDeletePayment } from '@/lib/fundraising-recycle-bin';
+import { writeAudit } from '@/lib/fundraising-audit';
 import {
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
@@ -146,5 +147,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!result.ok) {
     return NextResponse.json({ error: result.error || 'Could not delete payment' }, { status: 404 });
   }
+  await writeAudit({
+    ownerId: session.ownerId,
+    actorId: session.actorId,
+    actorLabel: session.name,
+    entityType: 'payment',
+    entityId: id,
+    action: 'delete',
+    summary: `Deleted $${Number(payment.amount).toFixed(2)} payment`,
+  });
   return NextResponse.json({ ok: true, recycle_id: result.recycle_id });
 }

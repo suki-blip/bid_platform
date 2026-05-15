@@ -248,6 +248,60 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
     }
   }
 
+  // Bulk tag — prompts for a tag string and adds it to every selected donor's tag array.
+  async function bulkTag() {
+    if (selected.size === 0) return;
+    const tag = prompt("Tag to add (e.g. 'Annual Dinner Invite'):");
+    if (!tag || !tag.trim()) return;
+    setBulkBusy(true);
+    const r = await fetch("/api/fundraising/donors/bulk-tag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: Array.from(selected), tag: tag.trim(), op: "add" }),
+    });
+    setBulkBusy(false);
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      toast.success(`Tagged ${d.changed} donors with "${tag.trim()}"`);
+      setSelected(new Set());
+      setReloadKey((k) => k + 1);
+    } else {
+      toast.error(d.error || "Tag failed");
+    }
+  }
+
+  // Bulk assign — opens a small dropdown to pick a fundraiser. We lazy-load fundraisers
+  // on first open so the list view doesn't pay that cost on every page load.
+  const [showAssignMenu, setShowAssignMenu] = useState(false);
+  const [fundraisers, setFundraisers] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!showAssignMenu || fundraisers.length > 0) return;
+    fetch("/api/fundraising/team")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setFundraisers(Array.isArray(d) ? d : []));
+  }, [showAssignMenu, fundraisers.length]);
+
+  async function bulkAssign(fundraiserId: string | null) {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    const r = await fetch("/api/fundraising/donors/bulk-assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: Array.from(selected), fundraiser_id: fundraiserId }),
+    });
+    setBulkBusy(false);
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      const label = fundraiserId ? fundraisers.find((f) => f.id === fundraiserId)?.name || "fundraiser" : "unassigned";
+      toast.success(`Assigned ${d.changed} donors to ${label}`);
+      setSelected(new Set());
+      setShowAssignMenu(false);
+      setReloadKey((k) => k + 1);
+    } else {
+      toast.error(d.error || "Assign failed");
+    }
+  }
+
   useEffect(() => {
     fetch("/api/fundraising/sources")
       .then((r) => (r.ok ? r.json() : []))
@@ -533,7 +587,7 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
               <span style={{ fontSize: 13, fontWeight: 600 }}>
                 {selected.size} selected
               </span>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
                 <button
                   onClick={() => setSelected(new Set())}
                   style={{
@@ -548,6 +602,92 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
                 >
                   Clear
                 </button>
+                <button
+                  onClick={bulkTag}
+                  disabled={bulkBusy}
+                  style={{
+                    padding: "5px 12px",
+                    background: "transparent",
+                    border: "1px solid rgba(10,16,25,0.18)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: bulkBusy ? "not-allowed" : "pointer",
+                  }}
+                  title="Add a tag to every selected donor"
+                >
+                  🏷 Tag
+                </button>
+                <button
+                  onClick={() => setShowAssignMenu((v) => !v)}
+                  disabled={bulkBusy}
+                  style={{
+                    padding: "5px 12px",
+                    background: "transparent",
+                    border: "1px solid rgba(10,16,25,0.18)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: bulkBusy ? "not-allowed" : "pointer",
+                  }}
+                  title="Reassign every selected donor to a fundraiser"
+                >
+                  👤 Assign ▾
+                </button>
+                {showAssignMenu && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      right: 0,
+                      marginTop: 6,
+                      background: "#fff",
+                      border: "1px solid rgba(10,16,25,0.12)",
+                      borderRadius: 8,
+                      boxShadow: "0 8px 24px rgba(10,16,25,0.1)",
+                      zIndex: 30,
+                      minWidth: 200,
+                      padding: 4,
+                    }}
+                  >
+                    <button
+                      onClick={() => bulkAssign(null)}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "7px 10px",
+                        borderRadius: 4,
+                        border: "none",
+                        background: "transparent",
+                        fontSize: 13,
+                        cursor: "pointer",
+                        fontStyle: "italic",
+                      }}
+                    >
+                      Unassigned
+                    </button>
+                    {fundraisers.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => bulkAssign(f.id)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "7px 10px",
+                          borderRadius: 4,
+                          border: "none",
+                          background: "transparent",
+                          fontSize: 13,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <button
                   onClick={bulkDelete}
                   disabled={bulkBusy}

@@ -3,6 +3,7 @@ import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { softDeletePledge } from '@/lib/fundraising-recycle-bin';
+import { writeAudit } from '@/lib/fundraising-audit';
 import { PLEDGE_STATUSES, inEnum, isIsoDate, isPositiveAmount } from '@/lib/fundraising-types';
 
 async function loadPledge(pledgeId: string, ownerId: string) {
@@ -145,6 +146,15 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     if (!result.ok) {
       return NextResponse.json({ error: result.error || 'Could not delete pledge' }, { status: 404 });
     }
+    await writeAudit({
+      ownerId: session.ownerId,
+      actorId: session.actorId,
+      actorLabel: session.name,
+      entityType: 'pledge',
+      entityId: id,
+      action: 'delete',
+      summary: `Deleted ${pledge.amount} pledge`,
+    });
     return NextResponse.json({ ok: true, action: 'delete', recycle_id: result.recycle_id });
   }
 
