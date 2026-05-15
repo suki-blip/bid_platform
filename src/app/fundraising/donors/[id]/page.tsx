@@ -158,7 +158,6 @@ export default function DonorProfilePage() {
   const [noteBusy, setNoteBusy] = useState(false);
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [showPledgeModal, setShowPledgeModal] = useState(false);
-  const [showQuickModal, setShowQuickModal] = useState(false);
   const [followups, setFollowups] = useState<FollowupRow[]>([]);
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [showFollowupModal, setShowFollowupModal] = useState(false);
@@ -966,8 +965,8 @@ export default function DonorProfilePage() {
             >
               + Add pledge
             </button>
-            <button
-              onClick={() => setShowQuickModal(true)}
+            <Link
+              href={`/fundraising/payment?donor=${params.id}`}
               style={{
                 padding: "10px 16px",
                 background: "var(--shed-green)",
@@ -977,11 +976,13 @@ export default function DonorProfilePage() {
                 fontWeight: 700,
                 fontSize: 13,
                 cursor: "pointer",
+                textDecoration: "none",
+                display: "inline-block",
               }}
-              title="Record a one-shot payment (defaults to a free donation, no pledge)"
+              title="Open the full payment page with this donor pre-selected (all charge modes available — now, scheduled, recurring, split)"
             >
               + Record payment
-            </button>
+            </Link>
           </div>
 
           <Panel title="Pledges">
@@ -1124,12 +1125,13 @@ export default function DonorProfilePage() {
           <div style={{ height: 14 }} />
 
           <Panel title="Payments">
-            {/* Quick access to the Record-payment modal from inside the Payments panel itself,
-                so users don't have to scroll up to the action buttons. */}
+            {/* Quick link to the full payment page (donor pre-selected). Replaced the
+                in-place modal because it duplicated only a subset of the main page's
+                features (no save_card / schedule / recurring / split). One canonical
+                payment surface is easier to maintain and gives the user the full toolset. */}
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <button
-                type="button"
-                onClick={() => setShowQuickModal(true)}
+              <Link
+                href={`/fundraising/payment?donor=${params.id}`}
                 style={{
                   padding: "6px 12px",
                   background: "transparent",
@@ -1139,10 +1141,11 @@ export default function DonorProfilePage() {
                   cursor: "pointer",
                   fontSize: 12,
                   fontWeight: 700,
+                  textDecoration: "none",
                 }}
               >
                 + Add payment
-              </button>
+              </Link>
             </div>
             {payments.length === 0 ? (
               <Empty>No payments recorded.</Empty>
@@ -1451,27 +1454,6 @@ export default function DonorProfilePage() {
           }}
         />
       )}
-      {showQuickModal && (
-        <QuickDonationModal
-          donorId={String(params.id)}
-          projects={projects}
-          pledges={pledges.map((p) => ({
-            id: p.id,
-            amount: p.amount,
-            paid_amount: p.paid_amount,
-            status: p.status,
-            project_name: p.project_name,
-            pledge_date: p.pledge_date,
-            is_standalone: p.is_standalone || 0,
-          }))}
-          onClose={() => setShowQuickModal(false)}
-          onCreated={() => {
-            setShowQuickModal(false);
-            load();
-          }}
-        />
-      )}
-
       {showDonorEdit && (
         <DonorEditModal
           donor={{
@@ -1710,244 +1692,6 @@ function PledgeModal({
           </div>
         </div>
       </form>
-    </div>
-  );
-}
-
-function QuickDonationModal({
-  donorId,
-  projects,
-  pledges,
-  onClose,
-  onCreated,
-}: {
-  donorId: string;
-  projects: { id: string; name: string }[];
-  // Existing pledges for this donor. The user can pick one and apply the payment to it
-  // instead of creating a new lump-sum pledge — works even when the paid_date is older
-  // than the pledge_date (no date constraint).
-  pledges: { id: string; amount: number; paid_amount: number; status: string; project_name: string | null; pledge_date: string; is_standalone?: number | null }[];
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [amount, setAmount] = useState("");
-  const [projectId, setProjectId] = useState("");
-  // Empty string = "create new pledge"; otherwise a pledge id from the existing list.
-  const [applyToPledgeId, setApplyToPledgeId] = useState("");
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod] = useState("credit_card");
-  const [checkNumber, setCheckNumber] = useState("");
-  const [bankName, setBankName] = useState("");
-  const [ccLast4, setCcLast4] = useState("");
-  // Charge-card dialog state — when the user clicks "Charge card now" we open the
-  // shared CardChargeModal with the form's current amount + apply-to selection.
-  const [showCharge, setShowCharge] = useState(false);
-  const [transactionRef, setTransactionRef] = useState("");
-  const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  // Only open pledges make sense as a target. Closed/cancelled ones we hide.
-  // Hide synthetic standalone wrappers from this picker — they're just one-off donations
-  // wearing a pledge mask. Showing them would let the user pick a "pledge" they never created.
-  const openPledges = pledges.filter(
-    (p) => p.status === "open" && !(p as typeof p & { is_standalone?: number }).is_standalone,
-  );
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setBusy(true);
-    const res = await fetch(`/api/fundraising/donors/${donorId}/quick-donation`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: Number(amount),
-        // When attaching to an existing pledge, the backend inherits the pledge's project.
-        // We still allow override via the Project picker.
-        project_id: projectId || null,
-        pledge_id: applyToPledgeId || null,
-        paid_date: paidDate,
-        method,
-        check_number: method === "check" ? checkNumber || null : null,
-        bank_name: method === "check" ? bankName || null : null,
-        cc_last4: method === "credit_card" ? ccLast4 || null : null,
-        transaction_ref: transactionRef || null,
-        notes: notes || null,
-      }),
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      setError(e.error || "Failed");
-      setBusy(false);
-      return;
-    }
-    onCreated();
-  }
-
-  return (
-    <div style={modalOverlay} onClick={onClose}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={modalCard}>
-        <h2 style={modalTitle}>Record payment</h2>
-        <p style={{ fontSize: 12, opacity: 0.6, margin: "0 0 14px" }}>
-          One-shot, already-paid. Default = free donation (no pledge). You can also apply it
-          to an existing pledge to reduce its balance.
-        </p>
-
-        {/* Apply-to selector — first thing the user sees so they pick the target upfront.
-            Empty value means "free donation, no pledge tracking" — internally we still write
-            a wrapper row (the DB requires it) but it's tagged is_standalone=1 and never shown
-            in any pledge list. */}
-        <Lbl label="Apply to">
-          <select value={applyToPledgeId} onChange={(e) => setApplyToPledgeId(e.target.value)} style={inputCss}>
-            <option value="">— Free donation (no pledge) —</option>
-            {openPledges.length > 0 && <option disabled>───────── Apply to an existing pledge ─────────</option>}
-            {openPledges.map((p) => {
-              const remaining = Math.max(0, p.amount - p.paid_amount);
-              return (
-                <option key={p.id} value={p.id}>
-                  ${remaining.toLocaleString()} remaining of ${p.amount.toLocaleString()}
-                  {p.project_name ? ` · ${p.project_name}` : ""} · {p.pledge_date}
-                </option>
-              );
-            })}
-          </select>
-          {applyToPledgeId ? (
-            <div style={{ fontSize: 11, color: "var(--blueprint)", marginTop: 4 }}>
-              ⓘ This payment will reduce that pledge&apos;s balance. No new pledge is created.
-            </div>
-          ) : (
-            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>
-              Records a standalone donation. It will not appear in the donor&apos;s Pledges list — just under Payments.
-            </div>
-          )}
-        </Lbl>
-
-        <FormRow>
-          <Lbl label="Amount *">
-            <input
-              type="number"
-              step="0.01"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              autoFocus
-              style={inputCss}
-            />
-          </Lbl>
-          <Lbl label="Project">
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} style={inputCss}>
-              <option value="">— General —</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </Lbl>
-        </FormRow>
-
-        <FormRow>
-          <Lbl label="Paid date">
-            <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} style={inputCss} />
-          </Lbl>
-          <Lbl label="Method">
-            <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputCss}>
-              {PAYMENT_METHODS.filter((m) => m !== "pending").map((m) => (
-                <option key={m} value={m}>
-                  {paymentMethodLabel(m)}
-                </option>
-              ))}
-            </select>
-          </Lbl>
-        </FormRow>
-
-        {(method === "check" || method === "check_cash" || method === "ojc_check") && (
-          <FormRow>
-            <Lbl label="Check number">
-              <input value={checkNumber} onChange={(e) => setCheckNumber(e.target.value)} style={inputCss} />
-            </Lbl>
-            <Lbl label="Bank name">
-              <input value={bankName} onChange={(e) => setBankName(e.target.value)} style={inputCss} />
-            </Lbl>
-          </FormRow>
-        )}
-        {method === "credit_card" && (
-          <FormRow>
-            <Lbl label="Card last 4">
-              <input
-                value={ccLast4}
-                onChange={(e) => setCcLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                placeholder="1234"
-                style={inputCss}
-              />
-            </Lbl>
-            <Lbl label="Transaction ref">
-              <input value={transactionRef} onChange={(e) => setTransactionRef(e.target.value)} style={inputCss} />
-            </Lbl>
-          </FormRow>
-        )}
-        {(["wire", "ach", "ojc_online", "ojc_credit_card", "pledger", "matbia", "quick_pay", "donors_fund"].includes(method)) && (
-          <Lbl label={`${paymentMethodLabel(method)} reference`}>
-            <input value={transactionRef} onChange={(e) => setTransactionRef(e.target.value)} style={inputCss} />
-          </Lbl>
-        )}
-
-        <Lbl label="Notes">
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ ...inputCss, minHeight: 50, fontFamily: "inherit" }}
-          />
-        </Lbl>
-
-        {error && <div style={{ color: "var(--cone-orange)", fontSize: 13, marginTop: 8 }}>{error}</div>}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-          <button type="button" onClick={onClose} style={cancelBtnCss}>
-            Cancel
-          </button>
-          {/* Charge card now — only when method is credit_card. Opens the iFields dialog
-              pre-filled with this form's amount / pledge selection. */}
-          {method === "credit_card" && (
-            <button
-              type="button"
-              onClick={() => {
-                if (!amount || Number(amount) <= 0) {
-                  setError("Please enter a positive amount before charging.");
-                  return;
-                }
-                setError("");
-                setShowCharge(true);
-              }}
-              disabled={busy}
-              style={{
-                ...submitBtnCss,
-                background: "var(--blueprint)",
-              }}
-            >
-              💳 Charge card now
-            </button>
-          )}
-          <button type="submit" disabled={busy} style={{ ...submitBtnCss, background: "var(--shed-green)" }}>
-            {busy ? "Saving…" : "Record manually"}
-          </button>
-        </div>
-      </form>
-
-      {showCharge && (
-        <CardChargeModal
-          donorId={donorId}
-          amount={Number(amount) || 0}
-          pledgeId={applyToPledgeId || null}
-          description={notes || undefined}
-          onClose={() => setShowCharge(false)}
-          onCharged={() => {
-            setShowCharge(false);
-            onCreated();
-          }}
-        />
-      )}
     </div>
   );
 }

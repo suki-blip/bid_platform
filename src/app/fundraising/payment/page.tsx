@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
 import { paymentMethodLabel, methodIsCheckLike, PAYMENT_METHODS } from "@/lib/fundraising-types";
@@ -94,7 +95,12 @@ export default function PayPage() {
   // The list scrolls and is always visible — picking a donor just selects from this list.
   const [donorQuery, setDonorQuery] = useState("");
   const [donors, setDonors] = useState<DonorOption[]>([]);
-  const [donorId, setDonorId] = useState<string>("");
+  // donor_id can be pre-populated via ?donor=<id> in the URL. This is how the donor profile's
+  // "+ Record payment" / "+ Add payment" links route here — the donor is already chosen and
+  // the user can jump straight to mode/amount selection without searching.
+  const searchParams = useSearchParams();
+  const initialDonorId = searchParams?.get("donor") || "";
+  const [donorId, setDonorId] = useState<string>(initialDonorId);
   const [donorsLoading, setDonorsLoading] = useState(true);
 
   // Step 2: choose mode
