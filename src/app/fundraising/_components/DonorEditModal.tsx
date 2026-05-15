@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEscape } from "@/lib/use-escape";
 import { OCCUPATION_CATEGORIES } from "@/lib/fundraising-options";
 import HebrewInput from "./HebrewInput";
 
@@ -57,6 +58,8 @@ export default function DonorEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  useEscape(onClose);
+
   const occupationIsCategory = OCCUPATION_CATEGORIES.some((c) => c.value === donor.occupation);
 
   const [firstName, setFirstName] = useState(donor.first_name || "");

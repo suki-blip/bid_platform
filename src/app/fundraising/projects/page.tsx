@@ -214,16 +214,31 @@ function ProjectCard({ project, onChange, isChild = false }: { project: Project;
       </div>
 
       {pct !== null && (
-        <div style={{ background: "rgba(10,16,25,0.06)", borderRadius: 99, height: 6, overflow: "hidden", marginBottom: 10 }}>
-          <div
-            style={{
-              width: `${pct}%`,
-              height: "100%",
-              background: "var(--shed-green)",
-              transition: "width 300ms var(--ease-out)",
-            }}
-          />
-        </div>
+        <>
+          <div style={{ background: "rgba(10,16,25,0.06)", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 6, position: "relative" }}>
+            <div
+              style={{
+                width: `${pct}%`,
+                height: "100%",
+                // Gold gradient at 100%+; green during progress. The visual change makes
+                // "hit goal" obvious at a glance, even at thumbnail size.
+                background: pct >= 100
+                  ? "linear-gradient(90deg, #f0a830, #d4881a)"
+                  : "var(--shed-green)",
+                transition: "width 300ms var(--ease-out)",
+              }}
+            />
+          </div>
+          {pct >= 100 ? (
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#7a4f00", marginBottom: 8, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              🎯 Goal achieved · {pct.toFixed(0)}%
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 8 }}>
+              {pct.toFixed(0)}% of goal
+            </div>
+          )}
+        </>
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, opacity: 0.7 }}>

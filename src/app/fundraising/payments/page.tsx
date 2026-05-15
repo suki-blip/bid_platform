@@ -220,6 +220,41 @@ function PaymentsPageInner() {
     setAuditLoading(false);
   }
 
+  // Export the visible rows as CSV. Triggered from the toolbar; uses RFC-4180 escaping so
+  // names with commas / quotes don't break the file. Excel-friendly UTF-8 BOM at the start
+  // so Hebrew names render correctly when opened in Excel/Numbers.
+  function exportPaymentsCsv() {
+    const headers = ["Date", "Donor", "Hebrew Name", "Project", "Amount", "Method", "Status", "Reference"];
+    const escape = (v: string | number | null | undefined): string => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const lines = rows.map((p) => [
+      escape(p.paid_date || p.due_date),
+      escape(`${p.donor_first_name} ${p.donor_last_name || ""}`.trim()),
+      escape(p.donor_hebrew_name),
+      escape(p.project_name || "General"),
+      escape(p.amount.toFixed(2)),
+      escape(fmtMethod(p.method)),
+      escape(p.status),
+      escape(p.check_number || p.cc_last4 || p.transaction_ref),
+    ].join(","));
+    const csv = [headers.map(escape).join(","), ...lines].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.download = `payments-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} rows`);
+  }
+
   // Debounce the search so we don't spam the API as the user types.
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -401,13 +436,33 @@ function PaymentsPageInner() {
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
-          Payments
-        </h1>
-        <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
-          Every payment across all donors. Click Edit to modify amount, method, dates, status, or notes — or delete a payment that was entered by mistake.
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+            Payments
+          </h1>
+          <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
+            Every payment across all donors. Click Edit to modify amount, method, dates, status, or notes — or delete a payment that was entered by mistake.
+          </div>
         </div>
+        <button
+          onClick={exportPaymentsCsv}
+          disabled={rows.length === 0}
+          style={{
+            padding: "9px 14px",
+            background: "transparent",
+            color: "var(--cast-iron)",
+            border: "1px solid rgba(10,16,25,0.14)",
+            borderRadius: 6,
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: rows.length === 0 ? "not-allowed" : "pointer",
+            opacity: rows.length === 0 ? 0.5 : 1,
+          }}
+          title="Download the current filtered list as a CSV file"
+        >
+          ⬇ Export CSV
+        </button>
       </div>
 
       {/* Summary cards */}

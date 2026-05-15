@@ -182,6 +182,50 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
     else setSelected(new Set(donors.map((d) => d.id)));
   }
 
+  // Export visible (currently filtered + sorted) donors to CSV. Client-side generation
+  // because the API response already has all the data we need — no extra round trip.
+  function exportCsv() {
+    const headers = [
+      "First Name", "Last Name", "Hebrew Name", "Email", "Phone",
+      "Organization", "Source", "Total Pledged", "Total Paid",
+      "Last Contact", "Assigned To",
+    ];
+    const escape = (v: string | number | null): string => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      // RFC 4180 — wrap in quotes if it contains comma/quote/newline, double any quotes.
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const rows = sortedDonors.map((d) => [
+      escape(d.first_name),
+      escape(d.last_name),
+      escape(donorHebrewDisplay(d) || ""),
+      escape(d.email),
+      escape(d.primary_phone),
+      escape(d.organization),
+      escape(d.source_name),
+      escape(d.total_pledged.toFixed(2)),
+      escape(d.total_paid.toFixed(2)),
+      escape(d.last_contact_at),
+      escape(d.assigned_name),
+    ].join(","));
+    const csv = [headers.map(escape).join(","), ...rows].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.download = `${status === "donor" ? "donors" : "leads"}-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${sortedDonors.length} rows`);
+  }
+
   async function bulkDelete() {
     const count = selected.size;
     if (count === 0) return;
@@ -315,22 +359,42 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
           </h1>
           <div style={{ fontSize: 13, opacity: 0.55, marginTop: 4 }}>{subtitle}</div>
         </div>
-        <Link
-          href={`/fundraising/donors/new?status=${status}`}
-          style={{
-            padding: "9px 16px",
-            background: "var(--cast-iron)",
-            color: "#fff",
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            textDecoration: "none",
-            display: "inline-flex",
-            alignItems: "center",
-          }}
-        >
-          New {isProspect ? "lead" : "donor"}
-        </Link>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={exportCsv}
+            disabled={sortedDonors.length === 0}
+            style={{
+              padding: "9px 14px",
+              background: "transparent",
+              color: "var(--cast-iron)",
+              border: "1px solid rgba(10,16,25,0.14)",
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: sortedDonors.length === 0 ? "not-allowed" : "pointer",
+              opacity: sortedDonors.length === 0 ? 0.5 : 1,
+            }}
+            title="Download the current filtered list as a CSV file"
+          >
+            ⬇ Export CSV
+          </button>
+          <Link
+            href={`/fundraising/donors/new?status=${status}`}
+            style={{
+              padding: "9px 16px",
+              background: "var(--cast-iron)",
+              color: "#fff",
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: 13,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+            }}
+          >
+            New {isProspect ? "lead" : "donor"}
+          </Link>
+        </div>
       </div>
 
       <div

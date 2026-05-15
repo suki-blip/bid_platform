@@ -44,6 +44,34 @@ export default function CampaignEmailBlast({ projectId, projectName }: { project
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [pickedTemplateId, setPickedTemplateId] = useState<string>("");
 
+  // Send-test: ship a single email to a test address with variables replaced by sample
+  // data. Critical sanity step before a 200-person blast — the audit flagged that there
+  // was no way to preview the rendered output.
+  const [testAddr, setTestAddr] = useState("");
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  async function sendTest() {
+    if (!testAddr.trim() || !testAddr.includes("@")) {
+      setTestResult("Enter a valid email address.");
+      return;
+    }
+    if (!subject.trim() || !html.trim()) {
+      setTestResult("Subject and body are required.");
+      return;
+    }
+    setTestBusy(true);
+    setTestResult(null);
+    const r = await fetch(`/api/fundraising/projects/${projectId}/email-blast`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject, html, test_to: testAddr.trim() }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setTestBusy(false);
+    setTestResult(r.ok && d.ok ? `✓ Test sent to ${d.to}` : `Failed: ${d.error || `HTTP ${r.status}`}`);
+  }
+
   useEffect(() => {
     if (!open) return;
     // Load every template, then filter out receipt-kind entries — those aren't suited for
@@ -201,6 +229,62 @@ export default function CampaignEmailBlast({ projectId, projectName }: { project
           <code>{"{{full_name}}"}</code>, <code>{"{{hebrew_name}}"}</code>. Each gets replaced
           with the recipient&apos;s value. HTML supported.
         </div>
+      </div>
+
+      {/* Send-test row — preview the blast against your own inbox before committing.
+          Variables get replaced with sample data (David/Cohen/דוד כהן) so you see what
+          a real recipient would receive. */}
+      <div
+        style={{
+          marginTop: 12,
+          padding: "10px 12px",
+          background: "rgba(28,93,142,0.06)",
+          border: "1px solid rgba(28,93,142,0.2)",
+          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--blueprint)" }}>
+          🔍 Test send
+        </div>
+        <input
+          type="email"
+          value={testAddr}
+          onChange={(e) => setTestAddr(e.target.value)}
+          placeholder="your-email@example.com"
+          style={{ ...inputCss, flex: 1, minWidth: 180 }}
+        />
+        <button
+          onClick={sendTest}
+          disabled={testBusy || !subject.trim() || !html.trim() || !testAddr.trim()}
+          style={{
+            padding: "7px 14px",
+            background: "var(--blueprint)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: testBusy ? "not-allowed" : "pointer",
+            opacity: testBusy ? 0.6 : 1,
+          }}
+        >
+          {testBusy ? "Sending…" : "Send test"}
+        </button>
+        {testResult && (
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: testResult.startsWith("✓") ? "var(--shed-green)" : "var(--cone-orange)",
+            }}
+          >
+            {testResult}
+          </span>
+        )}
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>

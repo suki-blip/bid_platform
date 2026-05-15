@@ -27,6 +27,11 @@ interface BlastBody {
   subject?: string;
   html?: string;
   include_opt_out?: boolean;
+  // When set, the blast goes ONLY to this address — used by the "send a test to myself"
+  // button in the campaign blast UI before committing to the real send. The address is
+  // resolved against the donor table if it matches a donor email (for variable lookup);
+  // otherwise variables fall back to placeholder values.
+  test_to?: string;
 }
 
 async function pickRecipients(
@@ -35,7 +40,14 @@ async function pickRecipients(
   kind: RecipientKind,
   includeOptOut: boolean,
 ): Promise<{ id: string; first_name: string; last_name: string | null; hebrew_name: string | null; email: string }[]> {
-  const optOutFilter = includeOptOut ? "" : " AND COALESCE(email_opt_in, 'all') = 'all'";
+  // For a campaign blast, the recipient must:
+  //   1. have email_opt_in = 'all' (NOT 'receipts_only' or 'none')
+  //   2. not have do_not_contact = 1 (DNC at any channel)
+  // Receipts-only donors still get auto-receipts after charges but are excluded from
+  // bulk marketing here. The audit caught that do_not_contact wasn't enforced; fixed now.
+  const optOutFilter = includeOptOut
+    ? ""
+    : " AND COALESCE(email_opt_in, 'all') = 'all' AND COALESCE(do_not_contact, 0) = 0";
 
   let sql: string;
   let args: (string | number)[];
@@ -50,14 +62,14 @@ async function pickRecipients(
            FROM fr_donors d
            JOIN fr_pledges pl ON pl.donor_id = d.id
            WHERE d.owner_id = ? AND pl.project_id = ? AND COALESCE(pl.is_standalone, 0) = 0
-             AND d.email IS NOT NULL AND d.email != ''${optOutFilter.replace('email_opt_in', 'd.email_opt_in')}`;
+             AND d.email IS NOT NULL AND d.email != ''${optOutFilter.replaceAll('email_opt_in', 'd.email_opt_in').replaceAll('do_not_contact', 'd.do_not_contact')}`;
     args = [ownerId, projectId];
   } else if (kind === 'campaign_prospects') {
     sql = `SELECT DISTINCT d.id, d.first_name, d.last_name, d.hebrew_name, d.email
            FROM fr_donors d
            JOIN fr_project_prospects pp ON pp.donor_id = d.id
            WHERE pp.owner_id = ? AND pp.project_id = ?
-             AND d.email IS NOT NULL AND d.email != ''${optOutFilter.replace('email_opt_in', 'd.email_opt_in')}`;
+             AND d.email IS NOT NULL AND d.email != ''${optOutFilter.replaceAll('email_opt_in', 'd.email_opt_in').replaceAll('do_not_contact', 'd.do_not_contact')}`;
     args = [ownerId, projectId];
   } else if (kind === 'open_pledgers') {
     sql = `SELECT DISTINCT d.id, d.first_name, d.last_name, d.hebrew_name, d.email
@@ -65,7 +77,7 @@ async function pickRecipients(
            JOIN fr_pledges pl ON pl.donor_id = d.id
            WHERE d.owner_id = ? AND pl.project_id = ? AND pl.status = 'open'
              AND COALESCE(pl.is_standalone, 0) = 0
-             AND d.email IS NOT NULL AND d.email != ''${optOutFilter.replace('email_opt_in', 'd.email_opt_in')}`;
+             AND d.email IS NOT NULL AND d.email != ''${optOutFilter.replaceAll('email_opt_in', 'd.email_opt_in').replaceAll('do_not_contact', 'd.do_not_contact')}`;
     args = [ownerId, projectId];
   } else {
     return [];
@@ -92,8 +104,41 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const kind: RecipientKind = (body.recipients || 'campaign_donors') as RecipientKind;
   const subject = (body.subject || '').trim();
   const html = (body.html || '').trim();
+  const testTo = (body.test_to || '').trim();
   if (!subject) return NextResponse.json({ error: 'Subject is required' }, { status: 400 });
   if (!html) return NextResponse.json({ error: 'Body is required' }, { status: 400 });
+
+  // ---- Test-send mode ----
+  // When test_to is provided, we ignore the recipients-set entirely and send EXACTLY ONE
+  // email to the test address with the same variable replacements (using the manager's
+  // first name as the donor context, so {{first_name}} resolves to something realistic).
+  // This is critical safety net: the user reviews the rendered email before committing to
+  // a 200-person blast.
+  if (testTo) {
+    if (!testTo.includes('@')) {
+      return NextResponse.json({ error: 'test_to must be an email address' }, { status: 400 });
+    }
+    const sampleFirst = 'David';
+    const sampleLast = 'Cohen';
+    const personaliseTest = (template: string): string =>
+      template
+        .replace(/\{\{first_name\}\}/g, sampleFirst)
+        .replace(/\{\{last_name\}\}/g, sampleLast)
+        .replace(/\{\{full_name\}\}/g, `${sampleFirst} ${sampleLast}`)
+        .replace(/\{\{hebrew_name\}\}/g, 'דוד כהן');
+    const result = await sendFundraisingEmail({
+      ownerId: session.ownerId,
+      to: testTo,
+      subject: `[TEST] ${personaliseTest(subject)}`,
+      html: `<div style="background:#fff8dc;padding:10px;margin-bottom:14px;border-radius:6px;font-size:13px;color:#5a4a00;">⚠ This is a test send — variables replaced with sample data.</div>${personaliseTest(html)}`,
+      template: 'campaign_blast_test',
+      projectId,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, error: result.error || 'Test send failed' }, { status: 502 });
+    }
+    return NextResponse.json({ ok: true, test: true, to: testTo });
+  }
 
   const recipients = await pickRecipients(session.ownerId, projectId, kind, !!body.include_opt_out);
   if (recipients.length === 0) {

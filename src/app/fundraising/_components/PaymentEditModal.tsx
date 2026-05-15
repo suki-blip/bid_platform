@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useEscape } from "@/lib/use-escape";
 import { PAYMENT_METHODS, paymentMethodLabel } from "@/lib/fundraising-types";
 import { fmtMoney } from "@/lib/fundraising-format";
 
@@ -40,6 +41,8 @@ export default function PaymentEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  useEscape(onClose);
+
   const [amount, setAmount] = useState(String(payment.amount));
   const [method, setMethod] = useState(payment.method || "pending");
   const [status, setStatus] = useState(payment.status || "scheduled");

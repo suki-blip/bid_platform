@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useEscape } from "@/lib/use-escape";
 import { PAYMENT_METHODS, paymentMethodLabel } from "@/lib/fundraising-types";
 
 // Standalone modal for creating a new pledge (promise only — no money changes hands).
@@ -23,6 +24,8 @@ export default function PledgeModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  useEscape(onClose);
+
   const [amount, setAmount] = useState("");
   const [projectId, setProjectId] = useState("");
   const [pledgeDate, setPledgeDate] = useState(new Date().toISOString().slice(0, 10));

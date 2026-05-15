@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEscape } from "@/lib/use-escape";
 
 interface EditableCall {
   id: string;
@@ -24,6 +25,8 @@ export default function CallEditModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  useEscape(onClose);
+
   // Pre-populate from `occurred_at` (ISO datetime). Split into date + time.
   const initial = call.occurred_at ? new Date(call.occurred_at) : new Date();
   const pad = (n: number) => String(n).padStart(2, "0");

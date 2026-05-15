@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(gh pr *)",
-      "Bash(gh repo *)"
+      "Bash(gh repo *)",
+      "Read(//c/Users/User/.claude/projects/C--Users-User-Claude-Projects-bid-platform/memory//**)",
+      "Read(//c/Users/User/Claude Projects//**)"
     ]
   }
 }

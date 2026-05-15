@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["next", "dev", "--port", "3000"],
       "port": 3000
+    },
+    {
+      "name": "kitchen-crm",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["../kitchen-crm/server.js", "5180"],
+      "port": 5180
     }
   ]
 }
