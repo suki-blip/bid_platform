@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fmtMoney } from "@/lib/fundraising-format";
 
@@ -288,7 +289,25 @@ export default function PledgeEditModal({
           >
             Delete pledge
           </button>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Drill-into link — opens the Payments page filtered to this pledge only.
+                Useful for "show me every installment that belongs to this pledge". */}
+            <Link
+              href={`/fundraising/payments?pledge_id=${pledge.id}`}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid rgba(28,93,142,0.3)",
+                background: "transparent",
+                color: "var(--blueprint)",
+                fontSize: 12,
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+              title="Open the Payments page filtered to this pledge"
+            >
+              View payments
+            </Link>
             <button type="button" onClick={onClose} style={cancel}>Cancel</button>
             <button type="submit" disabled={busy} style={submitBtn}>{busy ? "Saving…" : "Save changes"}</button>
           </div>
