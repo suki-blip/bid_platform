@@ -150,8 +150,10 @@ export async function solaSale(creds: SolaCredentials, args: SaleArgs): Promise<
   if (args.billFirstName) body.xBillFirstName = args.billFirstName;
   if (args.billLastName) body.xBillLastName = args.billLastName;
   if (args.email) body.xEmail = args.email;
-  if (args.createToken) body.xCreateToken = '1';
-  // Encourage AVS / CVV checks for fraud protection
+  // Note on createToken: Cardknox returns xToken on EVERY successful cc:sale automatically —
+  // no request parameter is needed (xCreateToken was rejected as "Invalid Variable" by
+  // Sola/Cardknox). We keep `createToken` on the args interface for callers' clarity but
+  // the response always carries xToken, so the save-card path just checks `saleRes.xToken`.
   body.xAllowDuplicate = '1'; // donations: same donor can charge the same amount multiple times legitimately
 
   return postCardknox(TX_ENDPOINT, body);

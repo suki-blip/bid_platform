@@ -328,10 +328,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // ----- Auto-send receipt email (best-effort, doesn't block the response) -----
-    // We fire-and-forget: the API responds immediately and the email sends in the background.
-    // If email isn't configured (no Resend key + no From) the helper records a failed log row
-    // and returns ok=false — we just log to console.
+    // ----- Auto-send receipt email -----
+    // We AWAIT the send (instead of fire-and-forget) because Vercel serverless functions
+    // terminate as soon as NextResponse is returned — any pending Promise gets cancelled
+    // before reaching Resend. Awaiting adds ~500ms to the response but guarantees the
+    // receipt actually goes out. If the send fails the donation still succeeds (we just
+    // log the error and the user can manually re-send the receipt from the Payments page).
     if (donorEmail && (donor.email_opt_in == null || String(donor.email_opt_in) === 'all' || String(donor.email_opt_in) === 'receipts_only')) {
       // Resolve project name for the first allocation (when split, take the first; the rest
       // get aggregate language). Best-effort lookup — we don't fail the response on this.
@@ -373,17 +375,21 @@ export async function POST(request: Request) {
       });
       // Use first reserved payment as the link target for the log.
       const linkPaymentId = reserved[0]?.paymentId || null;
-      sendFundraisingEmail({
-        ownerId: session.ownerId,
-        to: donorEmail,
-        subject: tpl.subject,
-        html: tpl.html,
-        text: tpl.text,
-        template: 'receipt',
-        donorId: body.donor_id,
-        paymentId: linkPaymentId,
-        projectId: allocations[0]?.project_id || null,
-      }).catch((err) => console.error('[sola/charge] receipt send failed:', err));
+      try {
+        await sendFundraisingEmail({
+          ownerId: session.ownerId,
+          to: donorEmail,
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+          template: 'receipt',
+          donorId: body.donor_id,
+          paymentId: linkPaymentId,
+          projectId: allocations[0]?.project_id || null,
+        });
+      } catch (err) {
+        console.error('[sola/charge] receipt send failed:', err);
+      }
     }
 
     return NextResponse.json({

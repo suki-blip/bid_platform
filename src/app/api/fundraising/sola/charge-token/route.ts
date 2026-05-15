@@ -270,17 +270,22 @@ export async function POST(request: Request) {
         organization_name: orgName,
       });
       const linkPaymentId = reserved[0]?.paymentId || null;
-      sendFundraisingEmail({
-        ownerId: session.ownerId,
-        to: donorEmailVal,
-        subject: tpl.subject,
-        html: tpl.html,
-        text: tpl.text,
-        template: 'receipt',
-        donorId: body.donor_id,
-        paymentId: linkPaymentId,
-        projectId: allocations[0]?.project_id || null,
-      }).catch((err) => console.error('[charge-token] receipt send failed:', err));
+      // Await — Vercel terminates the function on response, killing any fire-and-forget Promise.
+      try {
+        await sendFundraisingEmail({
+          ownerId: session.ownerId,
+          to: donorEmailVal,
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+          template: 'receipt',
+          donorId: body.donor_id,
+          paymentId: linkPaymentId,
+          projectId: allocations[0]?.project_id || null,
+        });
+      } catch (err) {
+        console.error('[charge-token] receipt send failed:', err);
+      }
     }
 
     return NextResponse.json({
