@@ -297,8 +297,19 @@ export default function DataTable<T>({
         </div>
       )}
 
-      {/* Table */}
-      <div style={{ overflowX: "auto", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 10 }}>
+      {/* Table — outer div is the scroll container; header cells use `position: sticky`
+          so they pin to the top of the *scrollable area* (not the page) as the user scrolls
+          down a long list. maxHeight is generous enough that short tables don't get a
+          forced inner scrollbar. */}
+      <div
+        style={{
+          overflowX: "auto",
+          overflowY: "auto",
+          maxHeight: "calc(100vh - 240px)",
+          border: "1px solid rgba(10,16,25,0.08)",
+          borderRadius: 10,
+        }}
+      >
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, background: "#fff" }}>
           <thead>
             <tr>
@@ -307,6 +318,7 @@ export default function DataTable<T>({
                 const filterActive = filters[col.key] != null && filters[col.key] !== undefined;
                 const sortable = col.sortable !== false;
                 const filterable = col.filterable !== false;
+                const headerBg = filterActive || sortActive ? "rgb(238,243,250)" : "#fff";
                 return (
                   <th
                     key={col.key}
@@ -321,8 +333,11 @@ export default function DataTable<T>({
                       opacity: 0.75,
                       whiteSpace: "nowrap",
                       width: col.width,
-                      position: "relative",
-                      background: filterActive || sortActive ? "rgba(28,93,142,0.04)" : "transparent",
+                      // Sticky header: pin to top of the scroll container as rows scroll past.
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 2,
+                      background: headerBg,
                     }}
                   >
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>

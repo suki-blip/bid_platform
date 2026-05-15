@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { fmtMoney, fmtDate, fmtMethod } from "@/lib/fundraising-format";
+import { useToast } from "@/lib/use-toast";
 import PaymentEditModal from "../_components/PaymentEditModal";
 import PledgeEditModal from "../_components/PledgeEditModal";
 import DataTable, { type DataTableColumn } from "../_components/DataTable";
+import { SkeletonRows } from "../_components/Skeleton";
 
 interface PaymentRow {
   id: string;
@@ -88,6 +90,7 @@ export default function PaymentsPage() {
 function PaymentsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const toast = useToast();
   // ?pledge_id=X focuses the page on a single pledge's payments. Set from outside (e.g.,
   // the Pledge edit modal will eventually link here) or by user copy/paste of the URL.
   const pledgeId = searchParams?.get("pledge_id") || "";
@@ -333,9 +336,9 @@ function PaymentsPageInner() {
                 });
                 const d = await r.json().catch(() => ({}));
                 if (r.ok && d.ok) {
-                  alert(`Receipt sent to ${d.to}`);
+                  toast.success(`Receipt sent to ${d.to}`);
                 } else {
-                  alert(`Failed: ${d.error || `HTTP ${r.status}`}`);
+                  toast.error(`Failed: ${d.error || `HTTP ${r.status}`}`);
                 }
               }}
               style={{
@@ -643,7 +646,9 @@ function PaymentsPageInner() {
 
       {/* Rows */}
       {loading ? (
-        <div style={{ opacity: 0.5, padding: 30 }}>Loading…</div>
+        <div style={{ background: "#fff", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 10 }}>
+          <SkeletonRows rows={8} columns={6} />
+        </div>
       ) : (
         <DataTable
           data={visibleRows}

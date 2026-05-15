@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fmtMoney as fmt, fmtDate } from "@/lib/fundraising-format";
+import { useToast } from "@/lib/use-toast";
 
 // One row in the "audit top open pledges" diagnostic. The dashboard's Open-Pledges card
 // can look wildly off if a stale test row with a huge amount is still in the database;
@@ -71,6 +72,7 @@ export default function FundraisingDashboard() {
   const [seeding, setSeeding] = useState(false);
   const [isManager, setIsManager] = useState(false);
   const router = useRouter();
+  const toast = useToast();
 
   // Pledge audit modal state — opened from the link below the Open-Pledges stat.
   const [auditOpen, setAuditOpen] = useState(false);
@@ -106,9 +108,10 @@ export default function FundraisingDashboard() {
     setDeletingId(null);
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      alert(d.error || "Delete failed");
+      toast.error(d.error || "Delete failed");
       return;
     }
+    toast.success("Pledge moved to Recycle Bin");
     // Reload both the audit list and the dashboard stats so the Open-Pledges card updates.
     loadAudit();
     fetch("/api/fundraising/dashboard")

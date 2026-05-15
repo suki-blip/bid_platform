@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DonorSidePanel from "./DonorSidePanel";
 import StarRating from "./StarRating";
+import { SkeletonRows } from "./Skeleton";
 import { fmtMoney, fmtDate } from "@/lib/fundraising-format";
+import { useToast } from "@/lib/use-toast";
 
 interface DonorRow {
   id: string;
@@ -114,11 +116,22 @@ function compareWith(dir: SortDir, getter: (d: DonorRow) => string | number | nu
 }
 
 export default function DonorListView({ status }: { status: "prospect" | "donor" }) {
+  const toast = useToast();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [donors, setDonors] = useState<DonorRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  // Lapsed + open-pledges filters (UX request from the audit). 'lapsed' = no payment in 12mo.
+  // 'has_open_pledges' = at least one open pledge with outstanding balance.
+  const [filterLapsed, setFilterLapsed] = useState(false);
+  const [filterOpenPledges, setFilterOpenPledges] = useState(false);
+
+  // autoFocus the search box on mount — saves a click for the most common entry point.
+  useEffect(() => {
+    searchRef.current?.focus();
+  }, []);
   const [total, setTotal] = useState(0);
   const [previewDonorId, setPreviewDonorId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -184,9 +197,10 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
     if (r.ok) {
       setSelected(new Set());
       setReloadKey((k) => k + 1);
+      toast.success(`${count} ${noun} moved to Recycle Bin`);
     } else {
       const e = await r.json().catch(() => ({}));
-      alert(e.error || "Delete failed");
+      toast.error(e.error || "Delete failed");
     }
   }
 
@@ -230,16 +244,34 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
     return { totalPledged, totalPaid };
   }, [donors]);
 
-  // Client-side sort applied AFTER the API returns. The API still controls search + source
-  // filter (server-side) and result limit; sort just rearranges the visible page. This is
-  // fine for the typical 200-row limit; for larger lists we'd push sort to the API.
+  // Client-side filter + sort applied AFTER the API returns.
+  //
+  // Lapsed filter: a donor is "lapsed" when their last_contact_at (which tracks both calls
+  // and payments) is older than 12 months — typical re-engagement target. If null we treat
+  // them as lapsed too (they've literally never been contacted).
+  //
+  // Open-pledges filter: donors with `total_pledged > total_paid` have outstanding balance.
+  // This is a proxy until we add a real has_open_pledges flag from the API.
   const sortedDonors = useMemo(() => {
-    if (!sort) return donors;
+    let list = donors;
+
+    if (filterLapsed) {
+      const cutoff = Date.now() - 365 * 24 * 60 * 60 * 1000;
+      list = list.filter((d) => {
+        if (!d.last_contact_at) return true;
+        const t = new Date(d.last_contact_at).getTime();
+        return Number.isFinite(t) && t < cutoff;
+      });
+    }
+    if (filterOpenPledges) {
+      list = list.filter((d) => (d.total_pledged || 0) > (d.total_paid || 0));
+    }
+
+    if (!sort) return list;
     const accessor = SORT_ACCESSORS[sort.key];
-    if (!accessor) return donors;
-    // Slice to avoid mutating the underlying state array (sort sorts in place).
-    return [...donors].sort(compareWith(sort.dir, accessor));
-  }, [donors, sort]);
+    if (!accessor) return list;
+    return [...list].sort(compareWith(sort.dir, accessor));
+  }, [donors, sort, filterLapsed, filterOpenPledges]);
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
@@ -311,6 +343,7 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
         }}
       >
         <input
+          ref={searchRef}
           placeholder="Search by name, email, organization…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -344,6 +377,24 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
             </option>
           ))}
         </select>
+        {/* Quick-filter chips — these toggle client-side filters that act on top of search +
+            source. They mirror the affordance pattern of the Payments page. */}
+        <button
+          onClick={() => setFilterLapsed((v) => !v)}
+          title="Show only donors with no contact in the last 12 months"
+          style={chipStyle(filterLapsed)}
+        >
+          Lapsed (12m+)
+        </button>
+        {!isProspect && (
+          <button
+            onClick={() => setFilterOpenPledges((v) => !v)}
+            title="Show only donors with outstanding pledge balance"
+            style={chipStyle(filterOpenPledges)}
+          >
+            Has open pledges
+          </button>
+        )}
         {sort && (
           <button
             onClick={() => setSort(null)}
@@ -369,7 +420,9 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: "center", opacity: 0.5 }}>Loading…</div>
+        <div style={{ background: "#fff", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 8 }}>
+          <SkeletonRows rows={6} columns={5} />
+        </div>
       ) : donors.length === 0 ? (
         <div
           style={{
@@ -575,6 +628,21 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
       <DonorSidePanel donorId={previewDonorId} onClose={() => setPreviewDonorId(null)} />
     </div>
   );
+}
+
+// Filter chip pill — active state uses ink fill, idle state is white with border.
+// Matches the chip pattern used on Payments + Collections pages.
+function chipStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "7px 12px",
+    background: active ? "var(--cast-iron)" : "#fff",
+    color: active ? "#fff" : "var(--cast-iron)",
+    border: active ? "1px solid var(--cast-iron)" : "1px solid rgba(10,16,25,0.12)",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
 }
 
 // Clickable sortable column header. Renders the column title plus a tiny arrow indicator
