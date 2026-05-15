@@ -33,6 +33,68 @@ interface SourceRow {
   name: string;
 }
 
+// Column sort state. `key` identifies the column (see SORT_KEYS below); `dir` cycles
+// none → asc → desc → none on repeated clicks. Persisted to sessionStorage so a refresh
+// within the same tab keeps your sort, but closing the tab resets to "natural order" (the
+// API's default — newest donors / most-recent contact first).
+type SortKey =
+  | "name"
+  | "rating"
+  | "contact"
+  | "organization"
+  | "source"
+  | "pledged"
+  | "paid"
+  | "last_contact"
+  | "assigned";
+type SortDir = "asc" | "desc";
+
+// Accessors turn a DonorRow into the sortable scalar for each column. NULL/undefined sort
+// to the END regardless of direction — handled in the comparator, not here.
+// Human-readable column labels used by the "Sorted by X" pill. Kept in sync with SortKey.
+const SORT_LABELS: Record<SortKey, string> = {
+  name: "Name",
+  rating: "Rating",
+  contact: "Contact",
+  organization: "Organization",
+  source: "Source",
+  pledged: "Pledged",
+  paid: "Paid",
+  last_contact: "Last contact",
+  assigned: "Assigned",
+};
+
+const SORT_ACCESSORS: Record<SortKey, (d: DonorRow) => string | number | null> = {
+  name: (d) => `${d.first_name || ""} ${d.last_name || ""}`.trim().toLowerCase(),
+  // Rating compares by financial_rating first, then giving_rating, falling back to 0 so
+  // donors without ratings sort below any with ratings.
+  rating: (d) => (d.financial_rating ?? 0) * 10 + (d.giving_rating ?? 0),
+  contact: (d) => (d.primary_phone || d.email || "").toLowerCase(),
+  organization: (d) => (d.organization || "").toLowerCase(),
+  source: (d) => (d.source_name || "").toLowerCase(),
+  pledged: (d) => d.total_pledged || 0,
+  paid: (d) => d.total_paid || 0,
+  last_contact: (d) => d.last_contact_at || "",
+  assigned: (d) => (d.assigned_name || "").toLowerCase(),
+};
+
+function compareWith(dir: SortDir, getter: (d: DonorRow) => string | number | null) {
+  return (a: DonorRow, b: DonorRow) => {
+    const av = getter(a);
+    const bv = getter(b);
+    // Push empties/zeros to the end of both ascending and descending sorts. For numbers,
+    // 0 is a real value but the user almost always means "show me the top givers", so we
+    // treat 0 as "no data" for sort purposes too.
+    const aEmpty = av === null || av === undefined || av === "" || av === 0;
+    const bEmpty = bv === null || bv === undefined || bv === "" || bv === 0;
+    if (aEmpty && bEmpty) return 0;
+    if (aEmpty) return 1;
+    if (bEmpty) return -1;
+    const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
+    return dir === "asc" ? cmp : -cmp;
+  };
+}
+
 export default function DonorListView({ status }: { status: "prospect" | "donor" }) {
   const [donors, setDonors] = useState<DonorRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
@@ -44,6 +106,38 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Sort state — persisted to sessionStorage (per-tab) so a refresh keeps the user's view.
+  // Keyed by `status` so the Donors page and Leads page have independent sort prefs.
+  const sortStorageKey = `donor-list-sort:${status}`;
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = sessionStorage.getItem(sortStorageKey);
+      return raw ? (JSON.parse(raw) as { key: SortKey; dir: SortDir }) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (sort) sessionStorage.setItem(sortStorageKey, JSON.stringify(sort));
+    else sessionStorage.removeItem(sortStorageKey);
+  }, [sort, sortStorageKey]);
+
+  // Click cycles: not-active → desc → asc → none. We default to desc on first click for
+  // numeric columns (paid/pledged) because "top givers" is the natural first ask; for text
+  // columns starting asc would be alphabetical-from-A which feels right too — but the
+  // cycle treats them uniformly, and the user can click again to flip. desc-first matches
+  // every spreadsheet's column-header click behavior.
+  function toggleSort(key: SortKey) {
+    setSort((current) => {
+      if (!current || current.key !== key) return { key, dir: "desc" };
+      if (current.dir === "desc") return { key, dir: "asc" };
+      return null;
+    });
+  }
 
   function toggleSelect(id: string) {
     const next = new Set(selected);
@@ -117,6 +211,17 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
     const totalPaid = donors.reduce((s, d) => s + (d.total_paid || 0), 0);
     return { totalPledged, totalPaid };
   }, [donors]);
+
+  // Client-side sort applied AFTER the API returns. The API still controls search + source
+  // filter (server-side) and result limit; sort just rearranges the visible page. This is
+  // fine for the typical 200-row limit; for larger lists we'd push sort to the API.
+  const sortedDonors = useMemo(() => {
+    if (!sort) return donors;
+    const accessor = SORT_ACCESSORS[sort.key];
+    if (!accessor) return donors;
+    // Slice to avoid mutating the underlying state array (sort sorts in place).
+    return [...donors].sort(compareWith(sort.dir, accessor));
+  }, [donors, sort]);
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
@@ -221,6 +326,28 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
             </option>
           ))}
         </select>
+        {sort && (
+          <button
+            onClick={() => setSort(null)}
+            title="Clear sort and go back to natural order"
+            style={{
+              padding: "7px 12px",
+              background: "rgba(10,16,25,0.05)",
+              border: "1px solid rgba(10,16,25,0.12)",
+              borderRadius: 6,
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              color: "var(--cast-iron)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span>Sorted by <strong>{SORT_LABELS[sort.key]}</strong> {sort.dir === "asc" ? "▲" : "▼"}</span>
+            <span style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -326,19 +453,19 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
                     style={{ cursor: "pointer" }}
                   />
                 </th>
-                <Th>Name</Th>
-                <Th>Rating</Th>
-                <Th>Contact</Th>
-                <Th>Organization</Th>
-                <Th>Source</Th>
-                {!isProspect && <Th align="right">Pledged</Th>}
-                {!isProspect && <Th align="right">Paid</Th>}
-                <Th>Last contact</Th>
-                <Th>Assigned</Th>
+                <SortTh sort={sort} sortKey="name" onClick={toggleSort}>Name</SortTh>
+                <SortTh sort={sort} sortKey="rating" onClick={toggleSort}>Rating</SortTh>
+                <SortTh sort={sort} sortKey="contact" onClick={toggleSort}>Contact</SortTh>
+                <SortTh sort={sort} sortKey="organization" onClick={toggleSort}>Organization</SortTh>
+                <SortTh sort={sort} sortKey="source" onClick={toggleSort}>Source</SortTh>
+                {!isProspect && <SortTh sort={sort} sortKey="pledged" onClick={toggleSort} align="right">Pledged</SortTh>}
+                {!isProspect && <SortTh sort={sort} sortKey="paid" onClick={toggleSort} align="right">Paid</SortTh>}
+                <SortTh sort={sort} sortKey="last_contact" onClick={toggleSort}>Last contact</SortTh>
+                <SortTh sort={sort} sortKey="assigned" onClick={toggleSort}>Assigned</SortTh>
               </tr>
             </thead>
             <tbody>
-              {donors.map((d) => (
+              {sortedDonors.map((d) => (
                 <tr
                   key={d.id}
                   onClick={() => setPreviewDonorId(d.id)}
@@ -428,20 +555,48 @@ export default function DonorListView({ status }: { status: "prospect" | "donor"
   );
 }
 
-function Th({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" }) {
+// Clickable sortable column header. Renders the column title plus a tiny arrow indicator
+// when this column is the active sort. The arrow direction (▲/▼) tells the user whether
+// they're seeing ascending or descending; clicking again toggles direction; a third click
+// removes the sort entirely. Uses uppercase letterspaced text matching the original Th.
+function SortTh({
+  children,
+  sortKey,
+  sort,
+  onClick,
+  align = "left",
+}: {
+  children: React.ReactNode;
+  sortKey: SortKey;
+  sort: { key: SortKey; dir: SortDir } | null;
+  onClick: (k: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = sort?.key === sortKey;
+  const arrow = active ? (sort!.dir === "asc" ? "▲" : "▼") : null;
   return (
     <th
+      onClick={() => onClick(sortKey)}
       style={{
         padding: "10px 14px",
         fontSize: 11,
         fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: "0.06em",
-        opacity: 0.6,
+        opacity: active ? 0.95 : 0.6,
         textAlign: align,
+        cursor: "pointer",
+        userSelect: "none",
+        color: active ? "var(--cast-iron)" : "inherit",
       }}
+      title="Click to sort. Click again to reverse, a third time to clear."
     >
-      {children}
+      <span style={{ display: "inline-flex", gap: 5, alignItems: "center", justifyContent: align === "right" ? "flex-end" : "flex-start", width: "100%" }}>
+        {children}
+        {arrow && (
+          <span style={{ fontSize: 9, opacity: 0.7, lineHeight: 1 }}>{arrow}</span>
+        )}
+      </span>
     </th>
   );
 }
