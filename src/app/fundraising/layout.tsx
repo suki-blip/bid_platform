@@ -11,7 +11,12 @@ interface SessionInfo {
   email: string;
 }
 
-const NAV: { href: string; label: string; managerOnly?: boolean }[] = [
+// `inUserMenu: true` hides the entry from the top navbar and surfaces it in the user
+// dropdown (top-right) instead — used for admin-y links the manager only opens occasionally
+// (Settings, Emails, Recycle Bin) so the main nav stays focused on day-to-day work.
+type NavItem = { href: string; label: string; managerOnly?: boolean; inUserMenu?: boolean };
+
+const NAV: NavItem[] = [
   { href: "/fundraising", label: "Dashboard" },
   { href: "/fundraising/today", label: "Today" },
   { href: "/fundraising/prospects", label: "Leads" },
@@ -24,9 +29,10 @@ const NAV: { href: string; label: string; managerOnly?: boolean }[] = [
   { href: "/fundraising/reports", label: "Reports" },
   { href: "/fundraising/team", label: "Team", managerOnly: true },
   { href: "/fundraising/import", label: "Import", managerOnly: true },
-  { href: "/fundraising/email-templates", label: "Emails", managerOnly: true },
-  { href: "/fundraising/trash", label: "Recycle Bin", managerOnly: true },
-  { href: "/fundraising/settings", label: "Settings", managerOnly: true },
+  // Admin-y links live under the user dropdown instead of the main nav.
+  { href: "/fundraising/email-templates", label: "Emails", managerOnly: true, inUserMenu: true },
+  { href: "/fundraising/trash", label: "Recycle Bin", managerOnly: true, inUserMenu: true },
+  { href: "/fundraising/settings", label: "Settings", managerOnly: true, inUserMenu: true },
 ];
 
 export default function FundraisingLayout({ children }: { children: React.ReactNode }) {
@@ -63,7 +69,10 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
     router.push("/login");
   }
 
-  const visibleNav = NAV.filter((n) => !n.managerOnly || session?.role === "manager");
+  // Top navbar: visible to anyone with the right role, AND not flagged for the user menu.
+  // User-menu items get rendered separately inside the dropdown below.
+  const visibleNav = NAV.filter((n) => (!n.managerOnly || session?.role === "manager") && !n.inUserMenu);
+  const userMenuLinks = NAV.filter((n) => n.inUserMenu && (!n.managerOnly || session?.role === "manager"));
 
   return (
     <div className="fr-shell" style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column", color: "var(--cast-iron)" }}>
@@ -271,6 +280,30 @@ export default function FundraisingLayout({ children }: { children: React.ReactN
                   {session.role}
                 </div>
               </div>
+              {userMenuLinks.length > 0 && (
+                <>
+                  {userMenuLinks.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      style={{
+                        display: "block",
+                        textAlign: "left",
+                        padding: "7px 10px",
+                        borderRadius: 4,
+                        fontSize: 13,
+                        color: "var(--cast-iron)",
+                        fontWeight: 500,
+                        textDecoration: "none",
+                      }}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                  <div style={{ height: 1, background: "rgba(10,16,25,0.06)", margin: "4px 0" }} />
+                </>
+              )}
               <button
                 onClick={handleLogout}
                 style={{
