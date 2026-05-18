@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fmtMoney, fmtMonth } from "@/lib/fundraising-format";
+import MultiSelectDropdown from "../_components/MultiSelectDropdown";
 
 interface ReportData {
   summary: {
@@ -217,58 +218,54 @@ export default function ReportsPage() {
           <Field label="To">
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
           </Field>
-          <Field label="Projects (Ctrl/Cmd-click for multi)">
-            <select
-              multiple
+          {/* Multi-select filters — Excel-style dropdowns with checkboxes, search, and
+              Select all / Clear buttons. Closed by default; the button shows a summary
+              ("3 projects selected" / "All projects" / single-pick label). The previous
+              implementation used <select multiple> which displayed all options open and
+              required Ctrl/Cmd-click — workable for power users, painful for everyone else. */}
+          <Field label="Projects">
+            <MultiSelectDropdown
+              label="projects"
               value={projectIds}
-              onChange={(e) => setProjectIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
-              style={{ ...inputStyle, minHeight: 100 }}
-            >
-              <option value="__none__">— No project (general) —</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+              onChange={setProjectIds}
+              options={[
+                { value: "__none__", label: "— No project (general) —" },
+                ...projects.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+            />
           </Field>
-          <Field label="Sources (Ctrl/Cmd-click for multi)">
-            <select
-              multiple
+          <Field label="Sources">
+            <MultiSelectDropdown
+              label="sources"
               value={sourceIds}
-              onChange={(e) => setSourceIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
-              style={{ ...inputStyle, minHeight: 100 }}
-            >
-              <option value="__none__">— No source —</option>
-              {sources.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+              onChange={setSourceIds}
+              options={[
+                { value: "__none__", label: "— No source —" },
+                ...sources.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
           </Field>
-          <Field label="Donors (Ctrl/Cmd-click for multi)">
-            <select
-              multiple
+          <Field label="Donors">
+            <MultiSelectDropdown
+              label="donors"
               value={donorIds}
-              onChange={(e) => setDonorIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
-              style={{ ...inputStyle, minHeight: 100 }}
-            >
-              {donors.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.first_name} {d.last_name || ""}
-                </option>
-              ))}
-            </select>
+              onChange={setDonorIds}
+              options={donors.map((d) => ({
+                value: d.id,
+                label: `${d.first_name}${d.last_name ? " " + d.last_name : ""}`,
+              }))}
+              // Donors list can be large — force a search box even on smaller orgs.
+              searchable
+            />
           </Field>
           {isManager && (
-            <Field label="Fundraisers (Ctrl/Cmd-click for multi)">
-              <select
-                multiple
+            <Field label="Fundraisers">
+              <MultiSelectDropdown
+                label="fundraisers"
                 value={fundraiserIds}
-                onChange={(e) => setFundraiserIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
-                style={{ ...inputStyle, minHeight: 100 }}
-              >
-                {fundraisers.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
+                onChange={setFundraiserIds}
+                options={fundraisers.map((f) => ({ value: f.id, label: f.name }))}
+              />
             </Field>
           )}
         </div>
