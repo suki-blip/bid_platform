@@ -379,65 +379,11 @@ export default function ReportsPage() {
 
           {/* Pledges detail — every real (non-standalone) pledge matching the filters.
               Shows the bigger picture beyond just paid payments: which commitments exist,
-              how much has been collected, and what's still outstanding per donor. */}
+              how much has been collected, and what's still outstanding per donor.
+              Has its own filter (by status) + show-all toggle + CSV export. */}
           {data.pledges_detail && data.pledges_detail.length > 0 && (
             <div style={{ marginTop: 14 }}>
-              <Panel title={`Pledges (${data.pledges_detail.length})`}>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ background: "#fbf7ec", textAlign: "left" }}>
-                        <Th>Date</Th>
-                        <Th>Donor</Th>
-                        <Th>Project</Th>
-                        <Th align="right">Pledged</Th>
-                        <Th align="right">Paid</Th>
-                        <Th align="right">Remaining</Th>
-                        <Th>Status</Th>
-                        <Th>Plan</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.pledges_detail.slice(0, 200).map((p) => (
-                        <tr key={p.id} style={{ borderTop: "1px solid rgba(10,16,25,0.05)" }}>
-                          <td style={td}>{p.pledge_date}</td>
-                          <td style={td}>
-                            <Link href={`/fundraising/donors/${p.donor_id}`} style={{ color: "var(--cast-iron)", textDecoration: "none" }}>
-                              {p.donor_name}
-                            </Link>
-                            {p.hebrew_name && (
-                              <div style={{ fontSize: 11, opacity: 0.6, fontFamily: "'Frank Ruhl Libre', serif", direction: "rtl" }}>
-                                {p.hebrew_name}
-                              </div>
-                            )}
-                          </td>
-                          <td style={td}>{p.project_name || "— General —"}</td>
-                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
-                            {fmtMoney(p.amount)}
-                          </td>
-                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--shed-green)" }}>
-                            {fmtMoney(p.paid_amount)}
-                          </td>
-                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: p.remaining > 0 ? "var(--cone-orange)" : "var(--shed-green)" }}>
-                            {fmtMoney(p.remaining)}
-                          </td>
-                          <td style={td}>{p.status}</td>
-                          <td style={{ ...td, fontSize: 11, opacity: 0.7 }}>
-                            {p.installments_total > 1
-                              ? `${p.installments_total} × ${p.payment_plan} · ${p.collection_mode}`
-                              : "Lump sum"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {data.pledges_detail.length > 200 && (
-                    <div style={{ padding: 8, fontSize: 11, opacity: 0.55, textAlign: "center" }}>
-                      Showing 200 of {data.pledges_detail.length}. Export CSV for the full list.
-                    </div>
-                  )}
-                </div>
-              </Panel>
+              <PledgesPanel pledges={data.pledges_detail} />
             </div>
           )}
 
@@ -592,3 +538,330 @@ const presetBtn: React.CSSProperties = {
   fontWeight: 600,
 };
 const td: React.CSSProperties = { padding: "8px 10px" };
+
+// ===========================================================================
+// PledgesPanel — drill-down list of every pledge with paid/remaining breakdown.
+//
+// Shipped as its own component because the audit asked for richer filtering than the
+// surrounding KPI panels. Each pledge row links to the donor profile and to the
+// payments page filtered to just that pledge's installments — so the user can dive
+// from "what's owed" to "which payments are scheduled" in one click.
+// ===========================================================================
+
+type PledgeRow = ReportData["pledges_detail"][number];
+
+const PLEDGE_STATUS_FILTERS: { value: string; label: string }[] = [
+  { value: "all", label: "הכל" },
+  { value: "open", label: "פתוח" },
+  { value: "fulfilled", label: "הושלם" },
+  { value: "cancelled", label: "בוטל" },
+];
+
+function PledgesPanel({ pledges }: { pledges: PledgeRow[] }) {
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showAll, setShowAll] = useState(false);
+  const [search, setSearch] = useState("");
+
+  // Filter pipeline: status chip, then free-text search across donor name + project name.
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return pledges.filter((p) => {
+      if (statusFilter !== "all" && p.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        p.donor_name.toLowerCase().includes(q) ||
+        (p.hebrew_name || "").toLowerCase().includes(q) ||
+        (p.project_name || "").toLowerCase().includes(q)
+      );
+    });
+  }, [pledges, statusFilter, search]);
+
+  // Cap at 200 by default for render perf; the toggle removes the cap.
+  const visible = showAll ? filtered : filtered.slice(0, 200);
+
+  // Totals row — pledged / paid / remaining across the CURRENT filter set, not the
+  // whole list. Keeps the user's mental model honest: filters change the totals too.
+  const totals = useMemo(() => {
+    return filtered.reduce(
+      (acc, p) => ({
+        pledged: acc.pledged + p.amount,
+        paid: acc.paid + p.paid_amount,
+        remaining: acc.remaining + p.remaining,
+      }),
+      { pledged: 0, paid: 0, remaining: 0 },
+    );
+  }, [filtered]);
+
+  // CSV export — same RFC-4180 escaping pattern as elsewhere, UTF-8 BOM so Excel
+  // opens Hebrew correctly. Exports the FILTERED set (not the full list).
+  function exportCsv() {
+    const headers = [
+      "Pledge Date", "Donor", "Hebrew Name", "Project", "Amount",
+      "Paid", "Remaining", "Status", "Installments", "Plan",
+    ];
+    const escape = (v: string | number | null): string => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const lines = filtered.map((p) => [
+      escape(p.pledge_date),
+      escape(p.donor_name),
+      escape(p.hebrew_name),
+      escape(p.project_name || "General"),
+      escape(p.amount.toFixed(2)),
+      escape(p.paid_amount.toFixed(2)),
+      escape(p.remaining.toFixed(2)),
+      escape(p.status),
+      escape(p.installments_total),
+      escape(p.payment_plan),
+    ].join(","));
+    const csv = [headers.map(escape).join(","), ...lines].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.download = `pledges-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Panel title={`Pledges — ${filtered.length} of ${pledges.length}`}>
+      {/* Toolbar: status chips, search, export */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+        {PLEDGE_STATUS_FILTERS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setStatusFilter(opt.value)}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 999,
+              border: statusFilter === opt.value ? "1px solid var(--cast-iron)" : "1px solid rgba(10,16,25,0.12)",
+              background: statusFilter === opt.value ? "var(--cast-iron)" : "#fff",
+              color: statusFilter === opt.value ? "#fff" : "var(--cast-iron)",
+              fontWeight: 600,
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+        <input
+          placeholder="חיפוש לפי שם תורם או קמפיין…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            flex: 1,
+            minWidth: 200,
+            padding: "6px 10px",
+            border: "1px solid rgba(10,16,25,0.12)",
+            borderRadius: 6,
+            fontSize: 12,
+            outline: "none",
+            background: "#fff",
+          }}
+        />
+        <button
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          style={{
+            padding: "6px 12px",
+            background: "transparent",
+            border: "1px solid rgba(10,16,25,0.14)",
+            borderRadius: 6,
+            cursor: filtered.length === 0 ? "not-allowed" : "pointer",
+            fontSize: 11,
+            fontWeight: 600,
+            opacity: filtered.length === 0 ? 0.5 : 1,
+          }}
+          title="Download the current filtered pledges as CSV"
+        >
+          ⬇ Export CSV
+        </button>
+      </div>
+
+      {/* Totals strip — pledged / paid / remaining for the filtered set */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 8,
+          marginBottom: 12,
+          padding: 10,
+          background: "rgba(10,16,25,0.03)",
+          borderRadius: 8,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.55 }}>Pledged</div>
+          <div style={{ fontSize: 18, fontWeight: 800, fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-bricolage), sans-serif" }}>
+            {fmtMoney(totals.pledged)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.55 }}>Paid</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--shed-green)", fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-bricolage), sans-serif" }}>
+            {fmtMoney(totals.paid)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.55 }}>Remaining</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: totals.remaining > 0 ? "var(--cone-orange)" : "var(--shed-green)", fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-bricolage), sans-serif" }}>
+            {fmtMoney(totals.remaining)}
+          </div>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <Empty>אין פלאגים שמתאימים לסינון.</Empty>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "#fbf7ec", textAlign: "left" }}>
+                <Th>Date</Th>
+                <Th>Donor</Th>
+                <Th>Project</Th>
+                <Th align="right">Pledged</Th>
+                <Th align="right">Paid</Th>
+                <Th align="right">Remaining</Th>
+                <Th align="right">Progress</Th>
+                <Th>Status</Th>
+                <Th>Plan</Th>
+                <Th> </Th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((p) => {
+                const pct = p.amount > 0 ? Math.min(100, (p.paid_amount / p.amount) * 100) : 0;
+                return (
+                  <tr key={p.id} style={{ borderTop: "1px solid rgba(10,16,25,0.05)" }}>
+                    <td style={td}>{p.pledge_date}</td>
+                    <td style={td}>
+                      <Link href={`/fundraising/donors/${p.donor_id}`} style={{ color: "var(--cast-iron)", textDecoration: "none", fontWeight: 600 }}>
+                        {p.donor_name}
+                      </Link>
+                      {p.hebrew_name && (
+                        <div style={{ fontSize: 11, opacity: 0.6, fontFamily: "'Frank Ruhl Libre', serif", direction: "rtl" }}>
+                          {p.hebrew_name}
+                        </div>
+                      )}
+                    </td>
+                    <td style={td}>{p.project_name || "— General —"}</td>
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
+                      {fmtMoney(p.amount)}
+                    </td>
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--shed-green)" }}>
+                      {fmtMoney(p.paid_amount)}
+                    </td>
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: p.remaining > 0 ? "var(--cone-orange)" : "var(--shed-green)" }}>
+                      {fmtMoney(p.remaining)}
+                    </td>
+                    <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                      {/* Mini progress bar: green up to 100, gold at exact 100, gray for cancelled. */}
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ width: 60, height: 6, background: "rgba(10,16,25,0.08)", borderRadius: 3, overflow: "hidden" }}>
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: "100%",
+                              background: p.status === "cancelled"
+                                ? "rgba(10,16,25,0.3)"
+                                : pct >= 100 ? "linear-gradient(90deg,#f0a830,#d4881a)" : "var(--shed-green)",
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 10, fontVariantNumeric: "tabular-nums", opacity: 0.65, minWidth: 26, textAlign: "right" }}>
+                          {pct.toFixed(0)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td style={td}>
+                      <StatusBadge status={p.status} />
+                    </td>
+                    <td style={{ ...td, fontSize: 11, opacity: 0.7 }}>
+                      {p.installments_total > 1
+                        ? `${p.installments_total} × ${p.payment_plan}`
+                        : "Lump sum"}
+                    </td>
+                    <td style={{ ...td, textAlign: "right" }}>
+                      {/* Drill-into: open the Payments page filtered to this pledge */}
+                      <Link
+                        href={`/fundraising/payments?pledge_id=${p.id}`}
+                        style={{
+                          fontSize: 11,
+                          color: "var(--blueprint)",
+                          textDecoration: "none",
+                          fontWeight: 700,
+                          padding: "3px 8px",
+                          border: "1px solid rgba(28,93,142,0.3)",
+                          borderRadius: 4,
+                        }}
+                        title="View this pledge's payments"
+                      >
+                        Payments →
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filtered.length > visible.length && (
+            <div style={{ padding: 10, textAlign: "center", fontSize: 12, borderTop: "1px solid rgba(10,16,25,0.06)" }}>
+              <button
+                onClick={() => setShowAll(true)}
+                style={{
+                  padding: "6px 14px",
+                  background: "transparent",
+                  border: "1px solid rgba(10,16,25,0.14)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Show all {filtered.length} pledges
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// Small status badge — color-coded so the table is scannable. Cancelled is muted,
+// open is blue, fulfilled is green.
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string; label: string }> = {
+    open: { bg: "rgba(28,93,142,0.10)", color: "var(--blueprint)", label: "Open" },
+    fulfilled: { bg: "rgba(45,122,61,0.12)", color: "var(--shed-green)", label: "Fulfilled" },
+    cancelled: { bg: "rgba(10,16,25,0.05)", color: "rgba(10,16,25,0.4)", label: "Cancelled" },
+  };
+  const cfg = map[status] || { bg: "rgba(10,16,25,0.05)", color: "rgba(10,16,25,0.5)", label: status };
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        padding: "2px 7px",
+        borderRadius: 99,
+        background: cfg.bg,
+        color: cfg.color,
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}

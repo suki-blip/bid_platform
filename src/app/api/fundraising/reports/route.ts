@@ -213,19 +213,26 @@ export async function GET(request: NextRequest) {
   // ===== Pledge detail list — every real pledge matching the filters =====
   // Surfaces the actual commitments behind the "outstanding" KPI so users can see
   // which donor owes what and how far through each pledge they are.
+  //
+  // We include ALL statuses (open / fulfilled / cancelled / partial) so the UI can
+  // offer status-level filtering on the client. Cap raised to 2000 — typical orgs
+  // have under 1000 active pledges; this gives headroom and still bounds DB time.
   const pledgesDetail = await db().execute({
     sql: `SELECT p.id, p.amount, p.status, p.pledge_date, p.due_date, p.installments_total, p.payment_plan,
                  p.collection_mode,
+                 COALESCE(p.is_standalone, 0) AS is_standalone,
                  d.id AS donor_id,
                  d.first_name, d.last_name, d.hebrew_name,
-                 prj.name AS project_name,
+                 prj.name AS project_name, prj.id AS project_id,
                  COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = p.id AND status = 'paid'), 0) AS paid_amount
           FROM fr_pledges p
           JOIN fr_donors d ON d.id = p.donor_id
           LEFT JOIN fr_projects prj ON prj.id = p.project_id
-          WHERE ${openWhere.replace("p.status = 'open'", "p.status IN ('open','fulfilled')")}
-          ORDER BY (p.amount - COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = p.id AND status = 'paid'), 0)) DESC
-          LIMIT 500`,
+          WHERE ${openWhere.replace("p.status = 'open'", "1=1")}
+            AND COALESCE(p.is_standalone, 0) = 0
+          ORDER BY (p.amount - COALESCE((SELECT SUM(amount) FROM fr_pledge_payments WHERE pledge_id = p.id AND status = 'paid'), 0)) DESC,
+                   p.pledge_date DESC
+          LIMIT 2000`,
     args: openArgs,
   });
   const outRow = outstanding.rows[0];
@@ -300,6 +307,7 @@ export async function GET(request: NextRequest) {
         donor_name: `${r.first_name}${r.last_name ? ' ' + r.last_name : ''}`,
         hebrew_name: r.hebrew_name ? String(r.hebrew_name) : null,
         project_name: r.project_name ? String(r.project_name) : null,
+        project_id: r.project_id ? String(r.project_id) : null,
         amount,
         paid_amount: paid,
         remaining: Math.max(0, amount - paid),

@@ -136,14 +136,95 @@ export default function CollectionsPage() {
     setReloadKey((k) => k + 1);
   }
 
+  // Build a CSV string from the currently visible rows. Reused by both the CSV-download
+  // and the Print button (print also includes the same data, just formatted as a table).
+  function exportCsv() {
+    const headers = ["Due Date", "Donor", "Hebrew Name", "Phone", "Project", "Amount", "Method", "Status", "Days Overdue"];
+    const escape = (v: string | number | null | undefined): string => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const lines = filtered.map((it) => [
+      escape(it.due_date),
+      escape(it.donor_name),
+      escape(it.hebrew_name),
+      escape(it.primary_phone),
+      escape(it.project_name || "General"),
+      escape(it.amount.toFixed(2)),
+      escape(fmtMethod(it.method)),
+      escape(it.status),
+      escape(it.due_date ? String(daysOverdue(it.due_date) ?? "") : ""),
+    ].join(","));
+    const csv = [headers.map(escape).join(","), ...lines].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.download = `collections-${view}-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Browser-native print. The page already has @media print CSS injected at the bottom of
+  // this component that hides nav/filters/buttons and adjusts the table for paper.
+  function printPage() {
+    window.print();
+  }
+
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-      <div style={{ marginBottom: 18 }}>
-        <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
-          Collections
-        </h1>
-        <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
-          Pledges that need follow-up — overdue payments, bounced checks, failed credit cards.
+      <div style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontFamily: "var(--font-bricolage), sans-serif", fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+            Collections
+          </h1>
+          <div style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>
+            Pledges that need follow-up — overdue payments, bounced checks, failed credit cards.
+          </div>
+        </div>
+        {/* Page-level toolbar — Export + Print. Both work over the currently-filtered set. */}
+        <div className="no-print" style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={exportCsv}
+            disabled={filtered.length === 0}
+            style={{
+              padding: "9px 14px",
+              background: "transparent",
+              color: "var(--cast-iron)",
+              border: "1px solid rgba(10,16,25,0.14)",
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: filtered.length === 0 ? "not-allowed" : "pointer",
+              opacity: filtered.length === 0 ? 0.5 : 1,
+            }}
+            title="Download the current filtered list as CSV"
+          >
+            ⬇ Export CSV
+          </button>
+          <button
+            onClick={printPage}
+            disabled={filtered.length === 0}
+            style={{
+              padding: "9px 14px",
+              background: "var(--cast-iron)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: filtered.length === 0 ? "not-allowed" : "pointer",
+              opacity: filtered.length === 0 ? 0.5 : 1,
+            }}
+            title="Print this page (or save as PDF)"
+          >
+            🖨 Print / PDF
+          </button>
         </div>
       </div>
 
@@ -156,8 +237,29 @@ export default function CollectionsPage() {
         </div>
       )}
 
+      {/* Print-only header — date + filter context so the printed page makes sense
+          stand-alone. Hidden on screen, only appears on paper. */}
+      <div className="print-only" style={{ display: "none", marginBottom: 14 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+          Collections — {view === "overdue" ? "Overdue" : view === "bounced" ? "Bounced / failed" : view === "upcoming" ? "Upcoming" : "All open"}
+        </div>
+        <div style={{ fontSize: 12 }}>
+          Generated {new Date().toLocaleString()} · {filtered.length} item{filtered.length === 1 ? "" : "s"}
+          {anyFilter && (
+            <>
+              {" · Filters: "}
+              {filterDonor && `donor "${filterDonor}" `}
+              {filterProject && `project "${filterProject}" `}
+              {filterMethod && `method "${fmtMethod(filterMethod)}" `}
+              {filterMin && `min $${filterMin} `}
+              {filterMax && `max $${filterMax}`}
+            </>
+          )}
+        </div>
+      </div>
+
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 14, borderBottom: "1px solid rgba(10,16,25,0.08)" }}>
+      <div className="no-print" style={{ display: "flex", gap: 4, marginBottom: 14, borderBottom: "1px solid rgba(10,16,25,0.08)" }}>
         {(
           [
             { k: "overdue", label: "Overdue" },
@@ -188,6 +290,7 @@ export default function CollectionsPage() {
 
       {/* Filters — donor name/phone, project, method, amount range */}
       <div
+        className="no-print"
         style={{
           background: "#fff",
           border: "1px solid rgba(10,16,25,0.08)",
@@ -404,7 +507,7 @@ export default function CollectionsPage() {
               filterable: false,
               align: "right",
               render: (item) => (
-                <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", whiteSpace: "nowrap" }}>
+                <div className="no-print" style={{ display: "flex", gap: 4, justifyContent: "flex-end", whiteSpace: "nowrap" }}>
                   <button
                     onClick={(e) => { e.stopPropagation(); setChargingItem(item); }}
                     style={{
@@ -445,6 +548,24 @@ export default function CollectionsPage() {
           ] as DataTableColumn<CollectionItem>[]}
         />
       )}
+
+      {/* Print stylesheet — hides UI chrome (nav, tabs, filters, buttons) and tightens the
+          table for paper. The print-only header above takes over. Applies only at print
+          time (@media print) so screen layout is untouched. */}
+      <style jsx global>{`
+        @media print {
+          .so-shed-ribbon, header { display: none !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+          main { padding: 0 !important; }
+          body { background: #fff !important; color: #000 !important; }
+          /* Make tables fit better on paper */
+          table { font-size: 11px !important; }
+          a { color: #000 !important; text-decoration: none !important; }
+          /* Force page break before each tab section for multi-page prints */
+          .print-page-break { page-break-before: always; }
+        }
+      `}</style>
 
       <DonorSidePanel donorId={previewDonorId} onClose={() => setPreviewDonorId(null)} />
 
