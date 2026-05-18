@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>easyfundraisings — מדריך משתמש</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;800&display=swap');
+  body {
+    font-family: 'Frank Ruhl Libre', 'David', serif;
+    max-width: 820px;
+    margin: 32px auto;
+    padding: 0 24px;
+    line-height: 1.75;
+    color: #0a1019;
+    direction: rtl;
+    background: #fff;
+  }
+  .toolbar {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    border-bottom: 1px solid rgba(10,16,25,0.1);
+    padding: 12px 0;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+  button, a.btn {
+    padding: 8px 16px;
+    background: #0a1019;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: system-ui, sans-serif;
+    display: inline-block;
+  }
+  a.btn.secondary {
+    background: #fff;
+    color: #0a1019;
+    border: 1px solid rgba(10,16,25,0.14);
+  }
+  h1 {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
+    border-bottom: 3px solid #0a1019;
+    padding-bottom: 10px;
+  }
+  h2 {
+    font-size: 26px;
+    font-weight: 800;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    color: #0a1019;
+    border-bottom: 1px solid rgba(10,16,25,0.1);
+    padding-bottom: 6px;
+  }
+  h3 {
+    font-size: 19px;
+    font-weight: 700;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    color: #1c5d8e;
+  }
+  h4 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 16px;
+    margin-bottom: 4px;
+    color: #0a1019;
+  }
+  p, li {
+    font-size: 15px;
+  }
+  ul, ol {
+    padding-right: 28px;
+    margin: 8px 0;
+  }
+  li {
+    margin-bottom: 3px;
+  }
+  code {
+    background: rgba(10,16,25,0.06);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    direction: ltr;
+    display: inline-block;
+  }
+  .tip {
+    background: rgba(240,168,48,0.10);
+    border-right: 4px solid #f0a830;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .toc {
+    background: rgba(10,16,25,0.03);
+    border-radius: 8px;
+    padding: 14px 22px;
+    margin: 16px 0 32px;
+  }
+  .toc ol {
+    padding-right: 22px;
+    margin: 0;
+  }
+  .toc a {
+    color: #1c5d8e;
+    text-decoration: none;
+  }
+  .toc a:hover {
+    text-decoration: underline;
+  }
+  .lead {
+    font-size: 17px;
+    opacity: 0.75;
+    margin-bottom: 16px;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid rgba(10,16,25,0.1);
+    margin: 32px 0;
+  }
+  @media print {
+    body { margin: 0; padding: 12px; max-width: none; }
+    .toolbar { display: none; }
+    h2 { page-break-before: always; }
+    h2:first-of-type { page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button onclick="window.print()">🖨 Print / Save as PDF</button>
+  <a class="btn secondary" href="/docs/manual.md" download="easyfundraisings-manual.md">⬇ Download Markdown</a>
+  <a class="btn secondary" href="/fundraising/settings">↩ חזרה להגדרות</a>
+</div>
+
+<h1>📖 easyfundraisings — מדריך משתמש מלא</h1>
+<p class="lead">מערכת ניהול גיוס תרומות (CRM) לעמותות. מדריך זה מסביר כל פעולה במערכת בצעדים מפורטים.</p>
+<p><strong>גרסה:</strong> 2026-05</p>
+
+<div class="toc">
+  <strong>תוכן עניינים</strong>
+  <ol>
+    <li><a href="#s1">מבוא והתחלת עבודה</a></li>
+    <li><a href="#s2">מבנה הממשק</a></li>
+    <li><a href="#s3">תורמים ולידים</a></li>
+    <li><a href="#s4">שיחות, הערות, ומעקבים</a></li>
+    <li><a href="#s5">פלאגים (הבטחות תרומה)</a></li>
+    <li><a href="#s6">תשלומים וחיובים</a></li>
+    <li><a href="#s7">כרטיסי אשראי שמורים</a></li>
+    <li><a href="#s8">קמפיינים (פרויקטים)</a></li>
+    <li><a href="#s9">אימייל ותבניות</a></li>
+    <li><a href="#s10">גבייה (Collections)</a></li>
+    <li><a href="#s11">דוחות</a></li>
+    <li><a href="#s12">סל מחזור</a></li>
+    <li><a href="#s13">יומן ביקורת (Audit Log)</a></li>
+    <li><a href="#s14">ניהול צוות</a></li>
+    <li><a href="#s15">הגדרות מערכת</a></li>
+    <li><a href="#s16">קיצורי מקלדת וטיפים מתקדמים</a></li>
+    <li><a href="#s17">שאלות נפוצות (FAQ)</a></li>
+  </ol>
+</div>
+
+<h2 id="s1">1. מבוא והתחלת עבודה</h2>
+<h3>מה המערכת עושה</h3>
+<p>המערכת היא CRM לעמותות גיוס. היא מאפשרת:</p>
+<ul>
+  <li>ניהול בסיס נתונים של תורמים ולידים</li>
+  <li>רישום הבטחות תרומה (פלאגים) וחיובים</li>
+  <li>חיוב אוטומטי בכרטיס אשראי דרך Sola/Cardknox</li>
+  <li>שליחת קבלות אוטומטיות ודיוורים</li>
+  <li>מעקב אחר גבייה (חיובים שעברו תאריך)</li>
+  <li>דוחות ותקציבים</li>
+  <li>שיתוף פעולה צוותי (מנהל + fundraisers)</li>
+</ul>
+
+<h3>תהליך התחלת עבודה (Setup ראשוני)</h3>
+<p><strong>למנהל בלבד</strong>, פעם אחת:</p>
+<ol>
+  <li><strong>חיבור שער התשלומים</strong> — <code>תפריט משתמש → Settings → Sola/Cardknox</code> — הזן PaymentSITE URL, xKey, ifields key</li>
+  <li><strong>חיבור שליחת אימיילים</strong> — <code>Settings → Email</code> — From address, Resend API key, signature, ושלח test email</li>
+  <li><strong>אימות דומיין ב-Resend</strong> — הוסף 3 רשומות DNS (SPF, DKIM, MX)</li>
+  <li><strong>הוספת תורם ראשון</strong> — <code>Donors → New donor</code></li>
+  <li><strong>יצירת קמפיין ראשון</strong> — <code>Campaigns → + New campaign</code></li>
+</ol>
+
+<h2 id="s2">2. מבנה הממשק</h2>
+<h3>הסרגל העליון (Navigation)</h3>
+<ul>
+  <li><strong>Dashboard</strong> — דף ראשי עם סיכומים</li>
+  <li><strong>Today</strong> — מבט יומי</li>
+  <li><strong>Leads</strong> — אנשים שעדיין לא תרמו</li>
+  <li><strong>Donors</strong> — תורמים פעילים</li>
+  <li><strong>Campaigns</strong> — מיזמי גיוס</li>
+  <li><strong>New payment</strong> — ביצוע תשלום</li>
+  <li><strong>Payments</strong> — היסטוריית תשלומים</li>
+  <li><strong>Collections</strong> — חיובים שצריך לטפל</li>
+  <li><strong>Calendar</strong> — לוח שנה</li>
+  <li><strong>Reports</strong> — דוחות</li>
+  <li><strong>Team</strong> / <strong>Import</strong> — מנהל בלבד</li>
+</ul>
+<h3>תפריט שם המשתמש</h3>
+<p>לחיצה על שמך בפינה הימנית-עליונה → Emails, Audit Log, Recycle Bin, Settings, Sign out (כולם מנהל בלבד למעט Sign out).</p>
+<h3>חיפוש מהיר</h3>
+<p><strong>⌘K (Mac)</strong> או <strong>Ctrl+K (Windows)</strong> — חיפוש מכל מקום במערכת.</p>
+
+<h2 id="s3">3. תורמים ולידים</h2>
+<h3>ההבדל</h3>
+<ul>
+  <li><strong>Lead</strong> — עדיין לא תרם</li>
+  <li><strong>Donor</strong> — תרם לפחות פעם אחת (אוטומטית עובר מ-Lead ל-Donor אחרי התרומה הראשונה)</li>
+</ul>
+<h3>הוספת תורם</h3>
+<ol>
+  <li>Donors / Leads → <strong>+ New donor</strong> / <strong>+ New lead</strong></li>
+  <li>מלא: First name (חובה), Last name, Hebrew name, אימייל, טלפון, ארגון, מקור, תאריכים</li>
+  <li>סמן <strong>Do not contact</strong> אם רלוונטי</li>
+  <li>שמור</li>
+</ol>
+<h3>חיפוש וסינון</h3>
+<p>תיבת חיפוש (שם/אימייל/ארגון), סינון לפי Source, chips <strong>"Lapsed (12m+)"</strong> ו-<strong>"Has open pledges"</strong>, מיון לכל עמודה בלחיצה (3 מצבי גלגול: none → desc → asc).</p>
+<h3>פעולות גורפות</h3>
+<ol>
+  <li>סמן 2+ תורמים</li>
+  <li>סרגל כחול נפתח</li>
+  <li>בחר: <strong>🏷 Tag</strong> / <strong>👤 Assign</strong> / <strong>Delete</strong></li>
+</ol>
+<h3>ייצוא ל-CSV</h3>
+<p>סנן ומיין → <strong>⬇ Export CSV</strong> → קובץ עם UTF-8 BOM (אקסל יציג עברית תקין).</p>
+
+<h2 id="s4">4. שיחות, הערות, ומעקבים</h2>
+<h3>תיעוד שיחה</h3>
+<p>פרופיל תורם → Calls → + Log call → תאריך, כיוון (in/out), ערוץ, outcome, summary, transcript אופציונלי.</p>
+<h3>הוספת הערה</h3>
+<p>פרופיל תורם → Notes → כתוב + Save. הערות חשובות → Pin.</p>
+<h3>תזמון Follow-up</h3>
+<p>פרופיל תורם → Schedule → + Schedule follow-up → title, תאריך/שעה, kind, priority, תזכורת. יופיע בלוח השנה ובדף Today.</p>
+
+<h2 id="s5">5. פלאגים (הבטחות תרומה)</h2>
+<h3>מה זה פלאג?</h3>
+<p><strong>הבטחה</strong> של תורם לתרום. שונה מתשלום (שזה הכסף שכבר נכנס).</p>
+<ul>
+  <li>חד-פעמי (Lump sum)</li>
+  <li>תשלומים (Installments: weekly / monthly / quarterly / annual)</li>
+  <li>Standalone — תורם תרם בלי פלאג מקדים; המערכת יוצרת פלאג סינתטי</li>
+</ul>
+<h3>הוספת פלאג</h3>
+<ol>
+  <li>פרופיל תורם → + Add pledge</li>
+  <li>Amount, Pledge date, Project, Installments total, Payment plan, Payment day, Collection mode, הערות</li>
+  <li>Save — המערכת יוצרת installment row לכל מועד</li>
+</ol>
+<h3>עריכת/מחיקת פלאג</h3>
+<p>פרופיל תורם → Giving → לחץ על שורת פלאג. במודאל: <strong>View payments</strong> פותח דף תשלומים עם סינון לפלאג.</p>
+<p>למחיקה: Delete pledge → אם יש תשלומים בחר: Delete all / Move to another pledge / Convert to standalone donations.</p>
+<h3>ביקורת פלאגים (audit)</h3>
+<p>דף ראשי → קישור <strong>"Does the Open Pledges total look wrong?"</strong> → מודאל 20 הפלאגים הגדולים, עם זיהוי יתומים (orphans).</p>
+
+<h2 id="s6">6. תשלומים וחיובים</h2>
+<h3>ביצוע תשלום</h3>
+<ol>
+  <li>New payment → בחר תורם → בחר mode (existing pledge / new donation / split)</li>
+  <li>סכום, method, project</li>
+  <li>Charge mode: Charge now / Schedule for date / Recurring monthly</li>
+  <li>אם credit card: iframes של Sola, אופציה Save card, אופציה Skip receipt</li>
+  <li>Charge</li>
+</ol>
+<h3>תשלום מתוזמן</h3>
+<p>Charge mode = Schedule for date → תאריך → Save card (חובה) → Submit. ב-09:00 UTC ביום הרצוי הקרון מחייב.</p>
+<h3>תשלום חודשי אוטומטי</h3>
+<p>Charge mode = Recurring monthly → מספר חיובים + יום בחודש + אופציה לחיוב מיידי + Save card. הקרון יחייב כל חודש.</p>
+<h3>ניסיון חיוב מחדש</h3>
+<p>Collections → Bounced / Failed → <strong>↻ Retry</strong> → מודאל עם בחירת כרטיס שמור או טופס חדש.</p>
+<h3>שליחת קבלה ידנית</h3>
+<p>Payments → <strong>📧 Receipt</strong> בעמודת הפעולות (רק לתשלומים paid).</p>
+<h3>סינון תשלומים</h3>
+<p>Status chips + Method chips (multi) + Type filter + <code>?pledge_id=X</code> URL param.</p>
+<h3>ביקורת תשלומים</h3>
+<p>Payments → קישור <strong>"See the 20 largest paid payments"</strong> → רשימה למחיקה / תיקון של חריגים.</p>
+
+<h2 id="s7">7. כרטיסי אשראי שמורים</h2>
+<p>שמירה אוטומטית כשמסמנים <strong>💾 Save card</strong> בעת חיוב. השרת לא רואה את המספר המלא, רק 4 ספרות אחרונות + תאריך תוקף.</p>
+<p>ניהול: פרופיל תורם → פאנל Saved cards → Set as default / Remove / 💳 Charge.</p>
+
+<h2 id="s8">8. קמפיינים (פרויקטים)</h2>
+<h3>יצירה</h3>
+<p>Campaigns → + New campaign → Name (חובה), Description, Goal amount, תאריכים, Parent campaign (לתת-קמפיינים).</p>
+<h3>מעקב התקדמות</h3>
+<p>כל כרטיס מציג: Raised / Goal / Progress bar (ירוק עד 100%, <strong>זהב מעל</strong>, תווית 🎯 "Goal achieved"). מספר תורמים, סכום פלאג.</p>
+<h3>Prospects</h3>
+<p>רשימת call-list פרטית. פרופיל קמפיין → Campaign prospects → + Add prospect → תורם, estimated_amount, status. <strong>לא נספר</strong> בסכום הרשמי.</p>
+<h3>דיוור לקמפיין</h3>
+<ol>
+  <li>פרופיל קמפיין → 📧 Email campaign donors</li>
+  <li>Recipients: Campaign donors / Prospect list / Open pledgers / All donors</li>
+  <li>Start from saved template (אופציונלי)</li>
+  <li>Subject + Body (HTML + משתנים)</li>
+  <li><strong>🔍 Test send</strong> — חובה לבדוק לפני שליחה!</li>
+  <li>Send blast → 10 בשנייה, סיכום בסוף</li>
+</ol>
+<div class="tip">תורמים עם <code>do_not_contact=1</code> או <code>email_opt_in='none'</code> לא יקבלו דיוורים אוטומטית.</div>
+
+<h2 id="s9">9. אימייל ותבניות</h2>
+<h3>4 סוגי תבניות</h3>
+<ul>
+  <li><strong>Receipt</strong> — אוטומטית אחרי חיוב (default 1)</li>
+  <li><strong>Campaign blast</strong> — לדיוורים</li>
+  <li><strong>Thank you</strong> — תודות ידניות</li>
+  <li><strong>Custom</strong> — אחר</li>
+</ul>
+<h3>יצירה</h3>
+<p>תפריט משתמש → Emails → + ליד קטגוריה → Name, Subject, Body. כפתורי משתנים: <code>{{first_name}}</code>, <code>{{hebrew_name}}</code>, <code>{{amount}}</code>, <code>{{paid_date}}</code>, <code>{{project_name}}</code>, <code>{{transaction_ref}}</code>, <code>{{receipt_number}}</code>, <code>{{organization_name}}</code>.</p>
+<h3>תבנית קבלה ברירת מחדל</h3>
+<p>תבנית מסוג Receipt → סמן <strong>Set as default receipt</strong> → Save. מעכשיו כל קבלה אוטומטית משתמשת בה.</p>
+
+<h2 id="s10">10. גבייה (Collections)</h2>
+<h3>Tabs</h3>
+<p>Overdue / Bounced+failed / Upcoming (7d) / All open.</p>
+<h3>סינון</h3>
+<p>Donor name/phone, Project, Method, טווח סכום.</p>
+<h3>פעולות שורה</h3>
+<ul>
+  <li><strong>💳 Charge</strong> / <strong>↻ Retry</strong> — חיוב כעת</li>
+  <li><strong>✓ Paid</strong> — סמן כשולם</li>
+  <li><strong>Reschedule</strong> — שנה תאריך</li>
+  <li><strong>Bounce</strong> — סמן צ'ק חוזר</li>
+  <li><strong>Cancel</strong> — בטל</li>
+</ul>
+<h3>ייצוא והדפסה</h3>
+<p><strong>⬇ Export CSV</strong> + <strong>🖨 Print / PDF</strong> בראש הדף. כותרת הדפסה אוטומטית עם הקשר הסינון.</p>
+
+<h2 id="s11">11. דוחות</h2>
+<h3>KPIs</h3>
+<p>Total raised, Donors, Payments, Avg payment, Outstanding pledged, Open pledge count.</p>
+<h3>פילטרים (Excel-style)</h3>
+<p>From/To, Projects, Sources, Donors (עם חיפוש), Fundraisers (מנהל). dropdowns עם checkboxes + Select all / Clear. presets: Last 30/90/YTD/All time.</p>
+<h3>Charts</h3>
+<p>By month (bar chart), By project, By source, By method.</p>
+<h3>Top donors / Lapsed donors</h3>
+<p>12 הגדולים בתקופה / 25 שלא תרמו 12 חודש (ממוין lifetime value).</p>
+<h3>פאנל הפלאגים (Pledges)</h3>
+<p>הכי שימושי: כל פלאג עם Pledged / Paid / Remaining + Progress bar + Status badge + Payments link. Status chips (בעברית), חיפוש, Totals מתעדכן, Export CSV, <strong>🖨 Print / PDF משלו</strong> (מדפיס רק את הפאנל הזה).</p>
+<h3>ייצוא דוח כולל</h3>
+<p>⬇ Export CSV (ירוק) + 🖨 Print / PDF (שחור) בראש הדף.</p>
+
+<h2 id="s12">12. סל מחזור</h2>
+<p>תפריט משתמש → Recycle Bin. שחזור עד 30 יום של תורם / פלאג / תשלום. אחרי 30 יום — קרון יומי ב-04:00 UTC מנקה לצמיתות.</p>
+<p><strong>↺ Restore</strong> — מחזיר למצב המקורי (כולל כל הdependencies — תורם שמשוחזר מקבל בחזרה את כל הפלאגים והתשלומים).</p>
+<p><strong>Delete forever</strong> — מחיקה מיידית לצמיתות (אין שחזור).</p>
+
+<h2 id="s13">13. יומן ביקורת (Audit Log)</h2>
+<p>תפריט משתמש → Audit Log (מנהל בלבד). רישום כל שינוי: מתי, מי, מה, סיכום, סוג entity. Chips לסינון + תיבת חיפוש. כל מחיקה/עדכון של תורם/פלאג/תשלום, וכל שליחת דיוור — נרשמים.</p>
+
+<h2 id="s14">14. ניהול צוות</h2>
+<p>מנהל בלבד. Team → + New fundraiser → שם + אימייל → סיסמה זמנית נשלחת. ה-fundraiser רואה רק את התורמים המוקצים אליו. הקצאה: בודד דרך פרופיל / מאסיבי דרך Donors → 👤 Assign.</p>
+
+<h2 id="s15">15. הגדרות מערכת</h2>
+<ul>
+  <li><strong>Payment gateway</strong> — Sola/Cardknox PaymentSITE URL, xKey, ifields key</li>
+  <li><strong>Email</strong> — From, Signature, Resend key, Send test</li>
+  <li><strong>Sola Sync</strong> — סנכרון חיובים שבוצעו ישירות ב-Cardknox</li>
+  <li><strong>Auto-reminder cron</strong> — endpoint לקרון תזכורות</li>
+  <li><strong>📖 מדריך שימוש</strong> — האינדקס הזה</li>
+</ul>
+
+<h2 id="s16">16. קיצורי מקלדת וטיפים</h2>
+<ul>
+  <li><strong>⌘K / Ctrl+K</strong> — Command Palette</li>
+  <li><strong>Esc</strong> — סוגר כל מודאל</li>
+  <li><code>/fundraising/payment?donor=ID</code> — תשלום ישיר לתורם</li>
+  <li><code>/fundraising/payments?pledge_id=ID</code> — תשלומים של פלאג ספציפי</li>
+  <li>סינון Excel-style בכל DataTable — funnel icon בכותרת עמודה</li>
+  <li>מיון: לחיצה על כותרת (cycling: none → desc → asc → none)</li>
+</ul>
+
+<h2 id="s17">17. שאלות נפוצות (FAQ)</h2>
+<h3>למה תורם לא מקבל קבלה?</h3>
+<ol>
+  <li>בדוק שיש לתורם <strong>אימייל</strong> בפרופיל</li>
+  <li>בדוק שלא סומן <strong>Don't send receipt email</strong></li>
+  <li>בדוק ש-Resend מחובר (Settings → Email)</li>
+  <li>בדוק Audit Log</li>
+  <li>בדוק spam folder</li>
+  <li>שלוח ידנית: Payments → 📧 Receipt</li>
+</ol>
+<h3>למה ה-Open pledges מוגזם?</h3>
+<p>דף ראשי → <strong>"See the 20 largest open pledges"</strong> → מצא ומחק חריג.</p>
+<h3>למה תורם לא מופיע?</h3>
+<p>בדוק status (Lead/Donor), הקצאה אם אתה fundraiser, סינונים פעילים, סל המחזור.</p>
+<h3>איך לבטל חיוב שכבר התבצע?</h3>
+<p>במערכת: סמן cancelled. בכרטיס: refund ב-Cardknox dashboard. מומלץ: ליצור תשלום שלילי כתיעוד החזר.</p>
+<h3>איך מייצאים לרואה חשבון?</h3>
+<p>Reports → Export CSV / Print PDF.</p>
+<h3>מה זה Standalone donation?</h3>
+<p>תרומה חד-פעמית ללא פלאג מקדים. המערכת יוצרת פלאג סינתטי (is_standalone=1) כדי שהתשלום ישב על משהו.</p>
+<h3>איך לסגור קמפיין?</h3>
+<p>Campaigns → לחץ על קמפיין → Archive. ההיסטוריה נשמרת.</p>
+<h3>האם המידע מאובטח?</h3>
+<p>כרטיסי אשראי: רק טוקנים, השרת לא רואה מספרים מלאים. סיסמאות: bcrypt. API keys: מוצפנים. HTTPS תמיד. גיבויים יומיומיים של Turso.</p>
+
+<hr>
+
+<p style="text-align: center; opacity: 0.55; font-size: 12px; margin-top: 40px;">
+  גרסת המדריך: 2026-05 · Next.js 16 · Turso (libsql) · Sola Payments · Resend
+</p>
+
+</body>
+</html>

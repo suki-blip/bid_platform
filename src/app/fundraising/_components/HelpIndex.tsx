@@ -766,6 +766,65 @@ export default function HelpIndex() {
         <p style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 12px", color: "rgba(10,16,25,0.75)" }}>
           מדריך שימוש מלא בכל פעולות המערכת. לחץ על קטגוריה כדי לפתוח, או חפש פעולה ספציפית בתיבת החיפוש.
         </p>
+
+        {/* קישורי הורדה — קובץ Markdown מלא יותר עם פרוזה מורחבת לעומק. שמור בתיקיית
+            public/docs כדי שיוגש כתוכן סטטי על-ידי Next.js. */}
+        <div
+          style={{
+            background: "rgba(28,93,142,0.06)",
+            border: "1px solid rgba(28,93,142,0.2)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            marginBottom: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blueprint)" }}>
+              📄 מדריך משתמש מלא (קובץ להורדה)
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>
+              מדריך מורחב, מודפס, כולל FAQ והוראות setup ראשוני.
+            </div>
+          </div>
+          <a
+            href="/docs/manual.html"
+            target="_blank"
+            rel="noopener"
+            style={{
+              padding: "8px 14px",
+              background: "var(--blueprint)",
+              color: "#fff",
+              textDecoration: "none",
+              borderRadius: 6,
+              fontWeight: 700,
+              fontSize: 12,
+              fontFamily: "system-ui, sans-serif",
+            }}
+          >
+            👁 פתח מדריך מעוצב (HTML)
+          </a>
+          <a
+            href="/docs/manual.md"
+            download="easyfundraisings-manual.md"
+            style={{
+              padding: "8px 14px",
+              background: "#fff",
+              color: "var(--blueprint)",
+              textDecoration: "none",
+              borderRadius: 6,
+              fontWeight: 700,
+              fontSize: 12,
+              border: "1px solid rgba(28,93,142,0.3)",
+              fontFamily: "system-ui, sans-serif",
+            }}
+          >
+            ⬇ הורד Markdown
+          </a>
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input
             type="search"
