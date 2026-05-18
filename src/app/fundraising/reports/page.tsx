@@ -471,8 +471,9 @@ export default function ReportsPage() {
 
       {/* Print stylesheet — hides nav/filters/buttons, tightens layout for paper.
           Same pattern as the Collections page so the user experience is consistent.
-          page-break-inside: avoid keeps each Panel together when possible; Panel rules
-          add a small break-before on the major sections so long reports paginate nicely. */}
+          The pledges-only print mode is handled imperatively in JS (printPledgesOnly())
+          which hides every sibling of the pledges section before calling window.print()
+          and restores them on afterprint. */}
       <style jsx global>{`
         @media print {
           .so-shed-ribbon, header { display: none !important; }
@@ -614,6 +615,53 @@ function PledgesPanel({ pledges }: { pledges: PledgeRow[] }) {
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState("");
 
+  // "Print only pledges" — hide every sibling of the pledges section (the page H1, filter
+  // card, KPI strip, By-month chart, by-project/source/method panels, top donors, lapsed
+  // donors, detail) at print time, then restore them afterwards. We do this imperatively
+  // (toggling inline `display`) because the report page composes many sibling divs at the
+  // same level and a pure CSS solution would require tagging each one. Reliable across
+  // browsers (Chrome/Edge/Safari/Firefox) and survives Save-as-PDF.
+  function printPledgesOnly() {
+    if (typeof window === "undefined") return;
+    const section = document.querySelector(".pledges-print-section") as HTMLElement | null;
+    if (!section) return window.print();
+
+    // Walk up from the pledges-section, hiding every SIBLING of each ancestor up to <body>.
+    // After this loop, only the chain containing our section remains visible. Hidden nodes
+    // remember their previous display in a data attribute so we can restore it afterwards.
+    const hidden: HTMLElement[] = [];
+    let cur: HTMLElement | null = section;
+    while (cur && cur.tagName !== "BODY") {
+      const parentEl: HTMLElement | null = cur.parentElement;
+      if (!parentEl) break;
+      for (const child of Array.from(parentEl.children) as HTMLElement[]) {
+        if (child === cur) continue;
+        // Don't bother hiding script/style tags or the toast container.
+        if (child.tagName === "SCRIPT" || child.tagName === "STYLE") continue;
+        child.dataset.prevDisplay = child.style.display;
+        child.style.display = "none";
+        hidden.push(child);
+      }
+      cur = parentEl;
+    }
+
+    // Force-show-all so all rows print (not just the first 200) — this state change is
+    // deferred via setTimeout below so the re-render flushes before window.print().
+    setShowAll(true);
+
+    const cleanup = () => {
+      for (const el of hidden) {
+        el.style.display = el.dataset.prevDisplay || "";
+        delete el.dataset.prevDisplay;
+      }
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+
+    // Wait one frame for the show-all + visibility flush before opening the print dialog.
+    setTimeout(() => window.print(), 60);
+  }
+
   // Filter pipeline: status chip, then free-text search across donor name + project name.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -684,8 +732,27 @@ function PledgesPanel({ pledges }: { pledges: PledgeRow[] }) {
     URL.revokeObjectURL(url);
   }
 
+  // Status label for the print-only header so the printed page is self-describing.
+  const statusLabel = PLEDGE_STATUS_FILTERS.find((f) => f.value === statusFilter)?.label || "All";
+
   return (
-    <Panel title={`Pledges — ${filtered.length} of ${pledges.length}`}>
+    <div className="pledges-print-section">
+      {/* Print-only header — only visible when actually printing. Adds context the rest
+          of the page would normally provide (date, filter status) when this section is
+          printed in isolation. */}
+      <div className="pledges-print-header print-only" style={{ display: "none", marginBottom: 12 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+          Pledges Report — {statusLabel}
+        </div>
+        <div style={{ fontSize: 12 }}>
+          {filtered.length} pledge{filtered.length === 1 ? "" : "s"} · Pledged{" "}
+          {fmtMoney(totals.pledged)} · Paid {fmtMoney(totals.paid)} · Remaining {fmtMoney(totals.remaining)}
+          {search.trim() && <> · Search: "{search.trim()}"</>}
+          {" · Generated "}{new Date().toLocaleString()}
+        </div>
+      </div>
+
+      <Panel title={`Pledges — ${filtered.length} of ${pledges.length}`}>
       {/* Toolbar: status chips, search, export */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
         {PLEDGE_STATUS_FILTERS.map((opt) => (
@@ -737,6 +804,24 @@ function PledgesPanel({ pledges }: { pledges: PledgeRow[] }) {
           title="Download the current filtered pledges as CSV"
         >
           ⬇ Export CSV
+        </button>
+        <button
+          onClick={printPledgesOnly}
+          disabled={filtered.length === 0}
+          style={{
+            padding: "6px 12px",
+            background: "var(--cast-iron)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            cursor: filtered.length === 0 ? "not-allowed" : "pointer",
+            fontSize: 11,
+            fontWeight: 700,
+            opacity: filtered.length === 0 ? 0.5 : 1,
+          }}
+          title="Print only this pledges table — or 'Save as PDF' from the print dialog"
+        >
+          🖨 Print / PDF
         </button>
       </div>
 
@@ -887,7 +972,8 @@ function PledgesPanel({ pledges }: { pledges: PledgeRow[] }) {
           )}
         </div>
       )}
-    </Panel>
+      </Panel>
+    </div>
   );
 }
 
