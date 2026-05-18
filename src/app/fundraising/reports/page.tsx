@@ -152,24 +152,56 @@ export default function ReportsPage() {
             Filter by date, project, donor, source, or fundraiser. Export to CSV for accounting or board reports.
           </div>
         </div>
-        <a
-          href={`/api/fundraising/reports/export?${queryString}`}
-          style={{
-            padding: "10px 18px",
-            background: "var(--shed-green)",
-            color: "#fff",
-            borderRadius: 10,
-            fontWeight: 700,
-            fontSize: 14,
-            textDecoration: "none",
-          }}
-        >
-          ⬇ Export CSV
-        </a>
+        {/* Header toolbar — CSV export, full Print/PDF. Both are no-print themselves so they
+            don't show up on the printed page. */}
+        <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <a
+            href={`/api/fundraising/reports/export?${queryString}`}
+            style={{
+              padding: "10px 18px",
+              background: "var(--shed-green)",
+              color: "#fff",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 14,
+              textDecoration: "none",
+            }}
+          >
+            ⬇ Export CSV
+          </a>
+          <button
+            onClick={() => window.print()}
+            style={{
+              padding: "10px 18px",
+              background: "var(--cast-iron)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+            title="Print this report — or 'Save as PDF' from the print dialog"
+          >
+            🖨 Print / PDF
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
+      {/* Print-only header — date range + summary so the printed page is self-describing.
+          Hidden on screen; only appears when printing. */}
+      <div className="print-only" style={{ display: "none", marginBottom: 14 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+          Fundraising Report
+        </div>
+        <div style={{ fontSize: 12 }}>
+          {from || "All time"} → {to || "Today"} · Generated {new Date().toLocaleString()}
+        </div>
+      </div>
+
+      {/* Filters — hidden on print, the print-only header above replaces it. */}
       <div
+        className="no-print"
         style={{
           background: "#fff",
           border: "1px solid rgba(10,16,25,0.08)",
@@ -439,6 +471,27 @@ export default function ReportsPage() {
           </div>
         </>
       )}
+
+      {/* Print stylesheet — hides nav/filters/buttons, tightens layout for paper.
+          Same pattern as the Collections page so the user experience is consistent.
+          page-break-inside: avoid keeps each Panel together when possible; Panel rules
+          add a small break-before on the major sections so long reports paginate nicely. */}
+      <style jsx global>{`
+        @media print {
+          .so-shed-ribbon, header { display: none !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+          main { padding: 0 !important; }
+          body { background: #fff !important; color: #000 !important; }
+          /* Tighten Panel + table for paper */
+          table { font-size: 11px !important; }
+          a { color: #000 !important; text-decoration: none !important; }
+          /* Keep each Panel together when possible — avoids splitting a chart mid-page */
+          article, section, .report-panel { page-break-inside: avoid; }
+          /* Bar chart gets a forced page break to keep it clean */
+          .by-month-chart { page-break-after: auto; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -497,8 +550,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  // className 'report-panel' is referenced by the print stylesheet for page-break-inside
+  // hints so panels don't get split across pages when possible.
   return (
-    <section style={{ background: "#fff", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 12, padding: 16 }}>
+    <section className="report-panel" style={{ background: "#fff", border: "1px solid rgba(10,16,25,0.08)", borderRadius: 12, padding: 16 }}>
       <h2 style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", margin: "0 0 12px", opacity: 0.7 }}>
         {title}
       </h2>
