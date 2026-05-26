@@ -169,18 +169,47 @@ export default function ReportsPage() {
     return params.toString();
   }, [from, to, projectIds, sourceIds, donorIds, fundraiserIds]);
 
+  // Visible activity indicator: separate from the initial-load `loading` flag so a refetch
+  // after Apply doesn't blank the existing data. While `refetching` is true, the table
+  // stays in place but a small "Updating…" pill appears above it — much better UX than
+  // either replacing the data with a spinner or showing nothing at all.
+  const [refetching, setRefetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
+    // Toggle the right indicator: full skeleton for the first load, mini pill for refetches.
+    if (data) setRefetching(true);
+    else setLoading(true);
+    setFetchError(null);
+
     fetch(`/api/fundraising/reports?${queryString}`)
-      .then((r) => (r.ok ? r.json() : null))
+      .then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text().catch(() => "");
+          throw new Error(text || `HTTP ${r.status}`);
+        }
+        return r.json();
+      })
       .then((d) => {
         if (cancelled) return;
         setData(d);
         setLoading(false);
+        setRefetching(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // Keep the previous data visible so the user doesn't lose context — surface the
+        // error in a banner instead. The audit findings: silent failures are the worst
+        // class of bug, always show what went wrong.
+        setFetchError((err as Error).message || "Failed to load report");
+        setLoading(false);
+        setRefetching(false);
       });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryString]);
 
   function setRange(preset: "ytd" | "last30" | "last90" | "all") {
@@ -428,6 +457,61 @@ export default function ReportsPage() {
           </div>
         </form>
       </div>
+
+      {/* Refetch indicator + error banner — shown above the report when applicable. The
+          pill stays small + non-blocking so the user sees their existing data while the
+          new query runs. */}
+      {refetching && (
+        <div
+          className="no-print"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "5px 12px",
+            background: "rgba(28,93,142,0.08)",
+            border: "1px solid rgba(28,93,142,0.25)",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--blueprint)",
+            marginBottom: 12,
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 99,
+              background: "var(--blueprint)",
+              animation: "fr-blink 1s ease-in-out infinite",
+              display: "inline-block",
+            }}
+          />
+          מעדכן את הדוח לפי הסינון…
+        </div>
+      )}
+      {fetchError && (
+        <div
+          style={{
+            padding: "10px 14px",
+            background: "rgba(232,93,31,0.08)",
+            border: "1px solid rgba(232,93,31,0.25)",
+            borderRadius: 8,
+            color: "var(--cone-orange)",
+            fontSize: 13,
+            marginBottom: 12,
+          }}
+        >
+          <strong>Failed to load report:</strong> {fetchError}
+        </div>
+      )}
+      <style jsx global>{`
+        @keyframes fr-blink {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+      `}</style>
 
       {loading || !data ? (
         <div style={{ padding: 30, opacity: 0.5 }}>Crunching numbers…</div>
