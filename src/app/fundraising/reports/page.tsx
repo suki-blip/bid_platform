@@ -66,14 +66,78 @@ export default function ReportsPage() {
     return d.toISOString().slice(0, 10);
   })();
 
-  const [from, setFrom] = useState(yearAgo);
-  const [to, setTo] = useState(today);
-  // Multi-select filters. Each holds an array of selected IDs. The sentinel value
-  // '__none__' (only in projectIds) means "include items with no project assigned".
-  const [projectIds, setProjectIds] = useState<string[]>([]);
-  const [sourceIds, setSourceIds] = useState<string[]>([]);
-  const [donorIds, setDonorIds] = useState<string[]>([]);
-  const [fundraiserIds, setFundraiserIds] = useState<string[]>([]);
+  // Two layers of filter state:
+  //
+  //   draft*    — what the user is currently typing/picking in the UI. Updates instantly,
+  //               but does NOT trigger a refetch. Lets the user line up several filters
+  //               (date range + project + donor) before committing.
+  //
+  //   applied*  — what's actually sent to the API. Only updated when the user clicks
+  //               "🔍 סנן" / "Apply" or when a preset button fires (presets are an
+  //               intentional shortcut that re-applies immediately so the user gets the
+  //               common "last 30 days" / "YTD" view in one click).
+  //
+  // This pattern fixes the original UX bug: `<input type="date">` doesn't fire onChange
+  // until the date is fully valid, so partial typing felt "broken". Now there's an
+  // explicit Apply button as the source of truth.
+
+  const [draftFrom, setDraftFrom] = useState(yearAgo);
+  const [draftTo, setDraftTo] = useState(today);
+  const [draftProjectIds, setDraftProjectIds] = useState<string[]>([]);
+  const [draftSourceIds, setDraftSourceIds] = useState<string[]>([]);
+  const [draftDonorIds, setDraftDonorIds] = useState<string[]>([]);
+  const [draftFundraiserIds, setDraftFundraiserIds] = useState<string[]>([]);
+
+  const [appliedFrom, setAppliedFrom] = useState(yearAgo);
+  const [appliedTo, setAppliedTo] = useState(today);
+  const [appliedProjectIds, setAppliedProjectIds] = useState<string[]>([]);
+  const [appliedSourceIds, setAppliedSourceIds] = useState<string[]>([]);
+  const [appliedDonorIds, setAppliedDonorIds] = useState<string[]>([]);
+  const [appliedFundraiserIds, setAppliedFundraiserIds] = useState<string[]>([]);
+
+  // Aliases — keep code below readable: when reading, "from" means "applied".
+  const from = appliedFrom;
+  const to = appliedTo;
+  const projectIds = appliedProjectIds;
+  const sourceIds = appliedSourceIds;
+  const donorIds = appliedDonorIds;
+  const fundraiserIds = appliedFundraiserIds;
+
+  // Detect "filter has unapplied changes" so the Apply button can pulse + show a dot.
+  // JSON.stringify on small arrays is the cleanest deep-compare here.
+  const hasUnappliedChanges =
+    draftFrom !== appliedFrom ||
+    draftTo !== appliedTo ||
+    JSON.stringify(draftProjectIds) !== JSON.stringify(appliedProjectIds) ||
+    JSON.stringify(draftSourceIds) !== JSON.stringify(appliedSourceIds) ||
+    JSON.stringify(draftDonorIds) !== JSON.stringify(appliedDonorIds) ||
+    JSON.stringify(draftFundraiserIds) !== JSON.stringify(appliedFundraiserIds);
+
+  function applyFilters() {
+    setAppliedFrom(draftFrom);
+    setAppliedTo(draftTo);
+    setAppliedProjectIds(draftProjectIds);
+    setAppliedSourceIds(draftSourceIds);
+    setAppliedDonorIds(draftDonorIds);
+    setAppliedFundraiserIds(draftFundraiserIds);
+  }
+
+  function resetFilters() {
+    // "Reset" returns both draft and applied to the page defaults (last 365 days, no
+    // entity filters). Triggers a refetch via the applied-state change.
+    setDraftFrom(yearAgo);
+    setDraftTo(today);
+    setDraftProjectIds([]);
+    setDraftSourceIds([]);
+    setDraftDonorIds([]);
+    setDraftFundraiserIds([]);
+    setAppliedFrom(yearAgo);
+    setAppliedTo(today);
+    setAppliedProjectIds([]);
+    setAppliedSourceIds([]);
+    setAppliedDonorIds([]);
+    setAppliedFundraiserIds([]);
+  }
 
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,24 +184,29 @@ export default function ReportsPage() {
   }, [queryString]);
 
   function setRange(preset: "ytd" | "last30" | "last90" | "all") {
+    // Presets are an intentional "apply immediately" shortcut — clicking "Last 30 days"
+    // should re-fetch instantly. We write to BOTH draft and applied state so the user
+    // doesn't see a "modified" indicator the moment they click a preset.
     const t = new Date();
+    let fromStr = "";
+    const toStr = t.toISOString().slice(0, 10);
     if (preset === "ytd") {
-      setFrom(`${t.getFullYear()}-01-01`);
-      setTo(t.toISOString().slice(0, 10));
+      fromStr = `${t.getFullYear()}-01-01`;
     } else if (preset === "last30") {
       const f = new Date();
       f.setDate(f.getDate() - 30);
-      setFrom(f.toISOString().slice(0, 10));
-      setTo(t.toISOString().slice(0, 10));
+      fromStr = f.toISOString().slice(0, 10);
     } else if (preset === "last90") {
       const f = new Date();
       f.setDate(f.getDate() - 90);
-      setFrom(f.toISOString().slice(0, 10));
-      setTo(t.toISOString().slice(0, 10));
+      fromStr = f.toISOString().slice(0, 10);
     } else {
-      setFrom("2000-01-01");
-      setTo(t.toISOString().slice(0, 10));
+      fromStr = "2000-01-01";
     }
+    setDraftFrom(fromStr);
+    setDraftTo(toStr);
+    setAppliedFrom(fromStr);
+    setAppliedTo(toStr);
   }
 
   const maxMonth = data ? Math.max(1, ...data.by_month.map((m) => m.total)) : 1;
@@ -211,70 +280,153 @@ export default function ReportsPage() {
           marginBottom: 14,
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-          <Field label="From">
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
-          </Field>
-          <Field label="To">
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
-          </Field>
-          {/* Multi-select filters — Excel-style dropdowns with checkboxes, search, and
-              Select all / Clear buttons. Closed by default; the button shows a summary
-              ("3 projects selected" / "All projects" / single-pick label). The previous
-              implementation used <select multiple> which displayed all options open and
-              required Ctrl/Cmd-click — workable for power users, painful for everyone else. */}
-          <Field label="Projects">
-            <MultiSelectDropdown
-              label="projects"
-              value={projectIds}
-              onChange={setProjectIds}
-              options={[
-                { value: "__none__", label: "— No project (general) —" },
-                ...projects.map((p) => ({ value: p.id, label: p.name })),
-              ]}
-            />
-          </Field>
-          <Field label="Sources">
-            <MultiSelectDropdown
-              label="sources"
-              value={sourceIds}
-              onChange={setSourceIds}
-              options={[
-                { value: "__none__", label: "— No source —" },
-                ...sources.map((s) => ({ value: s.id, label: s.name })),
-              ]}
-            />
-          </Field>
-          <Field label="Donors">
-            <MultiSelectDropdown
-              label="donors"
-              value={donorIds}
-              onChange={setDonorIds}
-              options={donors.map((d) => ({
-                value: d.id,
-                label: `${d.first_name}${d.last_name ? " " + d.last_name : ""}`,
-              }))}
-              // Donors list can be large — force a search box even on smaller orgs.
-              searchable
-            />
-          </Field>
-          {isManager && (
-            <Field label="Fundraisers">
-              <MultiSelectDropdown
-                label="fundraisers"
-                value={fundraiserIds}
-                onChange={setFundraiserIds}
-                options={fundraisers.map((f) => ({ value: f.id, label: f.name }))}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            applyFilters();
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+            {/* All filter inputs now write to DRAFT state. The applied state is only changed
+                when the user clicks "Apply filters" below, or hits Enter inside the form,
+                or clicks a preset button (which writes to both layers). */}
+            <Field label="From">
+              <input
+                type="date"
+                value={draftFrom}
+                onChange={(e) => setDraftFrom(e.target.value)}
+                style={inputStyle}
               />
             </Field>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-          <button onClick={() => setRange("last30")} style={presetBtn}>Last 30 days</button>
-          <button onClick={() => setRange("last90")} style={presetBtn}>Last 90 days</button>
-          <button onClick={() => setRange("ytd")} style={presetBtn}>Year to date</button>
-          <button onClick={() => setRange("all")} style={presetBtn}>All time</button>
-        </div>
+            <Field label="To">
+              <input
+                type="date"
+                value={draftTo}
+                onChange={(e) => setDraftTo(e.target.value)}
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Projects">
+              <MultiSelectDropdown
+                label="projects"
+                value={draftProjectIds}
+                onChange={setDraftProjectIds}
+                options={[
+                  { value: "__none__", label: "— No project (general) —" },
+                  ...projects.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+            </Field>
+            <Field label="Sources">
+              <MultiSelectDropdown
+                label="sources"
+                value={draftSourceIds}
+                onChange={setDraftSourceIds}
+                options={[
+                  { value: "__none__", label: "— No source —" },
+                  ...sources.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+              />
+            </Field>
+            <Field label="Donors">
+              <MultiSelectDropdown
+                label="donors"
+                value={draftDonorIds}
+                onChange={setDraftDonorIds}
+                options={donors.map((d) => ({
+                  value: d.id,
+                  label: `${d.first_name}${d.last_name ? " " + d.last_name : ""}`,
+                }))}
+                // Donors list can be large — force a search box even on smaller orgs.
+                searchable
+              />
+            </Field>
+            {isManager && (
+              <Field label="Fundraisers">
+                <MultiSelectDropdown
+                  label="fundraisers"
+                  value={draftFundraiserIds}
+                  onChange={setDraftFundraiserIds}
+                  options={fundraisers.map((f) => ({ value: f.id, label: f.name }))}
+                />
+              </Field>
+            )}
+          </div>
+
+          {/* Action row: presets (auto-apply) + Apply + Reset + change indicator. The
+              Apply button pulses orange when there are unapplied changes so it's obvious
+              that something is pending; otherwise it's the muted base color. */}
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" onClick={() => setRange("last30")} style={presetBtn}>Last 30 days</button>
+            <button type="button" onClick={() => setRange("last90")} style={presetBtn}>Last 90 days</button>
+            <button type="button" onClick={() => setRange("ytd")} style={presetBtn}>Year to date</button>
+            <button type="button" onClick={() => setRange("all")} style={presetBtn}>All time</button>
+
+            <div style={{ flex: 1 }} />
+
+            {hasUnappliedChanges && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--cone-orange)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 99,
+                    background: "var(--cone-orange)",
+                    display: "inline-block",
+                  }}
+                />
+                שינויים שטרם הוחלו
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={resetFilters}
+              style={{
+                padding: "8px 14px",
+                background: "transparent",
+                color: "var(--cast-iron)",
+                border: "1px solid rgba(10,16,25,0.14)",
+                borderRadius: 6,
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+              title="Reset filters to defaults (last 365 days)"
+            >
+              ↺ Reset
+            </button>
+            <button
+              type="submit"
+              style={{
+                padding: "8px 18px",
+                background: hasUnappliedChanges ? "var(--cone-orange)" : "var(--cast-iron)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+                boxShadow: hasUnappliedChanges
+                  ? "0 0 0 4px rgba(232,93,31,0.18)"
+                  : "none",
+                transition: "background 150ms, box-shadow 200ms",
+              }}
+              title="החל את הסינון על הדוח"
+            >
+              🔍 סנן / Apply
+            </button>
+          </div>
+        </form>
       </div>
 
       {loading || !data ? (
