@@ -53,12 +53,17 @@ export async function GET(request: NextRequest) {
       payArgs.push(...f.args);
     }
   }
+  // Date filter on the paid-payments queries. COALESCE protects against status='paid'
+  // rows that somehow have NULL paid_date (legacy data / import edge cases) — fall back
+  // to due_date, then to created_at. The user's mental model is "what came in during X",
+  // and an old paid row with no paid_date but a valid due_date should still be counted
+  // in its due-date period.
   if (from) {
-    payWhere += ' AND pp.paid_date >= ?';
+    payWhere += " AND COALESCE(pp.paid_date, pp.due_date, date(pp.created_at)) >= ?";
     payArgs.push(from);
   }
   if (to) {
-    payWhere += ' AND pp.paid_date <= ?';
+    payWhere += " AND COALESCE(pp.paid_date, pp.due_date, date(pp.created_at)) <= ?";
     payArgs.push(to);
   }
   if (projectIdParam) {
@@ -197,6 +202,17 @@ export async function GET(request: NextRequest) {
       openWhere += ` AND ${f.sql}`;
       openArgs.push(...f.args);
     }
+  }
+  // Apply the date filter to pledges too — "outstanding for this period" should mean
+  // pledges signed during the period. Without this, picking "Last 30 days" left the
+  // Outstanding KPI showing ALL open pledges across all time, which looks like a bug.
+  if (from) {
+    openWhere += " AND COALESCE(p.pledge_date, date(p.created_at)) >= ?";
+    openArgs.push(from);
+  }
+  if (to) {
+    openWhere += " AND COALESCE(p.pledge_date, date(p.created_at)) <= ?";
+    openArgs.push(to);
   }
 
   const outstanding = await db().execute({

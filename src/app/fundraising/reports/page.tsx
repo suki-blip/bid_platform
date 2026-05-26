@@ -517,6 +517,32 @@ export default function ReportsPage() {
         <div style={{ padding: 30, opacity: 0.5 }}>Crunching numbers…</div>
       ) : (
         <>
+          {/* Active date-scope strip — shows the user EXACTLY which date range produced
+              the numbers below. Without this, "Total raised = $X" looks like a global
+              figure but is actually scoped to the picked dates; users were confused.
+              Hidden on print because the print-only header already includes the dates. */}
+          <div
+            className="no-print"
+            style={{
+              marginBottom: 12,
+              fontSize: 12,
+              color: "rgba(10,16,25,0.65)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexWrap: "wrap",
+            }}
+          >
+            <span style={{ fontSize: 13 }}>📅</span>
+            <strong>טווח תאריכים:</strong>
+            <span style={{ direction: "ltr" }}>{from || "מההתחלה"}</span>
+            <span>→</span>
+            <span style={{ direction: "ltr" }}>{to || "היום"}</span>
+            <span style={{ opacity: 0.55 }}>
+              · כל הסכומים בדוח מסוננים לטווח הזה (כולל פלאגים פתוחים).
+            </span>
+          </div>
+
           {/* KPI summary */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
             <Stat label="Total raised" value={fmtMoney(data.summary.total)} tone="success" />
