@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { hebrewCoreKey, parseHebrewName } from '@/lib/hebrew-name';
-import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
+import { promoteDonorIfNeeded, recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 
 // POST /api/fundraising/import/payments/commit
 //
@@ -444,9 +444,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // Recompute totals for this pledge + donor
+    // Recompute totals for this pledge + donor. Also promote prospect → donor: a bulk
+    // import of historical payments is one of the most common ways people first populate
+    // their donor list, so leads with imported payments should auto-flip to active donors.
     try {
       await recomputePledgeStatus(pledgeId);
+      await promoteDonorIfNeeded(donorId);
       await recomputeDonorTotals(donorId);
     } catch {
       // Non-fatal

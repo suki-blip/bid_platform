@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount } from '@/lib/fundraising-types';
-import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
+import { promoteDonorIfNeeded, recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { loadSolaCredentials, solaSale, solaApproved, ccLast4, ccBrand, parseExp, SolaError } from '@/lib/sola-client';
 import { sendFundraisingEmail, resolveReceiptEmail } from '@/lib/fundraising-email';
 
@@ -270,6 +270,9 @@ export async function POST(request: Request) {
     // Recompute the unique set of affected pledges + the donor once
     const uniquePledges = Array.from(new Set(reserved.map((r) => r.affectedPledgeId)));
     for (const pid of uniquePledges) await recomputePledgeStatus(pid);
+    // A successful card charge IS the first donation — promote from prospect → donor.
+    // No-op if the donor is already at 'donor' status, which is the common case.
+    await promoteDonorIfNeeded(body.donor_id);
     await recomputeDonorTotals(body.donor_id);
 
     // ----- Save card on file if requested + Cardknox returned a token -----

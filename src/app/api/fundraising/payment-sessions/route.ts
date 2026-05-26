@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount, PAYMENT_METHODS, inEnum, methodIsCheckLike } from '@/lib/fundraising-types';
-import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
+import { promoteDonorIfNeeded, recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { buildGatewayUrl } from '@/lib/payment-gateway';
 
 interface PaymentSessionBody {
@@ -204,6 +204,9 @@ export async function POST(request: Request) {
   // ----- Manual record path: recompute totals and return immediately. -----
   if (recordManually) {
     await recomputePledgeStatus(pledgeId);
+    // Manual cash/check/wire entry — promote prospect to donor on first recorded payment.
+    // Idempotent; no-op if status is already 'donor'.
+    await promoteDonorIfNeeded(body.donor_id);
     await recomputeDonorTotals(body.donor_id);
     return NextResponse.json({
       recorded: true,

@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { ensureDonorAccess } from '@/lib/fundraising-guard';
-import { generateInstallmentDates, recomputeDonorTotals } from '@/lib/fundraising-totals';
+import { generateInstallmentDates, promoteDonorIfNeeded, recomputeDonorTotals } from '@/lib/fundraising-totals';
 import { queueUpcomingReminders } from '@/lib/fundraising-reminders';
 
 interface PaymentInput {
@@ -170,6 +170,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   });
 
   await db().batch(statements, 'write');
+  // Recording a pledge IS the moment a lead becomes a donor. Idempotent — no-op for
+  // existing donors. Runs after the batch so we don't promote on a failed insert.
+  await promoteDonorIfNeeded(donorId);
   await recomputeDonorTotals(donorId);
 
   // Auto-queue reminders for any installments due within the next 7 days.

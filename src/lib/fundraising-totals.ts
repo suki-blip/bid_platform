@@ -42,6 +42,25 @@ export async function recomputePledgeStatus(pledgeId: string): Promise<void> {
   });
 }
 
+// Auto-promote a lead → donor when their first pledge / payment is recorded. Idempotent:
+// donors already at status='donor' (or any non-prospect status) are left untouched. We use
+// COALESCE on converted_at so re-promoting doesn't reset the timestamp if it was set
+// earlier (e.g. manually via the /convert endpoint).
+//
+// Called from every code path that creates a pledge or a successful payment so the user
+// never has to manually flip the status — recording a real commitment IS the moment of
+// conversion. Returns true when an actual promotion happened so the caller can log it.
+export async function promoteDonorIfNeeded(donorId: string): Promise<boolean> {
+  const result = await db().execute({
+    sql: `UPDATE fr_donors
+          SET status = 'donor',
+              converted_at = COALESCE(converted_at, datetime('now'))
+          WHERE id = ? AND status = 'prospect'`,
+    args: [donorId],
+  });
+  return Number(result.rowsAffected ?? 0) > 0;
+}
+
 export async function refreshDonorNextFollowup(donorId: string): Promise<void> {
   await db().execute({
     sql: `UPDATE fr_donors

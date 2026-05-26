@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
 import { getFundraisingSession } from '@/lib/fundraising-session';
 import { isPositiveAmount } from '@/lib/fundraising-types';
-import { recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
+import { promoteDonorIfNeeded, recomputeDonorTotals, recomputePledgeStatus } from '@/lib/fundraising-totals';
 import { loadSolaCredentials, solaTokenSale, solaApproved, ccLast4, SolaError } from '@/lib/sola-client';
 import { sendFundraisingEmail, resolveReceiptEmail } from '@/lib/fundraising-email';
 
@@ -225,6 +225,8 @@ export async function POST(request: Request) {
     }
     const uniquePledges = Array.from(new Set(reserved.map((r) => r.pledgeId)));
     for (const pid of uniquePledges) await recomputePledgeStatus(pid);
+    // Successful saved-card charge → first-time donor promotion (idempotent).
+    await promoteDonorIfNeeded(body.donor_id);
     await recomputeDonorTotals(body.donor_id);
 
     // Bump last_used_at on the card.

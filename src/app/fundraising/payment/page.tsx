@@ -1581,17 +1581,32 @@ function PayPageInner() {
 
             {/* Method-specific fields */}
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Paid date — for all manual methods (CC paid_date is set by gateway webhook) */}
+              {/* Paid date — for all non-card methods. The "you can backdate" hint is
+                  important: this is THE place to retroactively log a check that arrived
+                  3 weeks ago, or a cash gift that came in last month. The field defaults
+                  to today; pick an earlier date to back-date. Future dates are blocked
+                  client-side via max=today (server also rejects future dates). */}
               {method !== "credit_card" && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div>
-                    <label style={inputLabel}>Date received</label>
-                    <input
-                      type="date"
-                      value={paidDate}
-                      onChange={(e) => setPaidDate(e.target.value)}
-                      style={input}
-                    />
+                <div
+                  style={{
+                    background: "rgba(28,93,142,0.04)",
+                    border: "1px solid rgba(28,93,142,0.18)",
+                    borderRadius: 8,
+                    padding: 10,
+                  }}
+                >
+                  <label style={{ ...inputLabel, color: "var(--blueprint)" }}>
+                    📅 Date received (you can backdate)
+                  </label>
+                  <input
+                    type="date"
+                    value={paidDate}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setPaidDate(e.target.value)}
+                    style={{ ...input, maxWidth: 220 }}
+                  />
+                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+                    אפשר לרשום תאריך מוקדם יותר — למשל אם הכסף התקבל בעבר.
                   </div>
                 </div>
               )}

@@ -36,7 +36,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const amount = Number(body.amount);
   if (!amount || amount <= 0) return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 });
 
-  const paidDate = body.paid_date || new Date().toISOString().slice(0, 10);
+  // paid_date is optional — defaults to today. Allows back-dating cash/check/wire receipts
+  // ("we got the check 3 weeks ago, just got around to entering it"). Validation:
+  //   • must look like YYYY-MM-DD
+  //   • cannot be more than 1 day in the future (small grace for timezone differences)
+  //   • cannot be older than 50 years (typo guard)
+  const today = new Date().toISOString().slice(0, 10);
+  let paidDate = today;
+  if (body.paid_date) {
+    const raw = String(body.paid_date).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return NextResponse.json({ error: 'paid_date must be YYYY-MM-DD' }, { status: 400 });
+    }
+    const parsed = new Date(raw + 'T00:00:00');
+    if (Number.isNaN(parsed.getTime())) {
+      return NextResponse.json({ error: 'paid_date is not a valid date' }, { status: 400 });
+    }
+    const tooLate = Date.now() + 24 * 60 * 60 * 1000;
+    const tooEarly = Date.now() - 50 * 365 * 24 * 60 * 60 * 1000;
+    if (parsed.getTime() > tooLate) {
+      return NextResponse.json({ error: 'paid_date cannot be in the future' }, { status: 400 });
+    }
+    if (parsed.getTime() < tooEarly) {
+      return NextResponse.json({ error: 'paid_date is too far in the past' }, { status: 400 });
+    }
+    paidDate = raw;
+  }
   const method = body.method || 'credit_card';
   const projectId = body.project_id || null;
   const paymentId = crypto.randomUUID();
