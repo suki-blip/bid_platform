@@ -436,6 +436,27 @@ async function initializeDatabase() {
       assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
       reason TEXT
     )`,
+
+    // Scheduled outbound phone calls (auto-dialer). At the planned time a Vercel cron
+    // places the call via Twilio; when answered, Twilio plays the preset DTMF digit
+    // sequence (e.g. navigating an IVR / phone menu automatically).
+    `CREATE TABLE IF NOT EXISTS fr_scheduled_calls (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES saas_users(id) ON DELETE CASCADE,
+      to_number TEXT NOT NULL,
+      digits TEXT,
+      pause_seconds INTEGER NOT NULL DEFAULT 3,
+      steps_json TEXT,
+      label TEXT,
+      scheduled_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      twilio_sid TEXT,
+      call_status TEXT,
+      error TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
 
   // Run each CREATE TABLE individually to avoid batch failures on existing schemas
@@ -475,6 +496,15 @@ async function initializeDatabase() {
   try { await client.execute('CREATE INDEX IF NOT EXISTS idx_fr_email_queue_payment ON fr_email_queue(payment_id)'); } catch {}
 
   // (Removed auto-promote of pending users — admin must approve each new signup manually.)
+
+  // Auto-dialer: store the IVR step sequence ({waitSeconds,digits}[]) as JSON.
+  try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN steps_json TEXT'); } catch {}
+  // Auto-dialer recurrence: repeat on chosen weekdays at a set local time.
+  try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN recurring INTEGER NOT NULL DEFAULT 0'); } catch {}
+  try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN recur_days TEXT'); } catch {}   // CSV of weekdays 0=Sun..6=Sat
+  try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN recur_time TEXT'); } catch {}   // "HH:MM" local
+  try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN recur_tz TEXT'); } catch {}     // IANA timezone
+  try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN last_fired_date TEXT'); } catch {} // YYYY-MM-DD in recur_tz
 
   // Donor ratings: 1-5 (financial capacity = how wealthy; giving = how generous in practice).
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN financial_rating INTEGER'); } catch {}

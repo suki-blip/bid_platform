@@ -26,6 +26,7 @@ const NAV: NavItem[] = [
   { href: "/fundraising/payments", label: "Payments" },
   { href: "/fundraising/collections", label: "Collections" },
   { href: "/fundraising/calendar", label: "Calendar" },
+  { href: "/fundraising/auto-dial", label: "Auto-dial" },
   { href: "/fundraising/reports", label: "Reports" },
   { href: "/fundraising/team", label: "Team", managerOnly: true },
   { href: "/fundraising/import", label: "Import", managerOnly: true },
