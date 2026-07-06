@@ -19,6 +19,7 @@ const PASSTHROUGH_PREFIXES = [
   '/register',
   '/forgot-password',
   '/reset-password',
+  '/dialer',
   '/favicon',
   '/admin-login',
   '/admin-panel',
