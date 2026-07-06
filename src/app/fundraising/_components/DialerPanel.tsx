@@ -79,8 +79,17 @@ function nyWallToUTC(localStr: string): Date {
   return new Date(utc);
 }
 
+// Parse a stored timestamp. Form-created rows are ISO-UTC ("…T…Z"); rows created via
+// SQLite datetime('now') look like "YYYY-MM-DD HH:MM:SS" (UTC, but no zone marker) — the
+// browser would wrongly read those as local time, so normalize them to explicit UTC first.
+function toDate(iso: string): Date {
+  let s = String(iso || "");
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s)) s = s.replace(" ", "T") + "Z";
+  return new Date(s);
+}
+
 function fmtWhen(iso: string): string {
-  const d = new Date(iso);
+  const d = toDate(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleString("en-US", { timeZone: NY_TZ, year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " ET";
 }
@@ -107,7 +116,7 @@ function nyClock(): string {
 
 // Stored UTC ISO → "YYYY-MM-DDTHH:MM" New York wall-clock, for prefilling the picker on edit.
 function utcIsoToNyLocal(iso: string): string {
-  const m = nyParts(new Date(iso));
+  const m = nyParts(toDate(iso));
   return `${m.year}-${m.month}-${m.day}T${m.hour}:${m.minute}`;
 }
 
