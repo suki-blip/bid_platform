@@ -192,8 +192,9 @@ export default function DialerPanel({ endpoints, title = "Auto-dial", subtitle }
     setWhenLocal(defaultWhen()); setRepeat(false); setRepeatDays([0]); setRepeatTime("09:00");
   }
 
-  function startEdit(c: ScheduledCall) {
-    setError(null); setNotice(null);
+  // Load a call's settings into the form. Used by both Edit (keeps the id → updates) and
+  // Duplicate (clears the id → saves as a new call).
+  function loadIntoForm(c: ScheduledCall) {
     setToNumber(c.to_number);
     setLabel(c.label || "");
     try {
@@ -208,8 +209,21 @@ export default function DialerPanel({ endpoints, title = "Auto-dial", subtitle }
       setRepeat(false);
       setWhenLocal(utcIsoToNyLocal(c.scheduled_at));
     }
-    setEditingId(c.id);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function startEdit(c: ScheduledCall) {
+    setError(null); setNotice(null);
+    loadIntoForm(c);
+    setEditingId(c.id);
+  }
+
+  function startDuplicate(c: ScheduledCall) {
+    setError(null);
+    setEditingId(null);
+    loadIntoForm(c);
+    if (!c.recurring) setWhenLocal(defaultWhen()); // fresh future time for a one-off copy
+    setNotice("Copied to the form — adjust and save it as a new call.");
   }
 
   function cancelEdit() { setEditingId(null); resetForm(); }
@@ -364,6 +378,7 @@ export default function DialerPanel({ endpoints, title = "Auto-dial", subtitle }
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
                       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <button onClick={() => startDuplicate(c)} title="Copy to the form as a new call" style={{ padding: "6px 12px", background: "transparent", border: "1px solid rgba(10,16,25,0.15)", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Copy</button>
                       {(c.status === "pending" || c.status === "recurring") && (
                         <button onClick={() => startEdit(c)} style={{ padding: "6px 12px", background: "transparent", border: "1px solid rgba(10,16,25,0.15)", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Edit</button>
                       )}
