@@ -9,6 +9,7 @@
 // it on the next minute. Up to 3 attempts; after that it's marked failed.
 
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { db, dbReady } from '@/lib/db';
 import { getAppUrl } from '@/lib/email';
 import { placeCall, twilioConfigured, stepsTwiml, type DialStep } from '@/lib/twilio';
@@ -129,7 +130,7 @@ export async function GET(request: Request) {
     // --- Recurring calls: fire when today's weekday matches and the local time has arrived
     // (within a 10-minute window), at most once per local day. ---
     const recurRows = await db().execute({
-      sql: `SELECT id, to_number, digits, pause_seconds, steps_json,
+      sql: `SELECT id, owner_id, to_number, digits, pause_seconds, steps_json, label,
                    recur_days, recur_time, recur_tz, last_fired_date
             FROM fr_scheduled_calls
             WHERE recurring = 1 AND status = 'recurring'`,
@@ -157,18 +158,35 @@ export async function GET(request: Request) {
       });
 
       const steps = parseSteps(row.steps_json, row.digits, row.pause_seconds);
+
+      // Insert a per-occurrence log row — its own record + recording, linked via parent_id.
+      const logId = crypto.randomUUID();
+      await db().execute({
+        sql: `INSERT INTO fr_scheduled_calls
+                (id, owner_id, to_number, steps_json, label, scheduled_at, status, attempts, recurring, parent_id, created_by)
+              VALUES (?, ?, ?, ?, ?, datetime('now'), 'calling', 1, 0, ?, 'cron-recurring')`,
+        args: [logId, row.owner_id as string, row.to_number as string,
+               (row.steps_json as string) || null, (row.label as string) || 'Recurring call', id],
+      });
+
       const result = await placeCall({
         to: row.to_number as string,
         twiml: stepsTwiml(steps),
-        statusCallback: callbackOk ? `${appUrl}/api/calls/status?id=${id}` : undefined,
+        record: true,
+        statusCallback: callbackOk ? `${appUrl}/api/calls/status?id=${logId}` : undefined,
       });
 
+      // The log row carries the outcome + recording; the parent just keeps its last-run status.
       await db().execute({
-        sql: `UPDATE fr_scheduled_calls SET twilio_sid = COALESCE(?, twilio_sid), call_status = ?, error = ? WHERE id = ?`,
-        args: [result.sid || null, result.success ? 'queued' : 'failed', result.success ? null : (result.error || 'error'), id],
+        sql: `UPDATE fr_scheduled_calls SET status = ?, twilio_sid = ?, error = ? WHERE id = ?`,
+        args: [result.success ? 'placed' : 'failed', result.sid || null, result.success ? null : (result.error || 'error'), logId],
+      });
+      await db().execute({
+        sql: `UPDATE fr_scheduled_calls SET call_status = ? WHERE id = ?`,
+        args: [result.success ? 'queued' : 'failed', id],
       });
       if (result.success) placed++;
-      results.push({ id, ok: result.success, error: result.error });
+      results.push({ id: logId, ok: result.success, error: result.error });
     }
 
     return NextResponse.json({ ok: true, placed, checked: due.rows.length + recurRows.rows.length, results });

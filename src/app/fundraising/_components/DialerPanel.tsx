@@ -395,7 +395,7 @@ export default function DialerPanel({ endpoints, title = "Auto-dial", subtitle }
                       {(c.status === "pending" || c.status === "calling" || c.status === "recurring") && (
                         <button onClick={() => remove(c.id)} style={{ padding: "6px 12px", background: "transparent", border: "1px solid rgba(10,16,25,0.15)", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{c.status === "recurring" ? "Stop" : "Cancel"}</button>
                       )}
-                      {(c.status === "placed" || c.status === "completed" || c.status === "failed" || (!!c.recurring && !!c.last_fired_date)) && (
+                      {(c.status === "placed" || c.status === "completed" || c.status === "failed") && (
                         playingId === c.id ? (
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                             <audio controls autoPlay src={`/api/calls/recording?id=${c.id}`} onError={() => setRecError(c.id)} style={{ height: 34 }} />

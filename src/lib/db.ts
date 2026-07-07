@@ -505,6 +505,9 @@ async function initializeDatabase() {
   try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN recur_time TEXT'); } catch {}   // "HH:MM" local
   try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN recur_tz TEXT'); } catch {}     // IANA timezone
   try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN last_fired_date TEXT'); } catch {} // YYYY-MM-DD in recur_tz
+  // Per-occurrence run log: each time a recurring call fires, a new row is inserted with
+  // parent_id pointing at the recurring call, so every run has its own record + recording.
+  try { await client.execute('ALTER TABLE fr_scheduled_calls ADD COLUMN parent_id TEXT'); } catch {}
 
   // Donor ratings: 1-5 (financial capacity = how wealthy; giving = how generous in practice).
   try { await client.execute('ALTER TABLE fr_donors ADD COLUMN financial_rating INTEGER'); } catch {}
