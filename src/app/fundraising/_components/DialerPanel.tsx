@@ -384,6 +384,7 @@ export default function DialerPanel({ endpoints, title = "Auto-dial", subtitle }
                     <td style={{ padding: "12px 16px" }}>
                       <span style={{ background: st.bg, color: st.fg, padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{st.label}</span>
                       {c.status === "failed" && c.error && <div style={{ fontSize: 11, color: "#991b1b", marginTop: 3, maxWidth: 220 }}>{c.error}</div>}
+                      {c.recurring && c.last_fired_date && <div style={{ fontSize: 11, opacity: 0.6, marginTop: 3 }}>Last ran {c.last_fired_date}{c.call_status ? ` · ${c.call_status}` : ""}</div>}
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
                       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
@@ -394,7 +395,7 @@ export default function DialerPanel({ endpoints, title = "Auto-dial", subtitle }
                       {(c.status === "pending" || c.status === "calling" || c.status === "recurring") && (
                         <button onClick={() => remove(c.id)} style={{ padding: "6px 12px", background: "transparent", border: "1px solid rgba(10,16,25,0.15)", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{c.status === "recurring" ? "Stop" : "Cancel"}</button>
                       )}
-                      {(c.status === "placed" || c.status === "completed" || c.status === "failed") && (
+                      {(c.status === "placed" || c.status === "completed" || c.status === "failed" || (!!c.recurring && !!c.last_fired_date)) && (
                         playingId === c.id ? (
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                             <audio controls autoPlay src={`/api/calls/recording?id=${c.id}`} onError={() => setRecError(c.id)} style={{ height: 34 }} />
