@@ -331,8 +331,9 @@ export default function DialerPanel({ endpoints, title = "Auto-dial", subtitle }
               </div>
             ) : (
               <div>
-                <label style={labelStyle}>Schedule for (NY)</label>
+                <label style={labelStyle}>Date &amp; time (NY)</label>
                 <input style={inputStyle} type="datetime-local" value={whenLocal} onChange={(e) => setWhenLocal(e.target.value)} />
+                <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>Runs once, on this exact date and time.</div>
               </div>
             )}
             <button onClick={editingId ? update : schedule} disabled={!!busy} style={{ ...btn("#d97706"), opacity: busy ? 0.6 : 1 }}>{busy === "schedule" ? "…" : editingId ? "Update" : repeat ? "Save repeat" : "Schedule"}</button>
