@@ -1,28 +1,40 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Fixed admin token prefix — the login API sets a cookie starting with this
-const ADMIN_COOKIE_PREFIX = 'bidmaster-admin-';
+// Host-based routing for the fundraising product.
+//
+// easyfundraisings.com + yeshivatc.com visitors land at the root but we want them to see
+// the /fundraising app without the URL changing. The middleware does two things:
+//
+//   1. Gates auth: anything unknown without a contractor-auth or team-auth cookie
+//      bounces to /login.
+//   2. Rewrites paths: `/` → `/fundraising`, `/foo` → `/fundraising/foo`, except for a
+//      short passthrough list (API, static assets, dialer, auth pages).
+//
+// Everything else — localhost dev, direct Vercel URLs, custom staging hosts — behaves
+// normally and shows the root landing (src/app/page.tsx) which links to /fundraising
+// and /dialer.
+//
+// All BidMaster routing (vendor-login redirects, /customer, /api/vendor/*, /api/team/*,
+// /admin-panel protection) was removed on 2026-11-01 along with the UI it protected.
 
-// Domains that should be served as the fundraising app (root → /fundraising)
 const FUNDRAISING_HOSTS = new Set([
   'easyfundraisings.com',
   'www.easyfundraisings.com',
+  'yeshivatc.com',
+  'www.yeshivatc.com',
 ]);
 
-// Paths that stay as-is even on the fundraising-domain (auth, system, assets, admin, PWA)
+// Paths that stay as-is even on the fundraising-domain (auth pages, system, assets, PWA).
 const PASSTHROUGH_PREFIXES = [
   '/api',
   '/_next',
   '/fundraising',
   '/login',
-  '/register',
   '/forgot-password',
   '/reset-password',
   '/dialer',
   '/favicon',
-  '/admin-login',
-  '/admin-panel',
   '/sw.js',
   '/manifest.webmanifest',
   '/icon-',
@@ -35,9 +47,6 @@ export function middleware(request: NextRequest) {
 
   // Fundraising domain: gate auth before the rewrite, so unauthenticated visits go to /login.
   if (FUNDRAISING_HOSTS.has(host)) {
-    // Passthrough if: (a) exact prefix match, (b) prefix-with-slash, or (c) prefix used as a
-    // filename stem (e.g. '/icon-' matches '/icon-192.png'). The trailing-hyphen entries in
-    // PASSTHROUGH_PREFIXES rely on (c).
     const isPassthrough = PASSTHROUGH_PREFIXES.some((p) =>
       pathname === p ||
       pathname.startsWith(p + '/') ||
@@ -52,175 +61,9 @@ export function middleware(request: NextRequest) {
       if (!cookie && !teamCookie) {
         return NextResponse.redirect(new URL('/login', request.url));
       }
-      // Authenticated — rewrite root + app paths into /fundraising/* so the URL stays clean.
       const url = request.nextUrl.clone();
       url.pathname = pathname === '/' ? '/fundraising' : `/fundraising${pathname}`;
       return NextResponse.rewrite(url);
-    }
-  }
-
-  // Protect admin panel pages: /admin-panel/[key]/...
-  if (pathname.startsWith('/admin-panel/')) {
-    const segments = pathname.split('/');
-    const key = segments[2]; // /admin-panel/[key]/...
-    const secret = process.env.ADMIN_SECRET_PATH;
-
-    // Allow access via secret path OR valid admin-auth cookie
-    const adminCookie = request.cookies.get('admin-auth')?.value;
-
-    const pathValid = secret && key === secret;
-    const cookieValid = adminCookie && adminCookie.startsWith(ADMIN_COOKIE_PREFIX);
-
-    if (!pathValid && !cookieValid) {
-      return NextResponse.redirect(new URL('/admin-login', request.url));
-    }
-  }
-
-  // Protect admin API routes: /api/admin/...
-  if (pathname.startsWith('/api/admin/')) {
-    // Allow auth and login endpoints through
-    if (pathname === '/api/admin/auth' || pathname === '/api/admin/login') {
-      return NextResponse.next();
-    }
-
-    const adminCookie = request.cookies.get('admin-auth')?.value;
-    const secret = process.env.ADMIN_API_SECRET;
-    const header = request.headers.get('x-admin-secret');
-
-    const cookieValid = adminCookie && (
-      adminCookie.startsWith(ADMIN_COOKIE_PREFIX) ||
-      (secret && adminCookie === secret)
-    );
-    const headerValid = secret && header === secret;
-
-    if (!cookieValid && !headerValid) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
-
-  // Protect contractor (customer) routes: /customer/*
-  if (pathname.startsWith('/customer')) {
-    const cookie = request.cookies.get('contractor-auth')?.value;
-    const teamCookie = request.cookies.get('team-auth')?.value;
-
-    // Allow access with either contractor-auth or team-auth
-    if (!cookie && !teamCookie) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-
-    if (cookie) {
-      try {
-        const session = JSON.parse(Buffer.from(cookie, 'base64').toString());
-        if (!session.userId) {
-          const response = NextResponse.redirect(new URL('/login', request.url));
-          response.cookies.delete('contractor-auth');
-          return response;
-        }
-      } catch {
-        const response = NextResponse.redirect(new URL('/login', request.url));
-        response.cookies.delete('contractor-auth');
-        return response;
-      }
-    } else if (teamCookie) {
-      try {
-        const session = JSON.parse(Buffer.from(teamCookie, 'base64').toString());
-        if (!session.teamMemberId) {
-          const response = NextResponse.redirect(new URL('/login', request.url));
-          response.cookies.delete('team-auth');
-          return response;
-        }
-      } catch {
-        const response = NextResponse.redirect(new URL('/login', request.url));
-        response.cookies.delete('team-auth');
-        return response;
-      }
-    }
-  }
-
-  // Protect fundraising routes: /fundraising/*
-  // Accept both manager (contractor-auth) and fundraiser (team-auth) cookies.
-  if (pathname.startsWith('/fundraising')) {
-    const cookie = request.cookies.get('contractor-auth')?.value;
-    const teamCookie = request.cookies.get('team-auth')?.value;
-
-    if (!cookie && !teamCookie) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-
-    if (cookie) {
-      try {
-        const session = JSON.parse(Buffer.from(cookie, 'base64').toString());
-        if (!session.userId) {
-          const response = NextResponse.redirect(new URL('/login', request.url));
-          response.cookies.delete('contractor-auth');
-          return response;
-        }
-      } catch {
-        const response = NextResponse.redirect(new URL('/login', request.url));
-        response.cookies.delete('contractor-auth');
-        return response;
-      }
-    } else if (teamCookie) {
-      try {
-        const session = JSON.parse(Buffer.from(teamCookie, 'base64').toString());
-        if (!session.teamMemberId) {
-          const response = NextResponse.redirect(new URL('/login', request.url));
-          response.cookies.delete('team-auth');
-          return response;
-        }
-      } catch {
-        const response = NextResponse.redirect(new URL('/login', request.url));
-        response.cookies.delete('team-auth');
-        return response;
-      }
-    }
-  }
-
-  // Protect fundraising API routes: /api/fundraising/*
-  // Exception: /api/fundraising/payment-webhook is public (gateway calls it). It self-authenticates
-  // via the per-session token + secret pair in query params.
-  if (
-    pathname.startsWith('/api/fundraising/') &&
-    !pathname.startsWith('/api/fundraising/payment-webhook')
-  ) {
-    const cookie = request.cookies.get('contractor-auth')?.value;
-    const teamCookie = request.cookies.get('team-auth')?.value;
-    if (!cookie && !teamCookie) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
-
-  // Protect vendor portal pages: /vendor/* (except /vendor-submit and /vendor-login)
-  if (pathname.startsWith('/vendor') && !pathname.startsWith('/vendor-submit') && !pathname.startsWith('/vendor-login')) {
-    const cookie = request.cookies.get('vendor-auth')?.value;
-    if (!cookie) {
-      return NextResponse.redirect(new URL('/login?tab=vendor', request.url));
-    }
-  }
-
-  // Redirect old vendor-login to combined login page (preserve query params)
-  if (pathname === '/vendor-login') {
-    const url = new URL('/login', request.url);
-    url.searchParams.set('tab', 'vendor');
-    // Preserve reset token param
-    const reset = request.nextUrl.searchParams.get('reset');
-    if (reset) url.searchParams.set('reset', reset);
-    return NextResponse.redirect(url);
-  }
-
-  // Protect vendor API routes: /api/vendor/* (except /api/vendor-auth/*)
-  if (pathname.startsWith('/api/vendor/') && !pathname.startsWith('/api/vendor-auth/')) {
-    const cookie = request.cookies.get('vendor-auth')?.value;
-    if (!cookie) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
-
-  // Protect team management API routes: /api/team/* (require contractor-auth, not team-auth)
-  if (pathname.startsWith('/api/team/') && !pathname.startsWith('/api/team-auth/')) {
-    const cookie = request.cookies.get('contractor-auth')?.value;
-    if (!cookie) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
 
@@ -229,18 +72,10 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Existing protections
-    '/admin-panel/:path*',
-    '/api/admin/:path*',
-    '/customer/:path*',
-    '/vendor/:path*',
-    '/vendor-login',
-    '/api/vendor/:path*',
-    '/api/team/:path*',
     '/fundraising/:path*',
     '/api/fundraising/:path*',
     // Catch root + arbitrary paths so the host-based fundraising rewrite can fire.
-    // Excludes _next, favicon, and API routes that don't need it.
+    // Excludes _next, favicon, and API routes that don't need host rewrites.
     '/((?!_next/static|_next/image|favicon.ico|api/).*)',
   ],
 };
